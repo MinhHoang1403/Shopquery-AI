@@ -10,6 +10,9 @@ ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời c�
 - **RAG (`RAG`)**: tạo embedding cho câu hỏi, truy hồi các đoạn tài liệu gần nhất bằng pgvector rồi trả lời kèm nguồn. Ví dụ: “Chính sách đổi trả của cửa hàng như thế nào?”
 - **Kết hợp (`HYBRID`)**: dùng cả kết quả SQL và bằng chứng tài liệu. Ví dụ: “Top 5 sản phẩm bán chạy nhất có thuộc danh mục được miễn phí vận chuyển không?”
 - **Ngoài phạm vi (`UNSUPPORTED`)**: từ chối câu hỏi không thuộc dữ liệu và tài liệu của cửa hàng. Ví dụ: “Thời tiết Hà Nội hôm nay thế nào?”
+- **Lịch sử hội thoại**: lưu conversation và từng message trong PostgreSQL; hỗ trợ tạo mới, chuyển, đổi tên, xóa và khôi phục sau khi tải lại trang.
+- **Dữ liệu riêng**: xem trước rồi import CSV/XLSX vào schema `uploaded_data`, chọn dataset trong sidebar và hỏi AI bằng Text-to-SQL được giới hạn riêng cho dataset đó.
+- **Giao diện responsive**: light theme, sidebar thu gọn/off-canvas, composer đa dòng và vùng evidence SQL/nguồn có thể mở rộng.
 
 ## Công nghệ
 
@@ -29,6 +32,7 @@ ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời c�
 Browser
   -> Nginx
     -> FastAPI
+      +-> Conversations/Datasets -> PostgreSQL metadata + uploaded_data
       -> Gemini Router
         +-> SQL ------> Gemini -> SQLGlot -> PostgreSQL read-only
         +-> RAG ------> Gemini Embedding -> pgvector -> Gemini
@@ -36,7 +40,7 @@ Browser
         +-> UNSUPPORTED
 ```
 
-Nginx phục vụ React SPA và chuyển tiếp nguyên đường dẫn `/api` đến FastAPI. Router dùng structured output để chọn đúng một nhánh. Nhánh SQL chỉ cho phép tập con truy vấn đã định, giới hạn bảng, số dòng và thời gian thực thi; nhánh RAG trả nguồn lấy từ corpus đã ingest. Frontend không giữ Gemini API key.
+Nginx phục vụ React SPA và chuyển tiếp nguyên đường dẫn `/api` đến FastAPI. Router dùng structured output để chọn đúng một nhánh. Nhánh SQL chỉ cho phép tập con truy vấn đã định, giới hạn bảng, số dòng và thời gian thực thi; nhánh RAG trả nguồn lấy từ corpus đã ingest. Với file import, generator chỉ nhận schema của dataset đang chọn và validator dùng allowlist bất biến theo từng request. Frontend không giữ Gemini API key.
 
 ## Yêu cầu môi trường
 
@@ -108,6 +112,8 @@ docker compose exec api python scripts/ingest_documents.py
 ```
 
 Chờ ba service `db`, `api`, `web` healthy rồi mở `http://127.0.0.1:8080`. API trực tiếp ở `http://127.0.0.1:8000` và PostgreSQL ở `127.0.0.1:54321`.
+
+API tự chạy `setup_database.py` khi container khởi động. Thao tác này chỉ tạo bổ sung các bảng/schema còn thiếu (`chat_conversations`, `chat_messages`, `datasets`, `dataset_tables`, `uploaded_data`) và không xóa seed hiện có. Vẫn có thể chạy script thủ công khi phát triển native hoặc cần kiểm tra migration.
 
 `ingest_documents.py` gọi Gemini Embedding và có thể tiêu thụ quota. Chỉ cần ingest lần đầu hoặc khi tài liệu thay đổi; `content_hash` giúp bỏ qua các chunk không đổi.
 
@@ -269,7 +275,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm run test:e2e:live` gọi API thật, database và Gemini; chỉ chạy khi full stack đã healthy, đã ingest corpus và muốn dùng quota. GitHub Actions chỉ chạy Ruff/unit tests và frontend quality gates, không nhận Gemini key và không gọi live tests.
+Mock E2E chạy ở năm viewport 1440, 1280, 768, 390 và 320 px. `npm run test:e2e:live` gọi API thật, database và Gemini; chỉ chạy khi full stack đã healthy, đã ingest corpus và muốn dùng quota. GitHub Actions chỉ chạy Ruff/unit tests và frontend quality gates, không nhận Gemini key và không gọi live tests.
 
 ### Docker Compose
 
@@ -314,6 +320,37 @@ Response ổn định có dạng:
 
 `route` là `SQL`, `RAG`, `HYBRID` hoặc `UNSUPPORTED`. `sql`/`rows` chỉ có dữ liệu cho SQL và Hybrid; `sources` chỉ có dữ liệu cho RAG và Hybrid. Với lỗi nghiệp vụ đã dự kiến, API hiện có thể trả HTTP 200 cùng `route: null` và nội dung trong trường `error`; client phải kiểm tra trường này.
 
+`POST /api/chat` vẫn tương thích với client cũ. Có thể truyền thêm `dataset_id` để truy vấn một dataset import; với dataset upload, route chỉ là SQL và không tự ghép tài liệu policy của dữ liệu demo.
+
+### Conversations
+
+| Method | Endpoint | Chức năng |
+| --- | --- | --- |
+| `GET` | `/api/conversations?limit=50&offset=0` | Danh sách mới cập nhật trước |
+| `POST` | `/api/conversations` | Tạo chat với JSON `{"dataset_id": null}` |
+| `GET` | `/api/conversations/{id}` | Metadata và toàn bộ messages |
+| `PATCH` | `/api/conversations/{id}` | Đổi tên với JSON `{"title": "..."}` |
+| `DELETE` | `/api/conversations/{id}` | Xóa conversation và messages liên quan |
+| `POST` | `/api/conversations/{id}/messages` | Gửi JSON `{"message": "..."}` và lưu cả câu hỏi/câu trả lời |
+
+Tiêu đề mặc định được thay bằng phần đầu câu hỏi đầu tiên, trừ khi người dùng đã đặt tên. Mỗi conversation gắn với đúng một dataset; muốn chuyển dataset, giao diện yêu cầu xác nhận và bắt đầu chat mới. Request đang chạy bị hủy khi người dùng đổi chat, nên response cũ không bị đưa vào chat mới.
+
+### Datasets và upload
+
+| Method | Endpoint | Chức năng |
+| --- | --- | --- |
+| `GET` | `/api/datasets` | Dataset demo và các dataset đã import |
+| `GET` | `/api/datasets/{id}` | Metadata cùng các dòng preview |
+| `GET` | `/api/datasets/{id}/preview?limit=10` | Đọc tối đa 50 dòng bằng role chỉ đọc |
+| `POST` | `/api/datasets/preview` | Multipart `file`, tùy chọn `sheet_name`; chưa ghi database |
+| `POST` | `/api/datasets/import` | Multipart `file`, `dataset_name`, tùy chọn `sheet_name` |
+
+Luồng giao diện: chọn **Nạp dữ liệu mới** → chọn CSV/XLSX → kiểm tra header, kiểu cột, số dòng và preview → đặt tên → **Xác nhận import**. Sau import, dataset xuất hiện trong sidebar và được chọn cho chat mới.
+
+Giới hạn mặc định là 10 MB, 5.000 dòng và 30 cột. CSV phải là UTF-8/UTF-8 BOM, có header không rỗng/không trùng và mọi dòng cùng số cột. XLSX được đọc ở chế độ read-only, không hỗ trợ macro; công thức không được thực thi. Type inference bảo thủ giữ mã có số 0 đầu ở dạng text. Mỗi file hiện tạo một bảng; XLSX nhiều sheet yêu cầu chọn một sheet.
+
+Dữ liệu import được lưu trong schema `uploaded_data` với tên bảng vật lý ngẫu nhiên, còn tên hiển thị/file/schema cột nằm trong bảng metadata. Import dùng transaction và role setup; truy vấn AI vẫn dùng `shopquery_reader`, SQLGlot, statement timeout và row limit cũ. Dataset context chỉ cho phép đúng bảng đã chọn, chặn catalog, bảng demo, dataset khác, multi-statement và mọi DDL/DML.
+
 ## Cấu trúc dự án
 
 ```text
@@ -325,7 +362,9 @@ Response ổn định có dạng:
 │   │   ├── ai/                    # Google GenAI adapter
 │   │   ├── api/                   # FastAPI routes và contracts
 │   │   ├── core/                  # Cấu hình, logging, errors
+│   │   ├── conversations/         # Persistence lịch sử chat
 │   │   ├── database/              # Models, session, schema, loader
+│   │   ├── datasets/              # Parse, metadata, import và SQL context
 │   │   ├── rag/                   # Chunking, pgvector, RAG
 │   │   ├── routing/               # Router, Hybrid, chat service
 │   │   └── text_to_sql/           # Sinh, kiểm tra, thực thi SQL
@@ -340,7 +379,7 @@ Response ổn định có dạng:
 │   └── seed/                      # 4 file CSV tái lập
 ├── frontend/                      # React/Vite, Vitest, Playwright
 ├── infrastructure/nginx/          # SPA và reverse proxy /api
-├── docs/technical_references.md
+├── docs/                           # Tài liệu kỹ thuật và báo cáo đánh giá
 ├── compose.yaml
 ├── requirements.txt               # Runtime Python export từ backend/uv.lock
 └── .env.example
@@ -357,6 +396,8 @@ Response ổn định có dạng:
 - **Cổng 8000, 8080, 5173 hoặc 54321 bị chiếm**: dùng `Get-NetTCPConnection -State Listen` để tìm tiến trình; dừng instance trùng hoặc đổi cấu hình một cách có chủ đích.
 - **Thiếu/sai Gemini key**: kiểm tra `GEMINI_API_KEY` trong `.env`, không in key ra Terminal và không commit file.
 - **Gemini 503/504**: đây có thể là lỗi upstream tạm thời. SDK chỉ retry lỗi tạm thời theo giới hạn; chờ rồi thử một request, kiểm tra quota/status thay vì đổi model hoặc gọi lặp liên tục.
+- **Gemini 429**: free tier có giới hạn request/phút. Chờ đúng cửa sổ quota rồi thử lại một lần; không tăng retry hoặc đổi model để né quota.
+- **Upload bị từ chối**: kiểm tra đúng `.csv`/`.xlsx`, encoding UTF-8, header duy nhất và các giới hạn kích thước/dòng/cột. Preview không ghi dữ liệu nếu validation thất bại.
 - **RAG không có nguồn**: kiểm tra đã chạy `ingest_documents.py` và database có document chunks; ingestion dùng quota Gemini.
 - **CORS hoặc network error**: dùng đúng URL frontend, kiểm tra backend health và `CORS_ORIGINS`. Bản Nginx dùng same-origin `/api`; Vite dùng proxy cổng 8000.
 
@@ -365,9 +406,12 @@ Response ổn định có dạng:
 - Dữ liệu bán hàng và tài liệu đều là dữ liệu giả lập.
 - Không có authentication hoặc rate limiting dành cho production.
 - Chỉ hỗ trợ tập con SQL và bốn bảng nghiệp vụ; CTE, subquery và câu lệnh ghi bị từ chối.
+- Dataset upload chỉ hỗ trợ một bảng/một sheet mỗi lần, không join giữa datasets và không dùng RAG/Hybrid của corpus demo.
+- Chưa có endpoint xóa dataset; chỉ conversation có đầy đủ CRUD ở thời điểm hiện tại.
+- File upload có validation và giới hạn tài nguyên nhưng demo chưa có authentication, phân quyền theo người dùng, antivirus hoặc object storage; không đưa dữ liệu nhạy cảm lên bản local dùng chung.
 - Corpus chỉ có sáu tài liệu và chưa có benchmark chứng minh cấu hình retrieval là tối ưu.
 - Chưa triển khai VPS hoặc website public.
 - Chất lượng và khả dụng live phụ thuộc model, API key và quota Gemini.
 - Không đưa demo chứa API key lên Internet công khai khi chưa bổ sung xác thực, giới hạn lưu lượng và quản lý secret phù hợp.
 
-Repository: [github.com/MinhHoang1403/Shopquery-AI](https://github.com/MinhHoang1403/Shopquery-AI). Cơ sở kỹ thuật và nguồn tham khảo nằm tại [docs/technical_references.md](docs/technical_references.md).
+Repository: [github.com/MinhHoang1403/Shopquery-AI](https://github.com/MinhHoang1403/Shopquery-AI). Cơ sở kỹ thuật và nguồn tham khảo nằm tại [docs/technical_references.md](docs/technical_references.md); kết quả kiểm thử AI gần nhất nằm tại [docs/evaluation_report.md](docs/evaluation_report.md).
