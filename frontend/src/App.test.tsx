@@ -159,6 +159,7 @@ describe("ShopQuery workspace", () => {
     expect(screen.queryByRole("region", { name: "Dữ liệu" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Chọn bộ dữ liệu.*Dữ liệu cửa hàng mẫu/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Bạn muốn hỏi gì hôm nay?" })).toBeInTheDocument();
+    expect(screen.getByText("Khám phá dữ liệu, phân tích kinh doanh và tra cứu thông tin bằng AI.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Thu gọn sidebar" }));
     expect(screen.getByRole("button", { name: "Mở rộng sidebar" })).toBeInTheDocument();
@@ -194,7 +195,7 @@ describe("ShopQuery workspace", () => {
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/messages"))).toHaveLength(1);
   });
 
-  it("tạo conversation, gửi một lần và hiển thị SQL cùng bảng", async () => {
+  it("giữ SQL và bảng đóng mặc định, cho phép mở độc lập và sao chép SQL", async () => {
     const fetchMock = installApi();
     const user = userEvent.setup();
     render(<App />);
@@ -203,8 +204,28 @@ describe("ShopQuery workspace", () => {
 
     expect(await screen.findByText("Đây là câu trả lời.")).toBeInTheDocument();
     expect(screen.getByText("SQL")).toBeInTheDocument();
-    expect(screen.getByText("Xem SQL")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toHaveTextContent("Áo linen");
+    const sqlControl = screen.getByText("Xem SQL");
+    const tableControl = screen.getByText("Xem bảng dữ liệu · 1 dòng");
+    const sqlCode = screen.getByText(/SELECT name, quantity/);
+    const table = screen.getByRole("region", { name: "Kết quả truy vấn" });
+    expect(sqlCode).not.toBeVisible();
+    expect(table).not.toBeVisible();
+
+    await user.click(tableControl);
+    expect(table).toBeVisible();
+    expect(table).toHaveTextContent("Áo linen");
+    expect(sqlCode).not.toBeVisible();
+    await user.click(tableControl);
+    expect(table).not.toBeVisible();
+
+    await user.click(sqlControl);
+    expect(sqlCode).toBeVisible();
+    expect(table).not.toBeVisible();
+    const clipboardWrite = vi.spyOn(navigator.clipboard, "writeText");
+    await user.click(screen.getByRole("button", { name: "Sao chép SQL" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("SELECT name, quantity FROM products ORDER BY quantity DESC LIMIT 5");
+    await user.click(sqlControl);
+    expect(sqlCode).not.toBeVisible();
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/messages"))).toHaveLength(1);
   });
 
@@ -227,6 +248,8 @@ describe("ShopQuery workspace", () => {
 
     expect(await screen.findByText("120 triệu đồng.")).toBeInTheDocument();
     expect(screen.getAllByText("Doanh thu tháng 9").length).toBeGreaterThan(0);
+    expect(screen.getByText(/SELECT name, quantity/)).not.toBeVisible();
+    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).not.toBeVisible();
   });
 
   it("đổi tên và xóa conversation qua menu", async () => {
@@ -331,6 +354,10 @@ describe("ShopQuery workspace", () => {
     const second = render(<App />);
     await user.click(await screen.findByRole("button", { name: /Kết hợp dữ liệu/ }));
     expect(await screen.findByText("SQL + Tài liệu")).toBeInTheDocument();
+    expect(screen.getByText("Xem SQL")).toBeInTheDocument();
+    expect(screen.getByText("Xem bảng dữ liệu · 1 dòng")).toBeInTheDocument();
+    expect(screen.getByText(/SELECT name, quantity/)).not.toBeVisible();
+    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).not.toBeVisible();
     second.unmount();
 
     installApi({ response: chatResponse({ route: "UNSUPPORTED", sql: null, rows: [], sources: [] }) });
@@ -338,6 +365,7 @@ describe("ShopQuery workspace", () => {
     await user.click(await screen.findByRole("button", { name: /Phân tích bán hàng/ }));
     expect(await screen.findByText("Ngoài phạm vi")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Xem SQL")).not.toBeInTheDocument();
   });
 
   it("không đưa response của conversation cũ vào conversation mới", async () => {

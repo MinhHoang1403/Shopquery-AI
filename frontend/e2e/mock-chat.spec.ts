@@ -69,6 +69,9 @@ interface ApiState {
 const runtimeErrors = new WeakMap<Page, { console: string[]; page: string[]; requests: string[]; responses: string[] }>();
 
 test.beforeEach(async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: "http://127.0.0.1:8080",
+  });
   const errors = { console: [] as string[], page: [] as string[], requests: [] as string[], responses: [] as string[] };
   runtimeErrors.set(page, errors);
   page.on("console", (message) => { if (message.type() === "error") errors.console.push(message.text()); });
@@ -208,6 +211,8 @@ async function expectNoPageOverflow(page: Page) {
 test("responsive shell, drawer and composer keyboard behavior", async ({ page }, testInfo: TestInfo) => {
   await installApi(page);
   await openApp(page);
+  await expect(page.getByText("Khám phá dữ liệu, phân tích kinh doanh và tra cứu thông tin bằng AI.")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("empty-chat.png"), fullPage: true });
   await openSidebar(page);
   await expect(page.getByText("ShopQuery AI", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Đoạn chat mới" })).toBeVisible();
@@ -251,23 +256,65 @@ test("responsive shell, drawer and composer keyboard behavior", async ({ page },
 test("creates chat once and renders SQL evidence with history controls", async ({ page }, testInfo) => {
   const state = await installApi(page, { delayMs: 150 });
   await openApp(page);
-  await page.getByRole("button", { name: /Phân tích bán hàng/ }).click();
+  const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+  await input.fill("Top sản phẩm");
+  await input.press("Enter");
   await expect(page.getByLabel("ShopQuery AI đang xử lý")).toBeVisible();
   await expect(page.getByText(sqlResponse.answer)).toBeVisible();
   expect(state.messageRequests).toBe(1);
-  await expect(page.getByText(/SELECT product_name/)).toBeHidden();
-  await page.locator("details.sql-card summary").click();
-  await expect(page.getByText(/SELECT product_name/)).toBeVisible();
-  await expect(page.getByRole("region", { name: "Kết quả truy vấn" })).toContainText("Điện thoại SQ 010");
+  const firstResponse = page.locator(".message--assistant").nth(0);
+  const sqlCode = firstResponse.getByText(/SELECT product_name/);
+  const table = firstResponse.getByRole("region", { name: "Kết quả truy vấn" });
+  const tableControl = firstResponse.getByText("Xem bảng dữ liệu · 2 dòng");
+  await expect(sqlCode).toBeHidden();
+  await expect(table).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath("user-message-short.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("sql-result-collapsed.png"), fullPage: true });
+
+  await tableControl.click();
+  await expect(table).toBeVisible();
+  await expect(table).toContainText("Điện thoại SQ 010");
+  await expect(sqlCode).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath("sql-result-expanded.png"), fullPage: true });
+  if ((page.viewportSize()?.width ?? 1_000) <= 390) {
+    await page.screenshot({ path: testInfo.outputPath("mobile-sql-table-expanded.png"), fullPage: true });
+  }
+  await tableControl.click();
+  await expect(table).toBeHidden();
+
+  await firstResponse.locator("details.sql-card summary").click();
+  await expect(sqlCode).toBeVisible();
+  await expect(table).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath("sql-code-expanded.png"), fullPage: true });
+  await firstResponse.getByRole("button", { name: "Sao chép SQL" }).click();
+  await expect(firstResponse.getByRole("button", { name: "Sao chép SQL" })).toContainText("Đã sao chép");
+  await firstResponse.locator("details.sql-card summary").click();
+  await expect(sqlCode).toBeHidden();
 
   await openSidebar(page);
-  const menu = page.getByRole("button", { name: /Tùy chọn cho Top 5 sản phẩm/ });
+  const menu = page.getByRole("button", { name: /Tùy chọn cho Top sản phẩm/ });
   await menu.click();
   await page.getByRole("menuitem", { name: /Đổi tên/ }).click();
   await page.getByRole("textbox", { name: "Tên cuộc trò chuyện" }).fill("Báo cáo bán hàng");
   await page.getByRole("button", { name: "Lưu tên" }).click();
   await expect(page.getByText("Báo cáo bán hàng").first()).toBeVisible();
   await closeSidebar(page);
+
+  const longQuestion = "Hãy phân tích chi tiết các sản phẩm bán chạy nhất, so sánh số lượng và giải thích những điểm nổi bật trong dữ liệu tháng này.";
+  await input.fill(longQuestion);
+  await input.press("Enter");
+  await expect(page.getByText(longQuestion)).toBeVisible();
+  await expect(page.getByText(sqlResponse.answer)).toHaveCount(2);
+  await expect(page.locator(".message--assistant")).toHaveCount(2);
+  const secondResponse = page.locator(".message--assistant").nth(1);
+  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeHidden();
+  await firstResponse.getByText("Xem bảng dữ liệu · 2 dòng").click();
+  await expect(firstResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath("user-message-long.png"), fullPage: true });
+  if ((page.viewportSize()?.width ?? 1_000) <= 390) {
+    await page.screenshot({ path: testInfo.outputPath("mobile-conversation.png"), fullPage: true });
+  }
   await expectNoPageOverflow(page);
   await page.screenshot({ path: testInfo.outputPath("conversation-sql.png"), fullPage: true });
 });
@@ -291,7 +338,10 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await input.fill("Sản phẩm bán chạy có được miễn phí vận chuyển không?");
   await input.press("Enter");
   await expect(page.getByText("SQL + Tài liệu")).toBeVisible();
-  await expect(page.getByLabel("Nguồn tham khảo")).toContainText("shipping_policy.md");
+  const hybridMessage = page.locator(".message--assistant").last();
+  await expect(hybridMessage.getByText(/SELECT product_name/)).toBeHidden();
+  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toBeHidden();
+  await expect(hybridMessage.getByLabel("Nguồn tham khảo")).toContainText("shipping_policy.md");
   await page.screenshot({ path: testInfo.outputPath("conversation-hybrid.png"), fullPage: true });
 
   await openSidebar(page);

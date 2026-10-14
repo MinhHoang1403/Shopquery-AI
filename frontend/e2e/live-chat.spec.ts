@@ -29,7 +29,10 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
       validate: async () => {
         const response = page.locator(".message--assistant").last();
         await expect(response.locator("details.sql-card")).toBeVisible();
-        await expect(response.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+        const table = response.getByRole("region", { name: "Kết quả truy vấn" });
+        await expect(table).toBeHidden();
+        await response.getByText(/Xem bảng dữ liệu/).click();
+        await expect(table).toBeVisible();
       },
     },
     {
@@ -45,7 +48,10 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
       validate: async () => {
         const response = page.locator(".message--assistant").last();
         await expect(response.locator("details.sql-card")).toBeVisible();
-        await expect(response.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+        const table = response.getByRole("region", { name: "Kết quả truy vấn" });
+        await expect(table).toBeHidden();
+        await response.getByText(/Xem bảng dữ liệu/).click();
+        await expect(table).toBeVisible();
         await expect(response.getByLabel("Nguồn tham khảo")).toBeVisible();
       },
     },

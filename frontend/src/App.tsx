@@ -1,4 +1,4 @@
-import { CheckCircle2, Database, LoaderCircle, X } from "lucide-react";
+import { CheckCircle2, Database, LoaderCircle, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChatApiError,
@@ -83,6 +83,9 @@ export default function App() {
     (conversation) => conversation.conversation_id === activeConversationId,
   );
   const datasetName = selectedDataset?.name ?? "Dữ liệu cửa hàng mẫu";
+  const welcomeSubtitle = selectedDataset?.kind === "uploaded"
+    ? "Đặt câu hỏi để khám phá và phân tích bộ dữ liệu của bạn."
+    : "Khám phá dữ liệu, phân tích kinh doanh và tra cứu thông tin bằng AI.";
   const suggestions = useMemo(() => {
     if (!selectedDataset || selectedDataset.kind === "default") return DEFAULT_QUESTIONS;
     const firstColumn = selectedDataset.columns[0]?.source_name;
@@ -340,7 +343,9 @@ export default function App() {
               <div className="page-loading" role="status"><LoaderCircle size={23} /> Đang tải dữ liệu…</div>
             ) : messages.length === 0 ? (
               <div className="welcome">
+                <div className="welcome-mark" aria-hidden="true"><Sparkles size={22} /></div>
                 <h1>Bạn muốn hỏi gì hôm nay?</h1>
+                <p>{welcomeSubtitle}</p>
                 <SuggestedQuestions disabled={isLoading} onSelect={submitQuestion} questions={suggestions} />
               </div>
             ) : (
