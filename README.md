@@ -11,8 +11,8 @@ ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời c�
 - **Kết hợp (`HYBRID`)**: dùng cả kết quả SQL và bằng chứng tài liệu. Ví dụ: “Top 5 sản phẩm bán chạy nhất có thuộc danh mục được miễn phí vận chuyển không?”
 - **Ngoài phạm vi (`UNSUPPORTED`)**: từ chối câu hỏi không thuộc dữ liệu và tài liệu của cửa hàng. Ví dụ: “Thời tiết Hà Nội hôm nay thế nào?”
 - **Lịch sử hội thoại**: lưu conversation và từng message trong PostgreSQL; hỗ trợ tạo mới, chuyển, đổi tên, xóa và khôi phục sau khi tải lại trang.
-- **Dữ liệu riêng**: xem trước rồi import CSV/XLSX vào schema `uploaded_data`, chọn dataset trong sidebar và hỏi AI bằng Text-to-SQL được giới hạn riêng cho dataset đó.
-- **Giao diện responsive**: light theme, sidebar thu gọn/off-canvas, composer đa dòng và vùng evidence SQL/nguồn có thể mở rộng.
+- **Dữ liệu riêng**: xem trước rồi import CSV/XLSX vào schema `uploaded_data`, chọn dataset trên header chat và hỏi AI bằng Text-to-SQL được giới hạn riêng cho dataset đó.
+- **Giao diện responsive**: light theme, sidebar thu gọn/off-canvas, composer đa dòng và evidence toolbar gọn với các nút **Bảng dữ liệu**, **SQL** và **Nguồn tham khảo**; mỗi lần chỉ mở một panel.
 
 ## Công nghệ
 
@@ -111,7 +111,7 @@ docker compose exec api python scripts/load_seed_data.py
 docker compose exec api python scripts/ingest_documents.py
 ```
 
-Chờ ba service `db`, `api`, `web` healthy rồi mở `http://127.0.0.1:8080`. API trực tiếp ở `http://127.0.0.1:8000` và PostgreSQL ở `127.0.0.1:54321`.
+Chờ ba service `db`, `api`, `web` healthy rồi mở `http://127.0.0.1:8080`. API trực tiếp ở `http://127.0.0.1:8000` và PostgreSQL ở `127.0.0.1:54321`. Nếu cổng host 8000 đang bị chiếm, có thể đổi riêng ánh xạ host của service `api`; kết nối nội bộ Nginx vẫn luôn dùng `api:8000`.
 
 API tự chạy `setup_database.py` khi container khởi động. Thao tác này chỉ tạo bổ sung các bảng/schema còn thiếu (`chat_conversations`, `chat_messages`, `datasets`, `dataset_tables`, `uploaded_data`) và không xóa seed hiện có. Vẫn có thể chạy script thủ công khi phát triển native hoặc cần kiểm tra migration.
 
@@ -345,7 +345,7 @@ Tiêu đề mặc định được thay bằng phần đầu câu hỏi đầu t
 | `POST` | `/api/datasets/preview` | Multipart `file`, tùy chọn `sheet_name`; chưa ghi database |
 | `POST` | `/api/datasets/import` | Multipart `file`, `dataset_name`, tùy chọn `sheet_name` |
 
-Luồng giao diện: chọn **Nạp dữ liệu mới** → chọn CSV/XLSX → kiểm tra header, kiểu cột, số dòng và preview → đặt tên → **Xác nhận import**. Sau import, dataset xuất hiện trong sidebar và được chọn cho chat mới.
+Luồng giao diện: chọn **Nạp dữ liệu mới** → chọn CSV/XLSX → kiểm tra header, kiểu cột, số dòng và preview → đặt tên → **Xác nhận import**. Sau import, dataset xuất hiện trong bộ chọn trên header chat và được chọn cho chat mới.
 
 Giới hạn mặc định là 10 MB, 5.000 dòng và 30 cột. CSV phải là UTF-8/UTF-8 BOM, có header không rỗng/không trùng và mọi dòng cùng số cột. XLSX được đọc ở chế độ read-only, không hỗ trợ macro; công thức không được thực thi. Type inference bảo thủ giữ mã có số 0 đầu ở dạng text. Mỗi file hiện tạo một bảng; XLSX nhiều sheet yêu cầu chọn một sheet.
 
