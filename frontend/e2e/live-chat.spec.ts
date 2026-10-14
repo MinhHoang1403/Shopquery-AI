@@ -28,10 +28,9 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
       route: "SQL",
       validate: async () => {
         const response = page.locator(".message--assistant").last();
-        await expect(response.locator("details.sql-card")).toBeVisible();
         const table = response.getByRole("region", { name: "Kết quả truy vấn" });
-        await expect(table).toBeHidden();
-        await response.getByText(/Xem bảng dữ liệu/).click();
+        await expect(table).toHaveCount(0);
+        await response.getByRole("button", { name: /Bảng dữ liệu/ }).click();
         await expect(table).toBeVisible();
       },
     },
@@ -39,7 +38,10 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
       message: "Chính sách đổi trả của cửa hàng như thế nào?",
       route: "RAG",
       validate: async () => {
-        await expect(page.locator(".message--assistant").last().getByLabel("Nguồn tham khảo")).toBeVisible();
+        const response = page.locator(".message--assistant").last();
+        await expect(response.getByLabel("Nguồn tham khảo")).toHaveCount(0);
+        await response.getByRole("button", { name: /Nguồn/ }).click();
+        await expect(response.getByLabel("Nguồn tham khảo")).toBeVisible();
       },
     },
     {
@@ -47,11 +49,12 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
       route: "HYBRID",
       validate: async () => {
         const response = page.locator(".message--assistant").last();
-        await expect(response.locator("details.sql-card")).toBeVisible();
         const table = response.getByRole("region", { name: "Kết quả truy vấn" });
-        await expect(table).toBeHidden();
-        await response.getByText(/Xem bảng dữ liệu/).click();
+        await expect(table).toHaveCount(0);
+        await response.getByRole("button", { name: /Bảng dữ liệu/ }).click();
         await expect(table).toBeVisible();
+        await response.getByRole("button", { name: /Nguồn/ }).click();
+        await expect(table).toHaveCount(0);
         await expect(response.getByLabel("Nguồn tham khảo")).toBeVisible();
       },
     },

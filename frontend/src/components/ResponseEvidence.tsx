@@ -1,6 +1,8 @@
 import { Check, ChevronDown, ChevronUp, Copy, Database, FileText, Table2 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { ChatResponse, SourceReference } from "../types";
+
+type EvidencePanel = "rows" | "sql" | "sources";
 
 function displayValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -17,7 +19,31 @@ function DetailsChevron({ size = 17 }: { size?: number }) {
   );
 }
 
-function SqlBlock({ sql }: { sql: string }) {
+interface EvidenceButtonProps {
+  active: boolean;
+  controls: string;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}
+
+function EvidenceButton({ active, controls, icon, label, onClick }: EvidenceButtonProps) {
+  return (
+    <button
+      aria-controls={controls}
+      aria-expanded={active}
+      className={`evidence-trigger ${active ? "evidence-trigger--active" : ""}`}
+      onClick={onClick}
+      type="button"
+    >
+      {icon}
+      <span>{label}</span>
+      <DetailsChevron size={15} />
+    </button>
+  );
+}
+
+function SqlPanel({ sql }: { sql: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copySql() {
@@ -27,19 +53,13 @@ function SqlBlock({ sql }: { sql: string }) {
   }
 
   return (
-    <details className="evidence-card sql-card">
-      <summary>
-        <span className="evidence-title"><Database size={15} /> Xem SQL</span>
-        <DetailsChevron />
-      </summary>
-      <div className="code-wrap">
-        <button aria-label="Sao chép SQL" className="copy-button" onClick={copySql} type="button">
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-          {copied ? "Đã sao chép" : "Sao chép"}
-        </button>
-        <pre><code>{sql}</code></pre>
-      </div>
-    </details>
+    <div className="code-wrap">
+      <button aria-label="Sao chép SQL" className="copy-button" onClick={copySql} type="button">
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+        {copied ? "Đã sao chép" : "Sao chép"}
+      </button>
+      <pre><code>{sql}</code></pre>
+    </div>
   );
 }
 
@@ -61,24 +81,9 @@ export function ResultTable({ rows }: { rows: Record<string, unknown>[] }) {
   );
 }
 
-function ResultBlock({ rows }: { rows: Record<string, unknown>[] }) {
-  if (rows.length === 0) return null;
-  return (
-    <details className="evidence-card result-card">
-      <summary>
-        <span className="evidence-title"><Table2 size={15} /> Xem bảng dữ liệu · {rows.length} dòng</span>
-        <DetailsChevron />
-      </summary>
-      <div className="result-section"><ResultTable rows={rows} /></div>
-    </details>
-  );
-}
-
 function Sources({ sources }: { sources: SourceReference[] }) {
-  if (sources.length === 0) return <p className="empty-evidence">Không có nguồn tài liệu phù hợp.</p>;
   return (
     <div className="sources" aria-label="Nguồn tham khảo">
-      <div className="evidence-label"><FileText size={15} /> Nguồn tham khảo · {sources.length}</div>
       <div className="source-list">
         {sources.map((source) => (
           <details className="source-card" key={source.chunk_id}>
@@ -95,13 +100,69 @@ function Sources({ sources }: { sources: SourceReference[] }) {
 }
 
 export function ResponseEvidence({ response }: { response: ChatResponse }) {
-  const showSql = response.route === "SQL" || response.route === "HYBRID";
-  const showSources = response.route === "RAG" || response.route === "HYBRID";
+  const [activePanel, setActivePanel] = useState<EvidencePanel | null>(null);
+  const evidenceId = useId();
+  const showSqlEvidence = response.route === "SQL" || response.route === "HYBRID";
+  const hasRows = showSqlEvidence && response.rows.length > 0;
+  const hasSql = showSqlEvidence && Boolean(response.sql);
+  const hasSources = (response.route === "RAG" || response.route === "HYBRID")
+    && response.sources.length > 0;
+
+  if (!hasRows && !hasSql && !hasSources) return null;
+
+  function togglePanel(panel: EvidencePanel) {
+    setActivePanel((current) => current === panel ? null : panel);
+  }
+
+  const panelIds = {
+    rows: `${evidenceId}-rows`,
+    sql: `${evidenceId}-sql`,
+    sources: `${evidenceId}-sources`,
+  };
+
   return (
     <div className="evidence-stack">
-      {showSql ? <ResultBlock rows={response.rows} /> : null}
-      {showSql && response.sql ? <SqlBlock sql={response.sql} /> : null}
-      {showSources ? <Sources sources={response.sources} /> : null}
+      <div className="evidence-toolbar" aria-label="Bằng chứng hỗ trợ" role="group">
+        {hasRows ? (
+          <EvidenceButton
+            active={activePanel === "rows"}
+            controls={panelIds.rows}
+            icon={<Table2 size={15} />}
+            label={`Bảng dữ liệu · ${response.rows.length}`}
+            onClick={() => togglePanel("rows")}
+          />
+        ) : null}
+        {hasSql ? (
+          <EvidenceButton
+            active={activePanel === "sql"}
+            controls={panelIds.sql}
+            icon={<Database size={15} />}
+            label="Xem SQL"
+            onClick={() => togglePanel("sql")}
+          />
+        ) : null}
+        {hasSources ? (
+          <EvidenceButton
+            active={activePanel === "sources"}
+            controls={panelIds.sources}
+            icon={<FileText size={15} />}
+            label={`Nguồn · ${response.sources.length}`}
+            onClick={() => togglePanel("sources")}
+          />
+        ) : null}
+      </div>
+
+      {activePanel === "rows" && hasRows ? (
+        <div className="evidence-panel" id={panelIds.rows}><ResultTable rows={response.rows} /></div>
+      ) : null}
+      {activePanel === "sql" && response.sql ? (
+        <div className="evidence-panel" id={panelIds.sql}><SqlPanel sql={response.sql} /></div>
+      ) : null}
+      {activePanel === "sources" && hasSources ? (
+        <div className="evidence-panel evidence-panel--sources" id={panelIds.sources}>
+          <Sources sources={response.sources} />
+        </div>
+      ) : null}
     </div>
   );
 }

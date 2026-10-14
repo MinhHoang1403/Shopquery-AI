@@ -195,7 +195,7 @@ describe("ShopQuery workspace", () => {
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/messages"))).toHaveLength(1);
   });
 
-  it("giữ SQL và bảng đóng mặc định, cho phép mở độc lập và sao chép SQL", async () => {
+  it("giữ SQL và bảng đóng mặc định, chỉ mở một panel và sao chép SQL", async () => {
     const fetchMock = installApi();
     const user = userEvent.setup();
     render(<App />);
@@ -204,28 +204,28 @@ describe("ShopQuery workspace", () => {
 
     expect(await screen.findByText("Đây là câu trả lời.")).toBeInTheDocument();
     expect(screen.getByText("SQL")).toBeInTheDocument();
-    const sqlControl = screen.getByText("Xem SQL");
-    const tableControl = screen.getByText("Xem bảng dữ liệu · 1 dòng");
-    const sqlCode = screen.getByText(/SELECT name, quantity/);
-    const table = screen.getByRole("region", { name: "Kết quả truy vấn" });
-    expect(sqlCode).not.toBeVisible();
-    expect(table).not.toBeVisible();
+    const sqlControl = screen.getByRole("button", { name: "Xem SQL" });
+    const tableControl = screen.getByRole("button", { name: "Bảng dữ liệu · 1" });
+    expect(sqlControl).toHaveAttribute("aria-expanded", "false");
+    expect(tableControl).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/SELECT name, quantity/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
 
     await user.click(tableControl);
-    expect(table).toBeVisible();
-    expect(table).toHaveTextContent("Áo linen");
-    expect(sqlCode).not.toBeVisible();
-    await user.click(tableControl);
-    expect(table).not.toBeVisible();
+    expect(tableControl).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toHaveTextContent("Áo linen");
 
     await user.click(sqlControl);
-    expect(sqlCode).toBeVisible();
-    expect(table).not.toBeVisible();
+    expect(tableControl).toHaveAttribute("aria-expanded", "false");
+    expect(sqlControl).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
+    expect(screen.getByText(/SELECT name, quantity/)).toBeVisible();
     const clipboardWrite = vi.spyOn(navigator.clipboard, "writeText");
     await user.click(screen.getByRole("button", { name: "Sao chép SQL" }));
     expect(clipboardWrite).toHaveBeenCalledWith("SELECT name, quantity FROM products ORDER BY quantity DESC LIMIT 5");
     await user.click(sqlControl);
-    expect(sqlCode).not.toBeVisible();
+    expect(sqlControl).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/SELECT name, quantity/)).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/messages"))).toHaveLength(1);
   });
 
@@ -239,17 +239,29 @@ describe("ShopQuery workspace", () => {
           messages: [
             { message_id: 10, role: "user", content: "Doanh thu?", response: null, created_at: "2026-10-14T00:00:01Z" },
             { message_id: 11, role: "assistant", content: "120 triệu đồng.", response: chatResponse({ answer: "120 triệu đồng." }), created_at: "2026-10-14T00:00:02Z" },
+            { message_id: 12, role: "user", content: "Sản phẩm nào nổi bật?", response: null, created_at: "2026-10-14T00:00:03Z" },
+            { message_id: 13, role: "assistant", content: "Áo linen nổi bật.", response: chatResponse({ answer: "Áo linen nổi bật." }), created_at: "2026-10-14T00:00:04Z" },
           ],
         },
       },
     });
 
+    const user = userEvent.setup();
     render(<App />);
 
     expect(await screen.findByText("120 triệu đồng.")).toBeInTheDocument();
     expect(screen.getAllByText("Doanh thu tháng 9").length).toBeGreaterThan(0);
-    expect(screen.getByText(/SELECT name, quantity/)).not.toBeVisible();
-    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).not.toBeVisible();
+    const tableControls = screen.getAllByRole("button", { name: "Bảng dữ liệu · 1" });
+    expect(tableControls).toHaveLength(2);
+    expect(tableControls[0]).toHaveAttribute("aria-expanded", "false");
+    expect(tableControls[1]).toHaveAttribute("aria-expanded", "false");
+    await user.click(tableControls[0]);
+    expect(tableControls[0]).toHaveAttribute("aria-expanded", "true");
+    expect(tableControls[1]).toHaveAttribute("aria-expanded", "false");
+    await user.click(tableControls[1]);
+    expect(tableControls[0]).toHaveAttribute("aria-expanded", "true");
+    expect(tableControls[1]).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByRole("region", { name: "Kết quả truy vấn" })).toHaveLength(2);
   });
 
   it("đổi tên và xóa conversation qua menu", async () => {
@@ -342,30 +354,58 @@ describe("ShopQuery workspace", () => {
     expect(screen.queryByText(/Đã import .* thành công/)).not.toBeInTheDocument();
   });
 
-  it("hiển thị RAG, Hybrid và Unsupported mà không tạo evidence giả", async () => {
+  it("hiển thị toolbar đúng theo RAG, Hybrid và response không có evidence", async () => {
     const user = userEvent.setup();
     installApi({ response: chatResponse({ route: "RAG", sql: null, rows: [], sources: [{ chunk_id: 7, source_file: "return.md", section_title: "Đổi trả", content: "Đổi trả trong 14 ngày." }] }) });
     const first = render(<App />);
     await user.click(await screen.findByRole("button", { name: /Tra cứu chính sách/ }));
-    expect(await screen.findByText("Nguồn tham khảo · 1")).toBeInTheDocument();
+    const ragSources = await screen.findByRole("button", { name: "Nguồn · 1" });
+    expect(ragSources).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("return.md")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Bảng dữ liệu/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xem SQL" })).not.toBeInTheDocument();
+    await user.click(ragSources);
+    expect(screen.getByText("return.md")).toBeVisible();
+    expect(screen.getByText("Đổi trả")).toBeVisible();
+    expect(screen.getByText("Đổi trả trong 14 ngày.")).not.toBeVisible();
+    await user.click(screen.getByText("Đổi trả"));
+    expect(screen.getByText("Đổi trả trong 14 ngày.")).toBeVisible();
     first.unmount();
 
     installApi({ response: chatResponse({ route: "HYBRID", sources: [{ chunk_id: 9, source_file: "shipping.md", section_title: "Vận chuyển", content: "Laptop miễn phí." }] }) });
     const second = render(<App />);
     await user.click(await screen.findByRole("button", { name: /Kết hợp dữ liệu/ }));
     expect(await screen.findByText("SQL + Tài liệu")).toBeInTheDocument();
-    expect(screen.getByText("Xem SQL")).toBeInTheDocument();
-    expect(screen.getByText("Xem bảng dữ liệu · 1 dòng")).toBeInTheDocument();
-    expect(screen.getByText(/SELECT name, quantity/)).not.toBeVisible();
-    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).not.toBeVisible();
+    const hybridRows = screen.getByRole("button", { name: "Bảng dữ liệu · 1" });
+    const hybridSql = screen.getByRole("button", { name: "Xem SQL" });
+    const hybridSources = screen.getByRole("button", { name: "Nguồn · 1" });
+    expect(hybridRows).toHaveAttribute("aria-expanded", "false");
+    expect(hybridSql).toHaveAttribute("aria-expanded", "false");
+    expect(hybridSources).toHaveAttribute("aria-expanded", "false");
+    await user.click(hybridRows);
+    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+    await user.click(hybridSql);
+    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
+    expect(screen.getByText(/SELECT name, quantity/)).toBeVisible();
+    await user.click(hybridSources);
+    expect(screen.queryByText(/SELECT name, quantity/)).not.toBeInTheDocument();
+    expect(screen.getByText("shipping.md")).toBeVisible();
+    await user.click(hybridSources);
+    expect(screen.queryByText("shipping.md")).not.toBeInTheDocument();
     second.unmount();
 
     installApi({ response: chatResponse({ route: "UNSUPPORTED", sql: null, rows: [], sources: [] }) });
-    render(<App />);
+    const third = render(<App />);
     await user.click(await screen.findByRole("button", { name: /Phân tích bán hàng/ }));
     expect(await screen.findByText("Ngoài phạm vi")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Xem SQL")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Bằng chứng hỗ trợ" })).not.toBeInTheDocument();
+    third.unmount();
+
+    installApi({ response: chatResponse({ sql: null, rows: [], sources: [] }) });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Phân tích bán hàng/ }));
+    expect(await screen.findByText("Đây là câu trả lời.")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Bằng chứng hỗ trợ" })).not.toBeInTheDocument();
   });
 
   it("không đưa response của conversation cũ vào conversation mới", async () => {

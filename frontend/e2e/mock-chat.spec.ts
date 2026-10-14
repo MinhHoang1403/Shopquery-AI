@@ -265,31 +265,35 @@ test("creates chat once and renders SQL evidence with history controls", async (
   const firstResponse = page.locator(".message--assistant").nth(0);
   const sqlCode = firstResponse.getByText(/SELECT product_name/);
   const table = firstResponse.getByRole("region", { name: "Kết quả truy vấn" });
-  const tableControl = firstResponse.getByText("Xem bảng dữ liệu · 2 dòng");
-  await expect(sqlCode).toBeHidden();
-  await expect(table).toBeHidden();
+  const tableControl = firstResponse.getByRole("button", { name: "Bảng dữ liệu · 2" });
+  const sqlControl = firstResponse.getByRole("button", { name: "Xem SQL" });
+  await expect(tableControl).toHaveAttribute("aria-expanded", "false");
+  await expect(sqlControl).toHaveAttribute("aria-expanded", "false");
+  await expect(sqlCode).toHaveCount(0);
+  await expect(table).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("user-message-short.png"), fullPage: true });
   await page.screenshot({ path: testInfo.outputPath("sql-result-collapsed.png"), fullPage: true });
 
   await tableControl.click();
+  await expect(tableControl).toHaveAttribute("aria-expanded", "true");
   await expect(table).toBeVisible();
   await expect(table).toContainText("Điện thoại SQ 010");
-  await expect(sqlCode).toBeHidden();
+  await expect(sqlCode).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("sql-result-expanded.png"), fullPage: true });
   if ((page.viewportSize()?.width ?? 1_000) <= 390) {
     await page.screenshot({ path: testInfo.outputPath("mobile-sql-table-expanded.png"), fullPage: true });
   }
-  await tableControl.click();
-  await expect(table).toBeHidden();
-
-  await firstResponse.locator("details.sql-card summary").click();
+  await sqlControl.click();
+  await expect(tableControl).toHaveAttribute("aria-expanded", "false");
+  await expect(sqlControl).toHaveAttribute("aria-expanded", "true");
   await expect(sqlCode).toBeVisible();
-  await expect(table).toBeHidden();
+  await expect(table).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("sql-code-expanded.png"), fullPage: true });
   await firstResponse.getByRole("button", { name: "Sao chép SQL" }).click();
   await expect(firstResponse.getByRole("button", { name: "Sao chép SQL" })).toContainText("Đã sao chép");
-  await firstResponse.locator("details.sql-card summary").click();
-  await expect(sqlCode).toBeHidden();
+  await sqlControl.click();
+  await expect(sqlControl).toHaveAttribute("aria-expanded", "false");
+  await expect(sqlCode).toHaveCount(0);
 
   await openSidebar(page);
   const menu = page.getByRole("button", { name: /Tùy chọn cho Top sản phẩm/ });
@@ -307,10 +311,10 @@ test("creates chat once and renders SQL evidence with history controls", async (
   await expect(page.getByText(sqlResponse.answer)).toHaveCount(2);
   await expect(page.locator(".message--assistant")).toHaveCount(2);
   const secondResponse = page.locator(".message--assistant").nth(1);
-  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeHidden();
-  await firstResponse.getByText("Xem bảng dữ liệu · 2 dòng").click();
+  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+  await firstResponse.getByRole("button", { name: "Bảng dữ liệu · 2" }).click();
   await expect(firstResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
-  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeHidden();
+  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("user-message-long.png"), fullPage: true });
   if ((page.viewportSize()?.width ?? 1_000) <= 390) {
     await page.screenshot({ path: testInfo.outputPath("mobile-conversation.png"), fullPage: true });
@@ -330,7 +334,14 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
   await input.fill("Chính sách đổi trả như thế nào?");
   await input.press("Enter");
-  await expect(page.getByLabel("Nguồn tham khảo")).toContainText("return_policy.md");
+  const ragMessage = page.locator(".message--assistant").last();
+  const ragSources = ragMessage.getByRole("button", { name: "Nguồn · 1" });
+  await expect(ragSources).toHaveAttribute("aria-expanded", "false");
+  await expect(ragMessage.getByText("return_policy.md")).toHaveCount(0);
+  await ragSources.focus();
+  await ragSources.press("Enter");
+  await expect(ragSources).toHaveAttribute("aria-expanded", "true");
+  await expect(ragMessage.getByLabel("Nguồn tham khảo")).toContainText("return_policy.md");
 
   await openSidebar(page);
   await page.getByRole("button", { name: "Đoạn chat mới" }).click();
@@ -339,10 +350,33 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await input.press("Enter");
   await expect(page.getByText("SQL + Tài liệu")).toBeVisible();
   const hybridMessage = page.locator(".message--assistant").last();
-  await expect(hybridMessage.getByText(/SELECT product_name/)).toBeHidden();
-  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toBeHidden();
+  const hybridRows = hybridMessage.getByRole("button", { name: "Bảng dữ liệu · 1" });
+  const hybridSql = hybridMessage.getByRole("button", { name: "Xem SQL" });
+  const hybridSources = hybridMessage.getByRole("button", { name: "Nguồn · 1" });
+  await expect(hybridRows).toHaveAttribute("aria-expanded", "false");
+  await expect(hybridSql).toHaveAttribute("aria-expanded", "false");
+  await expect(hybridSources).toHaveAttribute("aria-expanded", "false");
+  await expect(hybridMessage.getByText(/SELECT product_name/)).toHaveCount(0);
+  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+  await expect(hybridMessage.getByLabel("Nguồn tham khảo")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("hybrid-collapsed.png"), fullPage: true });
+  if ((page.viewportSize()?.width ?? 1_000) <= 390) {
+    await page.screenshot({ path: testInfo.outputPath("mobile-evidence-toolbar.png"), fullPage: true });
+  }
+
+  await hybridRows.click();
+  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("hybrid-table-expanded.png"), fullPage: true });
+  await hybridSql.click();
+  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+  await expect(hybridMessage.getByText(/SELECT product_name/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("hybrid-sql-expanded.png"), fullPage: true });
+  await hybridSources.click();
+  await expect(hybridMessage.getByText(/SELECT product_name/)).toHaveCount(0);
   await expect(hybridMessage.getByLabel("Nguồn tham khảo")).toContainText("shipping_policy.md");
-  await page.screenshot({ path: testInfo.outputPath("conversation-hybrid.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("hybrid-sources-expanded.png"), fullPage: true });
+  await hybridSources.click();
+  await expect(hybridMessage.getByLabel("Nguồn tham khảo")).toHaveCount(0);
 
   await openSidebar(page);
   await page.getByRole("button", { name: "Đoạn chat mới" }).click();
@@ -350,7 +384,7 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await input.fill("Thời tiết ngày mai?");
   await input.press("Enter");
   await expect(page.getByText("Ngoài phạm vi", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Nguồn tham khảo")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Bằng chứng hỗ trợ" })).toHaveCount(0);
   await expectNoPageOverflow(page);
 });
 
