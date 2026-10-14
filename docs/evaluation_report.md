@@ -47,16 +47,18 @@ Log container xác nhận ba lỗi lần đầu là `429 RESOURCE_EXHAUSTED` cho
 
 Việc chạy lại được thực hiện một lần sau khi cửa sổ quota hồi phục. Không đổi model, không thêm fallback keyword và không nới SQL security. Giới hạn quota vẫn là vấn đề vận hành cần lưu ý.
 
+Live UI smoke cuối phát hiện hai request bootstrap đồng thời có thể cùng chạy schema setup ở lần truy cập đầu và gây PostgreSQL `tuple concurrently updated`. Schema setup đã được tuần tự hóa bằng khóa trong tiến trình; regression test cạnh tranh và lần chạy live kế tiếp đều pass, không còn HTTP 500.
+
 ## Kiểm thử xác định và thủ công
 
 - Ruff: pass.
-- Pytest không PostgreSQL: 64 pass.
+- Pytest không PostgreSQL: 65 pass.
 - PostgreSQL integration trên database tạm: 13 pass, gồm conversation persistence, CSV/XLSX import, rollback, role read-only, row limit và dataset isolation.
 - ESLint, TypeScript và production build: pass.
-- Vitest: 12 pass.
+- Vitest: 13 pass.
 - Playwright mock: 20 pass trên 1440, 1280, 768, 390 và 320 px.
-- Visual review: desktop và mobile drawer không tràn ngang; header/composer không che nội dung; bảng có vùng cuộn riêng.
-- Docker build: API và web pass; `db`, `api`, `web` healthy. Nginx `/api/health` và `/api/datasets` pass. Máy đánh giá còn giữ một socket Windows mồ côi ở host port 8000 sau khi dừng Uvicorn (PID không còn trong process table), nên lần nghiệm thu này ánh xạ API host tạm thời sang 8001; kết nối nội bộ Nginx → `api:8000` không thay đổi.
+- Visual review: sidebar mở/thu gọn, dataset dropdown, composer thường/focus/nhiều dòng, SQL, Hybrid và mobile drawer đã được mở kiểm tra; không tràn ngang, không double focus ring, header/composer không che nội dung và bảng có vùng cuộn riêng.
+- Docker build: API và web pass; `db`, `api`, `web` healthy. Nginx config test và `/api/health` pass. Host port 8000 đang do một tiến trình Python cục bộ chiếm nên lần nghiệm thu này ánh xạ API container tạm thời sang 8001; kết nối nội bộ Nginx → `api:8000` không thay đổi.
 - Playwright live: 1/1 pass cho SQL, RAG và Hybrid qua React/Nginx; không có console error, page error, failed request hoặc response HTTP lỗi.
 
 Các test parser xác định bao phủ UTF-8 BOM, Unicode, mã có số 0 đầu, header trùng/rỗng, row shape, giới hạn file/dòng/cột, công thức dạng text, sheet selection và archive XLSX không hợp lệ. SQL validator test bao phủ DDL/DML, multi-statement, catalog, bảng/schema khác và cross-dataset access.

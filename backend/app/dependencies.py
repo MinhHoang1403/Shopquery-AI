@@ -1,6 +1,7 @@
 """Application object graph construction kept outside request handlers."""
 
 from functools import lru_cache
+from threading import Lock
 
 from app.ai.gemini import GeminiGateway
 from app.conversations.repository import ConversationRepository
@@ -18,6 +19,8 @@ from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.generator import SqlGenerator
 from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import SqlValidator
+
+_schema_setup_lock = Lock()
 
 
 def build_chat_service(settings: Settings) -> ChatService:
@@ -94,7 +97,8 @@ def get_settings_url() -> str:
 
 @lru_cache
 def ensure_application_schema(database_url: str) -> None:
-    """Apply idempotent application schema changes once per configured database."""
+    """Serialize idempotent schema setup for each cached database URL."""
 
     del database_url
-    create_schema(get_setup_engine())
+    with _schema_setup_lock:
+        create_schema(get_setup_engine())

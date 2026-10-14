@@ -66,6 +66,25 @@ interface ApiState {
   messageRequests: number;
 }
 
+const runtimeErrors = new WeakMap<Page, { console: string[]; page: string[]; requests: string[]; responses: string[] }>();
+
+test.beforeEach(async ({ page }) => {
+  const errors = { console: [] as string[], page: [] as string[], requests: [] as string[], responses: [] as string[] };
+  runtimeErrors.set(page, errors);
+  page.on("console", (message) => { if (message.type() === "error") errors.console.push(message.text()); });
+  page.on("pageerror", (error) => errors.page.push(error.message));
+  page.on("requestfailed", (request) => errors.requests.push(`${request.method()} ${request.url()}`));
+  page.on("response", (response) => { if (response.status() >= 400) errors.responses.push(`${response.status()} ${response.url()}`); });
+});
+
+test.afterEach(async ({ page }) => {
+  const errors = runtimeErrors.get(page);
+  expect(errors?.console ?? []).toEqual([]);
+  expect(errors?.page ?? []).toEqual([]);
+  expect(errors?.requests ?? []).toEqual([]);
+  expect(errors?.responses ?? []).toEqual([]);
+});
+
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: status === 204 ? "" : JSON.stringify(body) });
 }
@@ -164,6 +183,23 @@ async function openSidebar(page: Page) {
   }
 }
 
+async function waitForDrawerClosed(page: Page) {
+  if ((page.viewportSize()?.width ?? 0) <= 800) {
+    await expect.poll(async () => {
+      const box = await page.locator(".sidebar").boundingBox();
+      return box ? box.x + box.width : 0;
+    }).toBeLessThanOrEqual(0);
+  }
+}
+
+async function closeSidebar(page: Page) {
+  const close = page.getByRole("button", { name: "Đóng thanh điều hướng" });
+  if (await close.isVisible()) {
+    await close.click();
+    await waitForDrawerClosed(page);
+  }
+}
+
 async function expectNoPageOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
   expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
@@ -175,23 +211,51 @@ test("responsive shell, drawer and composer keyboard behavior", async ({ page },
   await openSidebar(page);
   await expect(page.getByText("ShopQuery AI", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Đoạn chat mới" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Dữ liệu" })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("empty-sidebar-open.png"), fullPage: true });
+
+  const mobileClose = page.getByRole("button", { name: "Đóng thanh điều hướng" });
+  if (await mobileClose.isVisible()) {
+    await expect(page.locator(".sidebar")).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    await page.screenshot({ path: testInfo.outputPath("mobile-drawer.png"), fullPage: true });
+    await mobileClose.click();
+  } else {
+    await page.getByRole("button", { name: "Thu gọn sidebar" }).click();
+    await expect(page.getByRole("button", { name: "Mở rộng sidebar" })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("empty-sidebar-collapsed.png"), fullPage: true });
+    await page.getByRole("button", { name: "Mở rộng sidebar" }).click();
+  }
 
   const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+  await page.screenshot({ path: testInfo.outputPath("input-unfocused.png"), fullPage: true });
+  await input.focus();
+  await expect(input).toBeFocused();
+  const inputFocus = await input.evaluate((element) => getComputedStyle(element).outlineStyle);
+  const composerFocus = await page.locator(".composer-box").evaluate((element) => getComputedStyle(element).boxShadow);
+  expect(inputFocus).toBe("none");
+  expect(composerFocus).not.toBe("none");
+  await page.screenshot({ path: testInfo.outputPath("input-focused.png"), fullPage: true });
   await input.fill("Dòng một");
   await input.press("Shift+Enter");
   await input.type("Dòng hai");
   await expect(input).toHaveValue("Dòng một\nDòng hai");
+  await page.screenshot({ path: testInfo.outputPath("input-multiline.png"), fullPage: true });
+
+  await page.getByRole("button", { name: /Chọn bộ dữ liệu/ }).click();
+  await expect(page.getByRole("menu", { name: "Chọn bộ dữ liệu" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("dataset-dropdown.png"), fullPage: true });
+  await page.keyboard.press("Escape");
   await expectNoPageOverflow(page);
-  await page.screenshot({ path: testInfo.outputPath("shell.png"), fullPage: true });
 });
 
-test("creates chat once and renders SQL evidence with history controls", async ({ page }) => {
+test("creates chat once and renders SQL evidence with history controls", async ({ page }, testInfo) => {
   const state = await installApi(page, { delayMs: 150 });
   await openApp(page);
   await page.getByRole("button", { name: /Phân tích bán hàng/ }).click();
   await expect(page.getByLabel("ShopQuery AI đang xử lý")).toBeVisible();
   await expect(page.getByText(sqlResponse.answer)).toBeVisible();
   expect(state.messageRequests).toBe(1);
+  await expect(page.getByText(/SELECT product_name/)).toBeHidden();
   await page.locator("details.sql-card summary").click();
   await expect(page.getByText(/SELECT product_name/)).toBeVisible();
   await expect(page.getByRole("region", { name: "Kết quả truy vấn" })).toContainText("Điện thoại SQ 010");
@@ -203,16 +267,19 @@ test("creates chat once and renders SQL evidence with history controls", async (
   await page.getByRole("textbox", { name: "Tên cuộc trò chuyện" }).fill("Báo cáo bán hàng");
   await page.getByRole("button", { name: "Lưu tên" }).click();
   await expect(page.getByText("Báo cáo bán hàng").first()).toBeVisible();
+  await closeSidebar(page);
   await expectNoPageOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath("conversation-sql.png"), fullPage: true });
 });
 
-test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", async ({ page }) => {
+test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", async ({ page }, testInfo) => {
   await installApi(page, { seed: true });
   await openApp(page);
   await expect(page.getByText(sqlResponse.answer)).toBeVisible();
 
   await openSidebar(page);
   await page.getByRole("button", { name: "Đoạn chat mới" }).click();
+  await waitForDrawerClosed(page);
   const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
   await input.fill("Chính sách đổi trả như thế nào?");
   await input.press("Enter");
@@ -220,13 +287,16 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
 
   await openSidebar(page);
   await page.getByRole("button", { name: "Đoạn chat mới" }).click();
+  await waitForDrawerClosed(page);
   await input.fill("Sản phẩm bán chạy có được miễn phí vận chuyển không?");
   await input.press("Enter");
   await expect(page.getByText("SQL + Tài liệu")).toBeVisible();
   await expect(page.getByLabel("Nguồn tham khảo")).toContainText("shipping_policy.md");
+  await page.screenshot({ path: testInfo.outputPath("conversation-hybrid.png"), fullPage: true });
 
   await openSidebar(page);
   await page.getByRole("button", { name: "Đoạn chat mới" }).click();
+  await waitForDrawerClosed(page);
   await input.fill("Thời tiết ngày mai?");
   await input.press("Enter");
   await expect(page.getByText("Ngoài phạm vi", { exact: true })).toBeVisible();
@@ -244,6 +314,6 @@ test("previews and imports a CSV before selecting the uploaded dataset", async (
   await expect(page.locator(".preview-stats span").filter({ hasText: "2 dòng" })).toBeVisible();
   await page.getByRole("button", { name: "Xác nhận import" }).click();
   await expect(page.getByText("Đã import Doanh số 2026 thành công.")).toBeVisible();
-  await expect(page.getByText(/Đang sử dụng/)).toContainText("Doanh số 2026");
+  await expect(page.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ })).toBeVisible();
   await expectNoPageOverflow(page);
 });

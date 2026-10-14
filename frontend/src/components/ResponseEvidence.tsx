@@ -20,7 +20,7 @@ function SqlBlock({ sql }: { sql: string }) {
   return (
     <details className="evidence-card sql-card">
       <summary>
-        <span className="evidence-title"><Database size={15} /> Xem câu lệnh SQL</span>
+        <span className="evidence-title"><Database size={15} /> Xem SQL</span>
         <ChevronDown className="details-chevron" size={17} />
       </summary>
       <div className="code-wrap">

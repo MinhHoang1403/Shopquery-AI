@@ -150,13 +150,20 @@ afterEach(() => {
 });
 
 describe("ShopQuery workspace", () => {
-  it("hiển thị sidebar, dữ liệu mặc định, trạng thái API và empty state", async () => {
+  it("hiển thị sidebar tối giản, dataset selector và empty state", async () => {
+    const user = userEvent.setup();
     render(<App />);
 
     expect(await screen.findByText("API sẵn sàng")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đoạn chat mới" })).toBeInTheDocument();
-    expect(screen.getAllByText("Dữ liệu cửa hàng mẫu").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "Bạn muốn khám phá điều gì?" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Dữ liệu" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Chọn bộ dữ liệu.*Dữ liệu cửa hàng mẫu/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Bạn muốn hỏi gì hôm nay?" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Thu gọn sidebar" }));
+    expect(screen.getByRole("button", { name: "Mở rộng sidebar" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Mở rộng sidebar" }));
+    expect(screen.getByRole("button", { name: "Thu gọn sidebar" })).toBeInTheDocument();
   });
 
   it("chặn câu hỏi trống và dài hơn 2000 ký tự", async () => {
@@ -172,6 +179,21 @@ describe("ShopQuery workspace", () => {
     expect(screen.getByText("Câu hỏi không được vượt quá 2000 ký tự.")).toBeInTheDocument();
   });
 
+  it("giữ Shift+Enter để xuống dòng và Enter để gửi", async () => {
+    const fetchMock = installApi();
+    const user = userEvent.setup();
+    render(<App />);
+    const input = await screen.findByLabelText("Nhập câu hỏi cho ShopQuery AI");
+
+    await user.type(input, "Dòng một{Shift>}{Enter}{/Shift}Dòng hai");
+    expect(input).toHaveValue("Dòng một\nDòng hai");
+    expect(screen.getByText("17/2000")).toBeInTheDocument();
+
+    await user.type(input, "{Enter}");
+    expect(await screen.findByText("Đây là câu trả lời.")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/messages"))).toHaveLength(1);
+  });
+
   it("tạo conversation, gửi một lần và hiển thị SQL cùng bảng", async () => {
     const fetchMock = installApi();
     const user = userEvent.setup();
@@ -181,7 +203,7 @@ describe("ShopQuery workspace", () => {
 
     expect(await screen.findByText("Đây là câu trả lời.")).toBeInTheDocument();
     expect(screen.getByText("SQL")).toBeInTheDocument();
-    expect(screen.getByText("Xem câu lệnh SQL")).toBeInTheDocument();
+    expect(screen.getByText("Xem SQL")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toHaveTextContent("Áo linen");
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/messages"))).toHaveLength(1);
   });
@@ -239,10 +261,12 @@ describe("ShopQuery workspace", () => {
     render(<App />);
     await screen.findByText("Câu hỏi cũ");
 
-    await user.click(screen.getByRole("button", { name: /Doanh số 2026/ }));
+    await user.click(screen.getByRole("button", { name: /Chọn bộ dữ liệu/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Doanh số 2026/ }));
     expect(screen.getByRole("dialog", { name: "Chuyển bộ dữ liệu?" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Bắt đầu chat mới" }));
-    expect(await screen.findByText(/Đang sử dụng/)).toHaveTextContent("Doanh số 2026");
+    expect(screen.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Kiểm tra dữ liệu/ })).toBeInTheDocument();
     expect(screen.queryByText("Câu hỏi cũ")).not.toBeInTheDocument();
   });
 
@@ -259,9 +283,10 @@ describe("ShopQuery workspace", () => {
     expect(screen.getByText((_, element) => element?.textContent === "2 dòng")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Xác nhận import" }));
     expect(await screen.findByText("Đã import Doanh số 2026 thành công.")).toBeInTheDocument();
-    expect(await screen.findByText(/Đang sử dụng/)).toHaveTextContent("Doanh số 2026");
-    expect(screen.getByLabelText("Thông tin bộ dữ liệu đang dùng")).toHaveTextContent("sales.csv");
-    expect(screen.getByLabelText("Thông tin bộ dữ liệu đang dùng")).toHaveTextContent("Sản phẩm: TEXT");
+    await user.click(screen.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ }));
+    await user.click(screen.getByText("Xem thông tin dữ liệu"));
+    expect(screen.getByText("sales.csv")).toBeInTheDocument();
+    expect(screen.getByText(/Sản phẩm: TEXT/)).toBeInTheDocument();
   });
 
   it("hiển thị lỗi 422 khi file tải lên không hợp lệ", async () => {
@@ -327,7 +352,7 @@ describe("ShopQuery workspace", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 120));
     expect(screen.queryByText("Đây là câu trả lời.")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Bạn muốn khám phá điều gì?" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Bạn muốn hỏi gì hôm nay?" })).toBeInTheDocument();
   });
 
   it("không khôi phục conversation cũ sau khi người dùng đã chọn chat mới", async () => {
@@ -351,6 +376,6 @@ describe("ShopQuery workspace", () => {
     await new Promise((resolve) => setTimeout(resolve, 120));
 
     expect(screen.queryByText("Nội dung cũ")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Bạn muốn khám phá điều gì?" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Bạn muốn hỏi gì hôm nay?" })).toBeInTheDocument();
   });
 });

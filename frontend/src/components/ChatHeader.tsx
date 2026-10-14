@@ -1,19 +1,25 @@
 import { Menu, Wifi, WifiOff } from "lucide-react";
+import type { Dataset } from "../types";
+import { DatasetSelector } from "./DatasetSelector";
 
 interface ChatHeaderProps {
   title: string;
-  datasetName: string;
+  datasets: Dataset[];
+  selectedDataset: Dataset | undefined;
   isOnline: boolean;
   healthChecked: boolean;
   onOpenSidebar: () => void;
+  onSelectDataset: (dataset: Dataset) => void;
 }
 
 export function ChatHeader({
   title,
-  datasetName,
+  datasets,
+  selectedDataset,
   isOnline,
   healthChecked,
   onOpenSidebar,
+  onSelectDataset,
 }: ChatHeaderProps) {
   const statusText = !healthChecked
     ? "Đang kiểm tra API"
@@ -33,7 +39,7 @@ export function ChatHeader({
       </button>
       <div className="chat-title">
         <strong>{title}</strong>
-        <span>{datasetName}</span>
+        <DatasetSelector datasets={datasets} onSelect={onSelectDataset} selectedDataset={selectedDataset} />
       </div>
       <div
         className={`health-status ${isOnline ? "health-status--online" : ""}`}

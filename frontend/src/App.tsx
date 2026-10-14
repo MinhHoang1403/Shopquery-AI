@@ -1,4 +1,4 @@
-import { CheckCircle2, Database, LoaderCircle, Sparkles, X } from "lucide-react";
+import { CheckCircle2, Database, LoaderCircle, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChatApiError,
@@ -305,25 +305,24 @@ export default function App() {
         activeConversationId={activeConversationId}
         collapsed={sidebarCollapsed}
         conversations={conversations}
-        datasets={datasets}
         onClose={() => setSidebarOpen(false)}
         onDelete={setDeleteTarget}
         onNewChat={() => startNewChat()}
         onRename={(conversation) => { setRenameError(null); setRenameTarget(conversation); }}
         onSelectConversation={selectConversation}
-        onSelectDataset={chooseDataset}
         onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
         onUpload={() => { setSidebarOpen(false); setUploadOpen(true); }}
         open={sidebarOpen}
-        selectedDatasetId={selectedDatasetId}
       />
 
       <div className="main-panel">
         <ChatHeader
-          datasetName={datasetName}
+          datasets={datasets}
           healthChecked={health.checked}
           isOnline={health.online}
           onOpenSidebar={() => setSidebarOpen(true)}
+          onSelectDataset={chooseDataset}
+          selectedDataset={selectedDataset}
           title={currentConversation?.title ?? "Đoạn chat mới"}
         />
         {importNotice ? (
@@ -341,21 +340,7 @@ export default function App() {
               <div className="page-loading" role="status"><LoaderCircle size={23} /> Đang tải dữ liệu…</div>
             ) : messages.length === 0 ? (
               <div className="welcome">
-                <div className="welcome-icon" aria-hidden="true"><Sparkles size={23} /></div>
-                <p className="eyebrow">SHOPQUERY AI</p>
-                <h1>Bạn muốn khám phá điều gì?</h1>
-                <p className="welcome-copy">
-                  Đang sử dụng <strong>{datasetName}</strong>. Hỏi bằng tiếng Việt để phân tích dữ liệu có kiểm chứng.
-                </p>
-                {selectedDataset?.kind === "uploaded" ? (
-                  <div className="active-dataset-summary" aria-label="Thông tin bộ dữ liệu đang dùng">
-                    <span>{selectedDataset.original_filename}</span>
-                    <span>{selectedDataset.file_type?.toUpperCase()}</span>
-                    <span>{selectedDataset.row_count?.toLocaleString("vi-VN")} dòng</span>
-                    <span>{selectedDataset.column_count} cột</span>
-                    <small>{selectedDataset.columns.map((column) => `${column.source_name}: ${column.data_type}`).join(" · ")}</small>
-                  </div>
-                ) : null}
+                <h1>Bạn muốn hỏi gì hôm nay?</h1>
                 <SuggestedQuestions disabled={isLoading} onSelect={submitQuestion} questions={suggestions} />
               </div>
             ) : (

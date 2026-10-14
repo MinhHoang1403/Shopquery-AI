@@ -19,6 +19,10 @@ export function ChatInput({
   onSubmit,
 }: ChatInputProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const showCharacterCount = value.length > 0;
+  const describedBy = [validationError ? "composer-error" : null, showCharacterCount ? "composer-help" : null]
+    .filter(Boolean)
+    .join(" ") || undefined;
 
   useEffect(() => {
     if (!textarea.current) return;
@@ -47,7 +51,7 @@ export function ChatInput({
         <textarea
           ref={textarea}
           id="chat-message"
-          aria-describedby="composer-help composer-error"
+          aria-describedby={describedBy}
           aria-invalid={Boolean(validationError)}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
@@ -65,17 +69,19 @@ export function ChatInput({
           <ArrowUp size={19} strokeWidth={2.4} aria-hidden="true" />
         </button>
       </div>
-      <div className="composer-meta">
-        <span id="composer-error" className="validation-message" role="alert">
-          {validationError ?? ""}
-        </span>
-        <span
-          id="composer-help"
-          className={value.length > 2_000 ? "character-count character-count--over" : "character-count"}
-        >
-          {value.length}/2000
-        </span>
-      </div>
+      {validationError || showCharacterCount ? (
+        <div className="composer-meta">
+          {validationError ? <span id="composer-error" className="validation-message" role="alert">{validationError}</span> : null}
+          {showCharacterCount ? (
+            <span
+              id="composer-help"
+              className={value.length > 2_000 ? "character-count character-count--over" : "character-count"}
+            >
+              {value.length}/2000
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </form>
   );
 }
