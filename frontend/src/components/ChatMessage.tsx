@@ -1,9 +1,9 @@
-import { AlertCircle, Bot, UserRound } from "lucide-react";
+import { AlertCircle, Database } from "lucide-react";
 import type { ConversationEntry, RouteLabel } from "../types";
 import { ResponseEvidence } from "./ResponseEvidence";
 
 const ROUTE_LABELS: Record<RouteLabel, string> = {
-  SQL: "Dữ liệu SQL",
+  SQL: "SQL",
   RAG: "Tài liệu",
   HYBRID: "SQL + Tài liệu",
   UNSUPPORTED: "Ngoài phạm vi",
@@ -15,18 +15,20 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
 
   return (
     <article className={`message message--${entry.role}`}>
-      <div className="message-avatar" aria-hidden="true">
-        {isUser ? <UserRound size={17} /> : isError ? <AlertCircle size={17} /> : <Bot size={17} />}
-      </div>
-      <div className="message-content">
-        <div className="message-heading">
-          <strong>{isUser ? "Bạn" : isError ? "Không thể xử lý" : "ShopQuery AI"}</strong>
-          {entry.response?.route ? (
-            <span className={`route-badge route-badge--${entry.response.route.toLowerCase()}`}>
-              {ROUTE_LABELS[entry.response.route]}
-            </span>
-          ) : null}
+      {!isUser ? (
+        <div className="assistant-mark" aria-hidden="true">
+          {isError ? <AlertCircle size={17} /> : <Database size={16} />}
         </div>
+      ) : null}
+      <div className="message-content">
+        {!isUser ? (
+          <div className="message-heading">
+            <strong>{isError ? "Không thể xử lý" : "ShopQuery AI"}</strong>
+            {entry.response?.route ? (
+              <span className="route-badge">{ROUTE_LABELS[entry.response.route]}</span>
+            ) : null}
+          </div>
+        ) : null}
         <p className="message-text">{entry.text}</p>
         {entry.response ? <ResponseEvidence response={entry.response} /> : null}
       </div>

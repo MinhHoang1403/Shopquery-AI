@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Live Gemini smoke runs once on desktop Chromium.");
+  test.skip(testInfo.project.name !== "desktop-1440", "Live Gemini smoke runs once on desktop Chromium.");
   test.setTimeout(900_000);
 
   const consoleErrors: string[] = [];
@@ -19,6 +19,7 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
 
   await page.goto("/");
   await expect(page.getByRole("status", { name: "API sẵn sàng" })).toBeVisible();
+  await page.getByRole("button", { name: "Đoạn chat mới" }).click();
   const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
 
   const questions = [
@@ -53,7 +54,7 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
   for (const question of questions) {
     await input.fill(question.message);
     const responsePromise = page.waitForResponse(
-      (response) => response.url().endsWith("/api/chat") && response.request().method() === "POST",
+      (response) => response.url().endsWith("/messages") && response.request().method() === "POST",
       { timeout: 320_000 },
     );
     await input.press("Enter");
@@ -61,9 +62,15 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
     const apiResponse = await responsePromise;
     expect(apiResponse.status()).toBe(200);
     const body = await apiResponse.json();
-    expect(body.error).toBeNull();
-    expect(body.route).toBe(question.route);
-    await expect(page.locator(".route-badge").last()).toContainText(question.route === "RAG" ? "Tài liệu" : question.route === "HYBRID" ? "SQL + Tài liệu" : "Dữ liệu SQL", { timeout: 320_000 });
+    const chatResponse = body.assistant_message.response;
+    expect(chatResponse.error).toBeNull();
+    expect(chatResponse.route).toBe(question.route);
+    const badgeText = question.route === "RAG"
+      ? "Tài liệu"
+      : question.route === "HYBRID"
+        ? "SQL + Tài liệu"
+        : "SQL";
+    await expect(page.locator(".route-badge").last()).toHaveText(badgeText, { timeout: 10_000 });
     await question.validate();
   }
 

@@ -1,11 +1,20 @@
-import { Database, Wifi, WifiOff } from "lucide-react";
+import { Menu, Wifi, WifiOff } from "lucide-react";
 
 interface ChatHeaderProps {
+  title: string;
+  datasetName: string;
   isOnline: boolean;
   healthChecked: boolean;
+  onOpenSidebar: () => void;
 }
 
-export function ChatHeader({ isOnline, healthChecked }: ChatHeaderProps) {
+export function ChatHeader({
+  title,
+  datasetName,
+  isOnline,
+  healthChecked,
+  onOpenSidebar,
+}: ChatHeaderProps) {
   const statusText = !healthChecked
     ? "Đang kiểm tra API"
     : isOnline
@@ -13,16 +22,21 @@ export function ChatHeader({ isOnline, healthChecked }: ChatHeaderProps) {
       : "Chưa kết nối API";
 
   return (
-    <header className="app-header">
-      <div className="brand-mark" aria-hidden="true">
-        <Database size={22} strokeWidth={2.2} />
-      </div>
-      <div className="brand-copy">
-        <strong>ShopQuery AI</strong>
-        <span>Trợ lý dữ liệu cửa hàng</span>
+    <header className="chat-header">
+      <button
+        aria-label="Mở thanh điều hướng"
+        className="icon-button mobile-menu-button"
+        onClick={onOpenSidebar}
+        type="button"
+      >
+        <Menu size={20} />
+      </button>
+      <div className="chat-title">
+        <strong>{title}</strong>
+        <span>{datasetName}</span>
       </div>
       <div
-        className={`health-pill ${isOnline ? "health-pill--online" : ""}`}
+        className={`health-status ${isOnline ? "health-status--online" : ""}`}
         role="status"
         aria-label={statusText}
       >

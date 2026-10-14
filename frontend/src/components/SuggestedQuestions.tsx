@@ -1,48 +1,38 @@
-import { BarChart3, FileText, Layers3 } from "lucide-react";
+import { ArrowUpRight, BarChart3, FileText, Layers3 } from "lucide-react";
 
-const SUGGESTED_QUESTIONS = [
-  {
-    label: "Phân tích bán hàng",
-    question: "Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?",
-    icon: BarChart3,
-  },
-  {
-    label: "Tra cứu chính sách",
-    question: "Chính sách đổi trả của cửa hàng như thế nào?",
-    icon: FileText,
-  },
-  {
-    label: "Kết hợp dữ liệu",
-    question: "Top 5 sản phẩm bán chạy nhất có thuộc danh mục được miễn phí vận chuyển không?",
-    icon: Layers3,
-  },
-] as const;
+interface SuggestedQuestion {
+  label: string;
+  question: string;
+  kind: "analysis" | "document" | "hybrid";
+}
+
+const ICONS = {
+  analysis: BarChart3,
+  document: FileText,
+  hybrid: Layers3,
+};
 
 interface SuggestedQuestionsProps {
   disabled: boolean;
+  questions: SuggestedQuestion[];
   onSelect: (question: string) => void;
 }
 
-export function SuggestedQuestions({ disabled, onSelect }: SuggestedQuestionsProps) {
+export function SuggestedQuestions({ disabled, questions, onSelect }: SuggestedQuestionsProps) {
   return (
     <section className="suggestions" aria-labelledby="suggestions-title">
-      <p id="suggestions-title">Bạn có thể bắt đầu với</p>
+      <p id="suggestions-title">Gợi ý để bắt đầu</p>
       <div className="suggestion-grid">
-        {SUGGESTED_QUESTIONS.map(({ label, question, icon: Icon }) => (
-          <button
-            className="suggestion-card"
-            disabled={disabled}
-            key={question}
-            onClick={() => onSelect(question)}
-            type="button"
-          >
-            <Icon size={19} aria-hidden="true" />
-            <span>
-              <strong>{label}</strong>
-              <small>{question}</small>
-            </span>
-          </button>
-        ))}
+        {questions.map(({ label, question, kind }) => {
+          const Icon = ICONS[kind];
+          return (
+            <button className="suggestion-card" disabled={disabled} key={question} onClick={() => onSelect(question)} type="button">
+              <span className="suggestion-icon"><Icon size={18} /></span>
+              <span><strong>{label}</strong><small>{question}</small></span>
+              <ArrowUpRight className="suggestion-arrow" size={16} />
+            </button>
+          );
+        })}
       </div>
     </section>
   );

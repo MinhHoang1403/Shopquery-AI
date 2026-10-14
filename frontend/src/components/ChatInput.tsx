@@ -1,10 +1,11 @@
-import { SendHorizontal } from "lucide-react";
-import type { FormEvent, KeyboardEvent } from "react";
+import { ArrowUp } from "lucide-react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 
 interface ChatInputProps {
   value: string;
   disabled: boolean;
   validationError: string | null;
+  datasetName: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
 }
@@ -13,9 +14,18 @@ export function ChatInput({
   value,
   disabled,
   validationError,
+  datasetName,
   onChange,
   onSubmit,
 }: ChatInputProps) {
+  const textarea = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!textarea.current) return;
+    textarea.current.style.height = "0px";
+    textarea.current.style.height = `${Math.min(textarea.current.scrollHeight, 160)}px`;
+  }, [value]);
+
   function submit(event: FormEvent) {
     event.preventDefault();
     onSubmit();
@@ -35,13 +45,14 @@ export function ChatInput({
           Nhập câu hỏi cho ShopQuery AI
         </label>
         <textarea
+          ref={textarea}
           id="chat-message"
           aria-describedby="composer-help composer-error"
           aria-invalid={Boolean(validationError)}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Hỏi về doanh số, sản phẩm hoặc chính sách cửa hàng…"
+          placeholder={`Hỏi về ${datasetName.toLocaleLowerCase("vi")}…`}
           rows={1}
           value={value}
         />
@@ -51,14 +62,17 @@ export function ChatInput({
           disabled={disabled || value.trim().length === 0}
           type="submit"
         >
-          <SendHorizontal size={19} aria-hidden="true" />
+          <ArrowUp size={19} strokeWidth={2.4} aria-hidden="true" />
         </button>
       </div>
       <div className="composer-meta">
         <span id="composer-error" className="validation-message" role="alert">
           {validationError ?? ""}
         </span>
-        <span id="composer-help" className={value.length > 2_000 ? "character-count character-count--over" : "character-count"}>
+        <span
+          id="composer-help"
+          className={value.length > 2_000 ? "character-count character-count--over" : "character-count"}
+        >
           {value.length}/2000
         </span>
       </div>
