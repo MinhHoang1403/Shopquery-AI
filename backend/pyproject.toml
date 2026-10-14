@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shopquery-backend"
+version = "0.1.0"
+description = "FastAPI backend for the ShopQuery AI e-commerce assistant"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "fastapi>=0.119,<1",
+    "google-genai>=1.50,<2",
+    "pgvector>=0.4,<1",
+    "psycopg[binary]>=3.2,<4",
+    "pydantic-settings>=2.11,<3",
+    "sqlalchemy>=2.0.44,<3",
+    "sqlglot>=27,<30",
+    "uvicorn[standard]>=0.37,<1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8.4,<10",
+    "pytest-cov>=7,<8",
+    "ruff>=0.14,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: requires the local PostgreSQL service",
+    "live: requires a real Gemini API key",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

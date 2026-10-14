@@ -1,0 +1,1 @@
+"""ShopQuery backend tests."""

@@ -1,0 +1,1 @@
+"""ShopQuery AI backend package."""
