@@ -252,6 +252,7 @@ describe("ShopQuery workspace", () => {
     expect(await screen.findByText("120000")).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === "2 dòng")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Xác nhận import" }));
+    expect(await screen.findByText("Đã import Doanh số 2026 thành công.")).toBeInTheDocument();
     expect(await screen.findByText(/Đang sử dụng/)).toHaveTextContent("Doanh số 2026");
     expect(screen.getByLabelText("Thông tin bộ dữ liệu đang dùng")).toHaveTextContent("sales.csv");
     expect(screen.getByLabelText("Thông tin bộ dữ liệu đang dùng")).toHaveTextContent("Sản phẩm: TEXT");

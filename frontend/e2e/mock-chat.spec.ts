@@ -243,6 +243,7 @@ test("previews and imports a CSV before selecting the uploaded dataset", async (
   await expect(page.getByText("120000")).toBeVisible();
   await expect(page.locator(".preview-stats span").filter({ hasText: "2 dòng" })).toBeVisible();
   await page.getByRole("button", { name: "Xác nhận import" }).click();
+  await expect(page.getByText("Đã import Doanh số 2026 thành công.")).toBeVisible();
   await expect(page.getByText(/Đang sử dụng/)).toContainText("Doanh số 2026");
   await expectNoPageOverflow(page);
 });

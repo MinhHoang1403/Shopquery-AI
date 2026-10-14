@@ -1,4 +1,4 @@
-import { Database, LoaderCircle, Sparkles } from "lucide-react";
+import { CheckCircle2, Database, LoaderCircle, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChatApiError,
@@ -63,6 +63,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<ConversationSummary | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -295,6 +296,7 @@ export default function App() {
     setDatasets((current) => [...current.filter((item) => item.dataset_id !== dataset.dataset_id), dataset]);
     setUploadOpen(false);
     startNewChat(dataset.dataset_id);
+    setImportNotice(`Đã import ${dataset.name} thành công.`);
   }
 
   return (
@@ -324,6 +326,15 @@ export default function App() {
           onOpenSidebar={() => setSidebarOpen(true)}
           title={currentConversation?.title ?? "Đoạn chat mới"}
         />
+        {importNotice ? (
+          <div className="import-notice" role="status">
+            <CheckCircle2 size={17} />
+            <span>{importNotice}</span>
+            <button aria-label="Đóng thông báo import" onClick={() => setImportNotice(null)} type="button">
+              <X size={16} />
+            </button>
+          </div>
+        ) : null}
         <main className="chat-main">
           <div className="chat-column">
             {isBooting ? (
