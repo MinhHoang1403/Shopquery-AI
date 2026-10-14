@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -75,6 +75,8 @@ interface MockOptions {
   conversations?: ConversationSummary[];
   details?: Record<string, ConversationDetail>;
   datasets?: Dataset[];
+  previewError?: string;
+  importError?: string;
   delayMessage?: boolean;
   delayBootstrap?: boolean;
 }
@@ -117,6 +119,7 @@ function installApi(options: MockOptions = {}) {
     }
     if (url.pathname === `/api/conversations/${conversationId}` && method === "DELETE") return jsonResponse(null, 204);
     if (url.pathname === "/api/datasets/preview" && method === "POST") {
+      if (options.previewError) return jsonResponse({ detail: options.previewError }, 422);
       return jsonResponse({
         filename: "sales.csv",
         file_type: "csv",
@@ -129,7 +132,10 @@ function installApi(options: MockOptions = {}) {
         warnings: [],
       });
     }
-    if (url.pathname === "/api/datasets/import" && method === "POST") return jsonResponse(uploadedDataset, 201);
+    if (url.pathname === "/api/datasets/import" && method === "POST") {
+      if (options.importError) return jsonResponse({ detail: options.importError }, 409);
+      return jsonResponse(uploadedDataset, 201);
+    }
     return jsonResponse({ detail: "not mocked" }, 404);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -256,6 +262,36 @@ describe("ShopQuery workspace", () => {
     expect(await screen.findByText(/Đang sử dụng/)).toHaveTextContent("Doanh số 2026");
     expect(screen.getByLabelText("Thông tin bộ dữ liệu đang dùng")).toHaveTextContent("sales.csv");
     expect(screen.getByLabelText("Thông tin bộ dữ liệu đang dùng")).toHaveTextContent("Sản phẩm: TEXT");
+  });
+
+  it("hiển thị lỗi 422 khi file tải lên không hợp lệ", async () => {
+    installApi({ previewError: "File vượt quá giới hạn 10 MB." });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Nạp dữ liệu mới" }));
+
+    const file = new File(["invalid"], "sales.csv", { type: "text/csv" });
+    await user.upload(screen.getByLabelText(/Chọn file CSV hoặc XLSX/), file);
+
+    const dialog = screen.getByRole("dialog", { name: "Nạp dữ liệu mới" });
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("File vượt quá giới hạn 10 MB.");
+    expect(screen.getByRole("button", { name: "Xác nhận import" })).toBeDisabled();
+  });
+
+  it("giữ hộp thoại và báo lỗi 409 khi tên bộ dữ liệu bị trùng", async () => {
+    installApi({ importError: "Tên bộ dữ liệu đã tồn tại." });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Nạp dữ liệu mới" }));
+
+    const file = new File(["Sản phẩm,Doanh thu\nÁo,120000\n"], "sales.csv", { type: "text/csv" });
+    await user.upload(screen.getByLabelText(/Chọn file CSV hoặc XLSX/), file);
+    await user.click(await screen.findByRole("button", { name: "Xác nhận import" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Nạp dữ liệu mới" });
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Tên bộ dữ liệu đã tồn tại.");
+    expect(dialog).toBeInTheDocument();
+    expect(screen.queryByText(/Đã import .* thành công/)).not.toBeInTheDocument();
   });
 
   it("hiển thị RAG, Hybrid và Unsupported mà không tạo evidence giả", async () => {

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from io import BytesIO
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 
 from app.conversations.repository import ConversationRecord, MessageRecord
 from app.core.errors import ResourceNotFoundError
@@ -202,3 +204,35 @@ def test_dataset_preview_accepts_csv_and_rejects_unsafe_input() -> None:
     )
     assert rejected.status_code == 422
     assert "CSV" in rejected.json()["detail"]
+
+
+def test_dataset_preview_accepts_xlsx_and_selected_sheet() -> None:
+    workbook = Workbook()
+    first_sheet = workbook.active
+    first_sheet.title = "Tổng quan"
+    first_sheet.append(["Ghi chú"])
+    first_sheet.append(["Không chọn sheet này"])
+    sales_sheet = workbook.create_sheet("Doanh số")
+    sales_sheet.append(["Sản phẩm", "Doanh thu"])
+    sales_sheet.append(["Áo", 120_000])
+    content = BytesIO()
+    workbook.save(content)
+    workbook.close()
+
+    response = TestClient(app).post(
+        "/api/datasets/preview",
+        data={"sheet_name": "Doanh số"},
+        files={
+            "file": (
+                "sales.xlsx",
+                content.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sheet_name"] == "Doanh số"
+    assert response.json()["sheet_names"] == ["Tổng quan", "Doanh số"]
+    assert response.json()["columns"][1]["data_type"] == "BIGINT"
+    assert response.json()["rows"] == [{"Sản phẩm": "Áo", "Doanh thu": 120_000}]

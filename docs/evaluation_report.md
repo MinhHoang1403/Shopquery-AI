@@ -50,10 +50,10 @@ Việc chạy lại được thực hiện một lần sau khi cửa sổ quota 
 ## Kiểm thử xác định và thủ công
 
 - Ruff: pass.
-- Pytest không PostgreSQL: 63 pass.
+- Pytest không PostgreSQL: 64 pass.
 - PostgreSQL integration trên database tạm: 13 pass, gồm conversation persistence, CSV/XLSX import, rollback, role read-only, row limit và dataset isolation.
 - ESLint, TypeScript và production build: pass.
-- Vitest: 10 pass.
+- Vitest: 12 pass.
 - Playwright mock: 20 pass trên 1440, 1280, 768, 390 và 320 px.
 - Visual review: desktop và mobile drawer không tràn ngang; header/composer không che nội dung; bảng có vùng cuộn riêng.
 - Docker build: API và web pass; `db`, `api`, `web` healthy. Nginx `/api/health` và `/api/datasets` pass. Máy đánh giá còn giữ một socket Windows mồ côi ở host port 8000 sau khi dừng Uvicorn (PID không còn trong process table), nên lần nghiệm thu này ánh xạ API host tạm thời sang 8001; kết nối nội bộ Nginx → `api:8000` không thay đổi.
