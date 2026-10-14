@@ -11,9 +11,15 @@ class SqlDraft(BaseModel):
 
 
 class SqlGenerator:
-    def __init__(self, gateway: GenerationGateway, reference_date: str) -> None:
+    def __init__(
+        self,
+        gateway: GenerationGateway,
+        reference_date: str,
+        schema_context: str = SCHEMA_CONTEXT,
+    ) -> None:
         self._gateway = gateway
         self._reference_date = reference_date
+        self._schema_context = schema_context
 
     def generate(self, question: str) -> str:
         prompt = f"""
@@ -25,7 +31,7 @@ Select every column needed to answer every part of the question. For category-ba
 eligibility comparisons, join categories and include category_code and category_name. Never
 infer a category from product_name.
 
-{SCHEMA_CONTEXT}
+{self._schema_context}
 
 The reproducible reference date for relative expressions is {self._reference_date}.
 Question: {question}

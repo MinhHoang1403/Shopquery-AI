@@ -1,6 +1,8 @@
 """Pydantic API contracts."""
 
-from typing import Any
+from datetime import datetime
+from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -9,6 +11,7 @@ from app.routing.router import RouteLabel
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2_000)
+    dataset_id: int | None = Field(default=None, ge=1)
 
     @field_validator("message")
     @classmethod
@@ -38,3 +41,84 @@ class ChatResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     service: str
+
+
+class DatasetColumnResponse(BaseModel):
+    source_name: str
+    name: str
+    data_type: str
+
+
+class DatasetResponse(BaseModel):
+    dataset_id: int | None
+    kind: Literal["default", "uploaded"]
+    name: str
+    original_filename: str | None = None
+    file_type: str | None = None
+    sheet_name: str | None = None
+    row_count: int | None = None
+    column_count: int | None = None
+    columns: list[DatasetColumnResponse] = Field(default_factory=list)
+    created_at: datetime | None = None
+
+
+class DatasetPreviewResponse(BaseModel):
+    filename: str
+    file_type: str
+    sheet_name: str | None
+    sheet_names: list[str]
+    row_count: int
+    column_count: int
+    columns: list[DatasetColumnResponse]
+    rows: list[dict[str, Any]]
+    warnings: list[str]
+
+
+class DatasetDetailResponse(DatasetResponse):
+    preview_rows: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ConversationCreateRequest(BaseModel):
+    dataset_id: int | None = Field(default=None, ge=1)
+
+
+class ConversationRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+    @field_validator("title")
+    @classmethod
+    def reject_blank_title(cls, value: str) -> str:
+        stripped = " ".join(value.split())
+        if not stripped:
+            raise ValueError("title must not be blank")
+        return stripped
+
+
+class ConversationSummaryResponse(BaseModel):
+    conversation_id: UUID
+    title: str
+    dataset_id: int | None
+    dataset_name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConversationMessageResponse(BaseModel):
+    message_id: int
+    role: Literal["user", "assistant", "error"]
+    content: str
+    response: ChatResponse | None = None
+    created_at: datetime
+
+
+class ConversationDetailResponse(ConversationSummaryResponse):
+    messages: list[ConversationMessageResponse]
+
+
+class ConversationSendResponse(BaseModel):
+    conversation: ConversationSummaryResponse
+    user_message: ConversationMessageResponse
+    assistant_message: ConversationMessageResponse
+
+
+DatasetName = Annotated[str, Field(min_length=1, max_length=120)]

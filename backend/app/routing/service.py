@@ -51,3 +51,14 @@ class ChatService:
             ),
             route=RouteLabel.UNSUPPORTED,
         )
+
+
+class DatasetChatService:
+    """Run SQL-only analysis for one explicitly selected uploaded dataset."""
+
+    def __init__(self, sql_pipeline: TextToSqlPipeline) -> None:
+        self._sql_pipeline = sql_pipeline
+
+    def chat(self, question: str) -> ChatResult:
+        result = self._sql_pipeline.run(question)
+        return ChatResult(result.answer, RouteLabel.SQL, result.sql, result.rows)

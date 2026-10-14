@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     sql_statement_timeout_ms: int = Field(default=5_000, ge=100, le=60_000)
     sql_max_rows: int = Field(default=200, ge=1, le=1_000)
+    upload_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1_024, le=25 * 1024 * 1024)
+    upload_max_rows: int = Field(default=5_000, ge=1, le=20_000)
+    upload_max_columns: int = Field(default=30, ge=1, le=100)
     log_level: str = "INFO"
 
     @field_validator("embedding_dimensions")

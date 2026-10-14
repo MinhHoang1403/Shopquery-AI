@@ -23,3 +23,15 @@ class SqlExecutionError(ShopQueryError):
 
 class RetrievalError(ShopQueryError):
     """Raised when document retrieval cannot be completed."""
+
+
+class ResourceNotFoundError(ShopQueryError):
+    """Raised when a requested conversation or dataset does not exist."""
+
+
+class ResourceConflictError(ShopQueryError):
+    """Raised when a unique application resource already exists."""
+
+
+class UploadValidationError(ShopQueryError):
+    """Raised when an uploaded tabular file is unsafe or invalid."""

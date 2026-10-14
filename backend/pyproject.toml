@@ -10,9 +10,11 @@ requires-python = ">=3.11,<3.13"
 dependencies = [
     "fastapi>=0.119,<1",
     "google-genai>=1.50,<2",
+    "openpyxl>=3.1.5,<4",
     "pgvector>=0.4,<1",
     "psycopg[binary]>=3.2,<4",
     "pydantic-settings>=2.11,<3",
+    "python-multipart>=0.0.20,<1",
     "sqlalchemy>=2.0.44,<3",
     "sqlglot>=27,<30",
     "uvicorn[standard]>=0.37,<1",

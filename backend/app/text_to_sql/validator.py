@@ -52,6 +52,20 @@ class ValidatedSql:
 class SqlValidator:
     """Validate syntax, referenced objects, functions, and unsupported AST nodes."""
 
+    def __init__(
+        self,
+        table_columns: dict[str, set[str]] | None = None,
+        allowed_schemas: dict[str, str] | None = None,
+    ) -> None:
+        self._table_columns = {
+            table.lower(): {column.lower() for column in columns}
+            for table, columns in (table_columns or TABLE_COLUMNS).items()
+        }
+        self._allowed_schemas = {
+            table.lower(): schema.lower()
+            for table, schema in (allowed_schemas or {}).items()
+        }
+
     def validate(self, sql: str) -> ValidatedSql:
         if not sql.strip():
             raise SqlValidationError("SQL is empty")
@@ -74,13 +88,18 @@ class SqlValidator:
         self._validate_columns(root, tables, aliases)
         return ValidatedSql(statement=root.sql(dialect="postgres"), tables=frozenset(tables))
 
-    @staticmethod
-    def _validate_tables(root: exp.Select) -> tuple[set[str], dict[str, str]]:
+    def _validate_tables(self, root: exp.Select) -> tuple[set[str], dict[str, str]]:
         tables: set[str] = set()
         aliases: dict[str, str] = {}
         for table in root.find_all(exp.Table):
             table_name = table.name.lower()
-            if table.catalog or table.db or table_name not in TABLE_COLUMNS:
+            allowed_schema = self._allowed_schemas.get(table_name)
+            referenced_schema = table.db.lower() if table.db else None
+            if (
+                table.catalog
+                or table_name not in self._table_columns
+                or referenced_schema != allowed_schema
+            ):
                 raise SqlValidationError(f"Table is not allowed: {table.sql()}")
             tables.add(table_name)
             aliases[table.alias_or_name.lower()] = table_name
@@ -96,9 +115,8 @@ class SqlValidator:
             if function_name not in ALLOWED_FUNCTIONS:
                 raise SqlValidationError(f"Function is not allowed: {function_name}")
 
-    @staticmethod
     def _validate_columns(
-        root: exp.Select, tables: set[str], aliases: dict[str, str]
+        self, root: exp.Select, tables: set[str], aliases: dict[str, str]
     ) -> None:
         projection_aliases = {
             expression.alias.lower()
@@ -112,11 +130,11 @@ class SqlValidator:
                 continue
             if qualifier:
                 table_name = aliases.get(qualifier)
-                if not table_name or column_name not in TABLE_COLUMNS[table_name]:
+                if not table_name or column_name not in self._table_columns[table_name]:
                     raise SqlValidationError(f"Column is not allowed: {column.sql()}")
                 continue
             matching_tables = [
-                table for table in tables if column_name in TABLE_COLUMNS[table]
+                table for table in tables if column_name in self._table_columns[table]
             ]
             if len(matching_tables) != 1:
                 raise SqlValidationError(

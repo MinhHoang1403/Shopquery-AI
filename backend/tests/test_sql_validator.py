@@ -66,3 +66,39 @@ def test_accepts_representative_selects(sql: str) -> None:
 def test_rejects_unsafe_or_out_of_scope_sql(sql: str) -> None:
     with pytest.raises(SqlValidationError):
         SqlValidator().validate(sql)
+
+
+def test_dataset_validator_is_scoped_to_one_schema_and_table() -> None:
+    validator = SqlValidator(
+        table_columns={"dataset_safe": {"product", "revenue"}},
+        allowed_schemas={"dataset_safe": "uploaded_data"},
+    )
+
+    validated = validator.validate(
+        "SELECT product, SUM(revenue) AS total "
+        "FROM uploaded_data.dataset_safe GROUP BY product"
+    )
+
+    assert validated.tables == frozenset({"dataset_safe"})
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * FROM dataset_safe",
+        "SELECT * FROM public.dataset_safe",
+        "SELECT * FROM uploaded_data.dataset_other",
+        "SELECT * FROM pg_catalog.pg_tables",
+        "SELECT missing FROM uploaded_data.dataset_safe",
+        "SELECT product FROM uploaded_data.dataset_safe; SELECT 1",
+        "DELETE FROM uploaded_data.dataset_safe",
+    ],
+)
+def test_dataset_validator_rejects_scope_bypasses(sql: str) -> None:
+    validator = SqlValidator(
+        table_columns={"dataset_safe": {"product", "revenue"}},
+        allowed_schemas={"dataset_safe": "uploaded_data"},
+    )
+
+    with pytest.raises(SqlValidationError):
+        validator.validate(sql)
