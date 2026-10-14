@@ -177,17 +177,16 @@ Lệnh này tái tạo `backend/.venv` từ `pyproject.toml` và `uv.lock`, gồ
 ### Phương án thay thế: pip
 
 ```powershell
-Set-Location backend
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --require-hashes -r requirements.txt
+py -3.11 -m venv backend\.venv
+.\backend\.venv\Scripts\Activate.ps1
+python -m pip install --require-hashes -r .\requirements.txt
 ```
 
 `requirements.txt` chỉ chứa runtime dependencies được export từ `uv.lock`; nó không cài Ruff, Pytest hoặc frontend. Dùng `uv sync --locked --python 3.11` khi cần đầy đủ công cụ lint/test.
 
 ### Tự kích hoạt trong Antigravity/VS Code
 
-Repository cấu hình `.vscode/settings.json` để chọn `backend/.venv/Scripts/python.exe`. Microsoft Python Environments dùng chế độ `command` để kích hoạt environment khi một Terminal mới được tạo, không sửa PowerShell `$PROFILE`.
+Repository cấu hình `.vscode/settings.json` để chọn `backend/.venv/Scripts/python.exe`. Antigravity hiện không cung cấp các proposed terminal API mà Microsoft Python Environments cần để tự kích hoạt bằng chế độ `command`, nên workspace dùng profile `ShopQuery PowerShell` để chạy `Activate.ps1` khi tạo Terminal mới. Cấu hình này chỉ áp dụng cho repository, không sửa PowerShell `$PROFILE`, Registry hoặc ExecutionPolicy.
 
 Sau khi chạy `uv sync`, đóng Terminal cũ rồi mở Terminal PowerShell mới. Kiểm tra:
 
@@ -195,7 +194,7 @@ Sau khi chạy `uv sync`, đóng Terminal cũ rồi mở Terminal PowerShell m�
 python -c "import sys; print(sys.executable); print(sys.version); print(sys.prefix != sys.base_prefix)"
 ```
 
-Kết quả đúng phải trỏ đến `backend\.venv\Scripts\python.exe`, dùng Python 3.11 và dòng cuối là `True`. Nếu IDE chưa chọn đúng interpreter, dùng lệnh **Python: Select Interpreter**, chọn file trên rồi mở Terminal mới.
+Kết quả đúng phải trỏ đến `backend\.venv\Scripts\python.exe`, dùng Python 3.11 và dòng cuối là `True`. Nếu terminal không dùng profile mặc định của workspace, chạy **Terminal: Select Default Profile**, chọn `ShopQuery PowerShell`, rồi mở Terminal mới. Nếu IDE chưa chọn đúng interpreter, dùng **Python: Select Interpreter** và chọn file trên.
 
 Kích hoạt thủ công từ thư mục gốc khi IDE không hỗ trợ:
 
@@ -209,7 +208,7 @@ Thoát venv bằng `deactivate`. Docker không cần venv Windows vì Python và
 
 - `backend/pyproject.toml`: khai báo direct dependencies và nhóm development.
 - `backend/uv.lock`: khóa đầy đủ phiên bản Python; đây là nguồn để tái tạo môi trường backend.
-- `backend/requirements.txt`: export runtime có pinned versions và hashes từ `uv.lock`, phục vụ `pip`.
+- `requirements.txt`: export runtime có pinned versions và hashes từ `backend/uv.lock`, phục vụ `pip` từ thư mục gốc.
 - `frontend/package.json` và `frontend/package-lock.json`: khai báo và khóa dependencies React/Node.js.
 - `backend/Dockerfile`, `frontend/Dockerfile` và `compose.yaml`: định nghĩa môi trường container.
 
@@ -217,7 +216,7 @@ Một file `requirements.txt` không cài React, PostgreSQL, Nginx hoặc Docker
 
 ```powershell
 Set-Location backend
-uv export --locked --no-dev --no-emit-project --format requirements.txt --output-file requirements.txt
+uv export --locked --no-dev --no-emit-project --format requirements.txt --output-file ..\requirements.txt
 ```
 
 ## Kiểm thử
@@ -335,7 +334,6 @@ Response ổn định có dạng:
 │   ├── tests/
 │   ├── Dockerfile
 │   ├── pyproject.toml
-│   ├── requirements.txt
 │   └── uv.lock
 ├── data/
 │   ├── documents/                 # 6 tài liệu Markdown giả lập
@@ -344,6 +342,7 @@ Response ổn định có dạng:
 ├── infrastructure/nginx/          # SPA và reverse proxy /api
 ├── docs/technical_references.md
 ├── compose.yaml
+├── requirements.txt               # Runtime Python export từ backend/uv.lock
 └── .env.example
 ```
 
@@ -352,7 +351,7 @@ Response ổn định có dạng:
 - **Không tìm thấy `python`**: chạy `py --list`, bảo đảm có Python 3.11 rồi tạo venv bằng `uv sync --locked --python 3.11` hoặc `py -3.11 -m venv backend/.venv`. Không thay đổi Python mặc định toàn Windows chỉ để chạy dự án.
 - **Không tìm thấy `uv`**: cài theo [tài liệu chính thức của uv](https://docs.astral.sh/uv/getting-started/installation/) hoặc dùng phương án `pip` cho runtime.
 - **Sai phiên bản Python**: kiểm tra `backend\.venv\Scripts\python.exe --version`; phải là 3.11 cho môi trường đã nghiệm thu.
-- **Venv không tự kích hoạt**: cài/enable extension được đề xuất, chọn đúng interpreter, đóng và mở Terminal mới. Có thể chạy `.\backend\.venv\Scripts\Activate.ps1` thủ công.
+- **Venv không tự kích hoạt**: chạy **Terminal: Select Default Profile**, chọn `ShopQuery PowerShell`, đóng Terminal cũ và mở Terminal mới. Có thể chạy `.\backend\.venv\Scripts\Activate.ps1` thủ công để phân biệt lỗi profile IDE với lỗi venv.
 - **PowerShell chặn `Activate.ps1`**: vẫn có thể dùng `uv run ...`. Nếu cần activation, chỉ nới cho process hiện tại bằng `Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned`, không đổi policy toàn máy.
 - **Docker không phản hồi**: mở Docker Desktop, chờ engine sẵn sàng rồi chạy `docker compose ps`.
 - **Cổng 8000, 8080, 5173 hoặc 54321 bị chiếm**: dùng `Get-NetTCPConnection -State Listen` để tìm tiến trình; dừng instance trùng hoặc đổi cấu hình một cách có chủ đích.

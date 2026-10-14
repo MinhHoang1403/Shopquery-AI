@@ -1,4 +1,15 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}\\backend\\.venv\\Scripts\\python.exe",
-  "python-envs.terminal.autoActivationType": "command"
+  "python-envs.terminal.autoActivationType": "off",
+  "terminal.integrated.profiles.windows": {
+    "ShopQuery PowerShell": {
+      "source": "PowerShell",
+      "args": [
+        "-NoExit",
+        "-Command",
+        "& '${workspaceFolder}\\backend\\.venv\\Scripts\\Activate.ps1'"
+      ]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "ShopQuery PowerShell"
 }
