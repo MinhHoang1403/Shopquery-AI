@@ -37,3 +37,6 @@ dist/
 build/
 .next/
 coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/

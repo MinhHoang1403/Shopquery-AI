@@ -1,15 +1,15 @@
 # ShopQuery AI
 
-ShopQuery AI là backend trợ lý dữ liệu E-commerce giả lập. Ứng dụng nhận câu hỏi tiếng Việt hoặc tiếng Anh và chọn một trong bốn route:
+ShopQuery AI là ứng dụng trợ lý dữ liệu E-commerce giả lập gồm giao diện React, FastAPI, PostgreSQL và Gemini. Ứng dụng nhận câu hỏi tiếng Việt hoặc tiếng Anh và chọn một trong bốn route:
 
 - `SQL`: Gemini sinh một câu SELECT, SQLGlot kiểm tra AST, PostgreSQL thực thi bằng role read-only.
 - `RAG`: Gemini Embedding 2 tạo vector truy vấn, pgvector lấy policy chunks gần nhất và Gemini trả lời có nguồn.
 - `HYBRID`: dùng lại cả SQL và RAG rồi đối chiếu dữ liệu với điều kiện chính sách.
 - `UNSUPPORTED`: từ chối câu hỏi ngoài dữ liệu cửa hàng mà không bịa thông tin.
 
-Không có React, Nginx, authentication hay cloud deployment trong repository này.
+React hiển thị hội thoại và bằng chứng; Nginx phục vụ SPA và chuyển tiếp nguyên đường dẫn `/api` tới FastAPI. MVP chạy local, chưa có authentication hay cloud deployment.
 
-## Kiến trúc backend
+## Kiến trúc
 
 ```text
 Question
@@ -21,11 +21,13 @@ Gemini Router
    +-- UNSUPPORTED
 ```
 
+Luồng triển khai local: `Browser -> Nginx (:8080) -> FastAPI (:8000) -> PostgreSQL/Gemini`. Frontend chỉ gọi API cùng origin và không chứa Gemini API key.
+
 Các lớp bảo vệ SQL không phụ thuộc prompt: allowlist AST, chỉ bốn bảng nghiệp vụ, role database chỉ SELECT, read-only transaction, statement timeout và giới hạn 200 dòng.
 
 ## Công nghệ
 
-Python 3.11, FastAPI, Pydantic, SQLAlchemy, PostgreSQL 17, pgvector, SQLGlot, Google GenAI SDK, Pytest, Docker và Docker Compose. Dependency được khóa trong `backend/uv.lock`.
+Python 3.11, FastAPI, Pydantic, SQLAlchemy, PostgreSQL 17, pgvector, SQLGlot, Google GenAI SDK, React 19, TypeScript, Vite, Vitest, Nginx, Docker và Docker Compose. Dependency được khóa trong `backend/uv.lock` và `frontend/package-lock.json`.
 
 ## Cấu trúc repository
 
@@ -49,6 +51,9 @@ Python 3.11, FastAPI, Pydantic, SQLAlchemy, PostgreSQL 17, pgvector, SQLGlot, Go
 ├── data/
 │   ├── documents/          # 6 tài liệu Markdown
 │   └── seed/               # 4 CSV tái lập
+├── frontend/                 # React/Vite UI, tests và web image
+├── infrastructure/nginx/    # SPA hosting và /api reverse proxy
+├── .github/workflows/ci.yml
 ├── docs/technical_references.md
 ├── compose.yaml
 ├── .env.example
@@ -60,6 +65,7 @@ Python 3.11, FastAPI, Pydantic, SQLAlchemy, PostgreSQL 17, pgvector, SQLGlot, Go
 - Windows PowerShell.
 - Docker Desktop với Docker Compose, hoặc PostgreSQL có extension pgvector.
 - Python 3.11 và `uv` nếu chạy backend trực tiếp.
+- Node.js 24 và npm nếu chạy frontend trực tiếp.
 - Gemini API key để chạy generation, embedding và ingestion thật. Health endpoint, sinh dữ liệu và unit tests không cần key.
 
 ## Cấu hình `.env`
@@ -85,7 +91,7 @@ docker compose exec api python scripts/ingest_documents.py
 docker compose ps
 ```
 
-API: `http://127.0.0.1:8000`. PostgreSQL chỉ bind vào `127.0.0.1:54321` để hỗ trợ kiểm tra local, không bind lên mọi network interface.
+Ứng dụng: `http://127.0.0.1:8080`; API trực tiếp: `http://127.0.0.1:8000`. Cả ba cổng web, API và PostgreSQL chỉ bind vào loopback để hỗ trợ kiểm tra local, không bind lên mọi network interface. Volume `postgres_data` giữ dữ liệu qua các lần khởi động lại; không dùng `docker compose down -v` nếu muốn giữ dữ liệu.
 
 Lệnh ingestion gọi Gemini một lần cho mỗi chunk mới. Chạy lại với tài liệu không đổi sẽ dùng `content_hash` và không tạo embedding lại.
 
@@ -103,6 +109,18 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Default native connection dùng `127.0.0.1:54321` để tránh khác biệt phân giải `localhost` trên Windows. Có thể override bằng environment variables.
+
+## Chạy frontend trực tiếp
+
+Vite chuyển tiếp `/api` tới `http://127.0.0.1:8000`, nên cần khởi động backend trước:
+
+```powershell
+Set-Location frontend
+npm ci
+npm run dev
+```
+
+Mở `http://127.0.0.1:5173`. Lịch sử hội thoại chỉ tồn tại trong phiên trình duyệt và mỗi câu hỏi là một request độc lập; frontend không gửi lịch sử hội thoại về backend.
 
 ## Sinh và nạp lại synthetic data
 
@@ -134,6 +152,30 @@ $env:RUN_DATABASE_TESTS = "1"
 uv run pytest -m integration
 Remove-Item Env:RUN_DATABASE_TESTS
 ```
+
+Frontend quality gate:
+
+```powershell
+Set-Location frontend
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+Browser E2E dùng Chromium độc lập do Playwright quản lý. Bộ mặc định chỉ dùng mock API; live smoke gọi Gemini riêng để tránh phụ thuộc secrets trong CI:
+
+```powershell
+Set-Location frontend
+npx playwright install chromium
+npm run test:e2e
+npm run test:e2e:live
+```
+
+Playwright kiểm tra desktop `1440×900`, mobile `390×844`, console/network và chụp bằng chứng tạm trong `frontend/test-results/`. Thư mục này được Git ignore.
+
+GitHub Actions chạy backend unit/Ruff và toàn bộ frontend quality gate; workflow không cần secrets và không gọi Gemini live.
 
 Không có key thì không chạy live Gemini test. Không được diễn giải fake embeddings trong integration tests là kết quả Gemini thật.
 

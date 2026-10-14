@@ -40,8 +40,16 @@ Tài liệu này ghi lại cơ sở cho các quyết định AI và dữ liệu 
 - Áp dụng: parse PostgreSQL thành AST, kiểm tra mọi node, allowlist bảng/cột/hàm và từ chối DML, DDL, nhiều statement, subquery/CTE ngoài phạm vi.
 - Giới hạn: parse thành công không đồng nghĩa an toàn. Hệ thống còn dùng role read-only, read-only transaction, timeout và row limit; đây không thay thế security audit production.
 
+## React, Vite, Nginx và GitHub Actions
+
+- Nguồn: [React versions](https://react.dev/versions), [Vite guide](https://vite.dev/guide/), [Playwright installation](https://playwright.dev/docs/intro), [Playwright browsers](https://playwright.dev/docs/browsers), [Playwright emulation](https://playwright.dev/docs/emulation), [Nginx proxy module](https://nginx.org/en/docs/http/ngx_http_proxy_module.html), [Docker Official Images](https://hub.docker.com/search?image_filter=official) và [GitHub Actions Node.js guide](https://docs.github.com/en/actions/tutorials/build-and-test-code/nodejs).
+- Áp dụng: React/TypeScript render UI theo API contract, Vite proxy `/api` khi phát triển, Nginx phục vụ SPA và `proxy_pass` không kèm URI để giữ nguyên tiền tố `/api`, multi-stage build dùng Node và Nginx official images đã ghim phiên bản.
+- CI: backend chạy Ruff và unit tests; frontend chạy ESLint, typecheck, Vitest và production build. Workflow không dùng Gemini key và không chạy live tests.
+- Browser QA: Playwright-managed Chromium kiểm tra mock states trên desktop/mobile và chạy live smoke riêng qua Nginx; screenshots, traces và reports là artifact local bị Git ignore.
+- Giới hạn: Nginx chỉ bind qua Compose vào `127.0.0.1:8080`; đây là cấu hình local readiness, chưa phải public production deployment.
+
 ## FastAPI, SQLAlchemy và Docker Compose
 
 - Nguồn: [FastAPI](https://fastapi.tiangolo.com/), [SQLAlchemy](https://docs.sqlalchemy.org/) và [Docker Compose](https://docs.docker.com/compose/).
 - Áp dụng: Pydantic API contracts, SQLAlchemy 2.x connections/transactions, healthcheck và dependency ordering trong Compose.
-- Giới hạn: cấu hình hiện tại phục vụ MVP local; chưa bao gồm authentication, production secrets manager, reverse proxy hoặc cloud deployment.
+- Giới hạn: cấu hình hiện tại phục vụ MVP local; chưa bao gồm authentication, production secrets manager hoặc cloud deployment.

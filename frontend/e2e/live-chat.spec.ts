@@ -1,0 +1,77 @@
+import { expect, test } from "@playwright/test";
+
+test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Live Gemini smoke runs once on desktop Chromium.");
+  test.setTimeout(900_000);
+
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const failedRequests: string[] = [];
+  const failedResponses: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on("response", (response) => {
+    if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`);
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("status", { name: "API sẵn sàng" })).toBeVisible();
+  const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+
+  const questions = [
+    {
+      message: "Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?",
+      route: "SQL",
+      validate: async () => {
+        const response = page.locator(".message--assistant").last();
+        await expect(response.locator("details.sql-card")).toBeVisible();
+        await expect(response.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+      },
+    },
+    {
+      message: "Chính sách đổi trả của cửa hàng như thế nào?",
+      route: "RAG",
+      validate: async () => {
+        await expect(page.locator(".message--assistant").last().getByLabel("Nguồn tham khảo")).toBeVisible();
+      },
+    },
+    {
+      message: "Top 5 sản phẩm bán chạy nhất có thuộc danh mục được miễn phí vận chuyển không?",
+      route: "HYBRID",
+      validate: async () => {
+        const response = page.locator(".message--assistant").last();
+        await expect(response.locator("details.sql-card")).toBeVisible();
+        await expect(response.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+        await expect(response.getByLabel("Nguồn tham khảo")).toBeVisible();
+      },
+    },
+  ] as const;
+
+  for (const question of questions) {
+    await input.fill(question.message);
+    const responsePromise = page.waitForResponse(
+      (response) => response.url().endsWith("/api/chat") && response.request().method() === "POST",
+      { timeout: 320_000 },
+    );
+    await input.press("Enter");
+    await expect(page.getByLabel("ShopQuery AI đang xử lý")).toBeVisible();
+    const apiResponse = await responsePromise;
+    expect(apiResponse.status()).toBe(200);
+    const body = await apiResponse.json();
+    expect(body.error).toBeNull();
+    expect(body.route).toBe(question.route);
+    await expect(page.locator(".route-badge").last()).toContainText(question.route === "RAG" ? "Tài liệu" : question.route === "HYBRID" ? "SQL + Tài liệu" : "Dữ liệu SQL", { timeout: 320_000 });
+    await question.validate();
+  }
+
+  await page.screenshot({ path: testInfo.outputPath("live-conversation.png"), fullPage: true });
+  await expect(page.locator(".conversation")).toBeVisible();
+  await expect(input).toBeInViewport();
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+  expect(failedRequests).toEqual([]);
+  expect(failedResponses).toEqual([]);
+});
