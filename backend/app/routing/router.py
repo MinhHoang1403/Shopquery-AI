@@ -23,13 +23,24 @@ class QueryRouter:
     def __init__(self, gateway: GenerationGateway) -> None:
         self._gateway = gateway
 
-    def route(self, question: str) -> RouteDecision:
+    def route(
+        self,
+        question: str,
+        allowed_routes: frozenset[RouteLabel] | None = None,
+    ) -> RouteDecision:
+        routes = allowed_routes or frozenset(RouteLabel)
+        route_names = ", ".join(sorted(route.value for route in routes))
         prompt = f"""
 Classify the ShopQuery question into exactly one route:
 - SQL: needs only commerce tables (products, categories, orders, sales, revenue).
 - RAG: needs only store policy or shopping-guide documents.
 - HYBRID: needs both computed commerce rows and document policy evidence.
 - UNSUPPORTED: outside this demo store's data and documents.
+
+Available routes for the selected data source: {route_names}.
+Return UNSUPPORTED when the required evidence type is unavailable. Never select an unavailable
+route. For uploaded workspaces, "commerce tables" means their uploaded tables and "documents"
+means only documents uploaded to that same workspace.
 
 Do not answer the question and do not generate SQL.
 Examples:

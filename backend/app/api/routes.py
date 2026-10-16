@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
 
+from app.ai.gemini import GeminiGateway
 from app.api.models import (
     ChatRequest,
     ChatResponse,
@@ -16,9 +17,12 @@ from app.api.models import (
     ConversationSendResponse,
     ConversationSummaryResponse,
     DatasetColumnResponse,
+    DatasetCreateRequest,
     DatasetDetailResponse,
+    DatasetDocumentResponse,
     DatasetPreviewResponse,
     DatasetResponse,
+    DatasetTableResponse,
     HealthResponse,
     SourceResponse,
 )
@@ -32,13 +36,16 @@ from app.core.errors import (
 )
 from app.datasets.context import build_dataset_sql_context
 from app.datasets.parser import ParsedTable, parse_tabular_file
-from app.datasets.repository import DatasetInfo
+from app.datasets.repository import DatasetInfo, DatasetTableInfo
 from app.dependencies import (
     build_chat_service,
     build_conversation_repository,
     build_dataset_chat_service,
     build_dataset_repository,
+    build_document_repository,
 )
+from app.rag.repository import DatasetDocumentInfo
+from app.rag.upload_parser import parse_document_file
 from app.routing.service import ChatResult
 
 logger = logging.getLogger(__name__)
@@ -62,9 +69,7 @@ def chat(request: ChatRequest) -> ChatResponse:
             dataset = repository.get(request.dataset_id)
             service = build_dataset_chat_service(
                 get_settings(),
-                build_dataset_sql_context(
-                    dataset, repository.categorical_values(dataset)
-                ),
+                build_dataset_sql_context(dataset, repository.categorical_values(dataset)),
             )
         return _chat_response(service.chat(request.message))
     except ResourceNotFoundError as exc:
@@ -91,16 +96,12 @@ def create_conversation(
     request: ConversationCreateRequest,
 ) -> ConversationSummaryResponse:
     try:
-        return _conversation_summary(
-            build_conversation_repository().create(request.dataset_id)
-        )
+        return _conversation_summary(build_conversation_repository().create(request.dataset_id))
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.get(
-    "/conversations/{conversation_id}", response_model=ConversationDetailResponse
-)
+@router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
 def get_conversation(conversation_id: UUID) -> ConversationDetailResponse:
     try:
         return _conversation_detail(build_conversation_repository().get(conversation_id))
@@ -108,9 +109,7 @@ def get_conversation(conversation_id: UUID) -> ConversationDetailResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.patch(
-    "/conversations/{conversation_id}", response_model=ConversationSummaryResponse
-)
+@router.patch("/conversations/{conversation_id}", response_model=ConversationSummaryResponse)
 def rename_conversation(
     conversation_id: UUID, request: ConversationRenameRequest
 ) -> ConversationSummaryResponse:
@@ -124,9 +123,7 @@ def rename_conversation(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.delete(
-    "/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_conversation(conversation_id: UUID) -> Response:
     try:
         build_conversation_repository().delete(conversation_id)
@@ -153,9 +150,7 @@ def send_conversation_message(
             dataset = dataset_repository.get(conversation.dataset_id)
             service = build_dataset_chat_service(
                 get_settings(),
-                build_dataset_sql_context(
-                    dataset, dataset_repository.categorical_values(dataset)
-                ),
+                build_dataset_sql_context(dataset, dataset_repository.categorical_values(dataset)),
             )
         try:
             response = _chat_response(service.chat(request.message))
@@ -183,6 +178,20 @@ def list_datasets() -> list[DatasetResponse]:
     return [_default_dataset_response(), *uploaded]
 
 
+@router.post(
+    "/datasets",
+    response_model=DatasetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_dataset(request: DatasetCreateRequest) -> DatasetResponse:
+    try:
+        return _dataset_response(build_dataset_repository().create_workspace(request.name))
+    except ResourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/datasets/{dataset_id}", response_model=DatasetDetailResponse)
 def get_dataset(dataset_id: int) -> DatasetDetailResponse:
     try:
@@ -190,15 +199,13 @@ def get_dataset(dataset_id: int) -> DatasetDetailResponse:
         dataset = repository.get(dataset_id)
         return DatasetDetailResponse(
             **_dataset_response(dataset).model_dump(),
-            preview_rows=repository.preview_rows(dataset_id),
+            preview_rows=(repository.preview_rows(dataset_id) if dataset.table else []),
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.get(
-    "/datasets/{dataset_id}/preview", response_model=list[dict[str, object]]
-)
+@router.get("/datasets/{dataset_id}/preview", response_model=list[dict[str, object]])
 def get_dataset_preview(
     dataset_id: int, limit: Annotated[int, Query(ge=1, le=50)] = 10
 ) -> list[dict[str, object]]:
@@ -237,6 +244,124 @@ async def import_dataset(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/datasets/{dataset_id}/tables", response_model=list[DatasetTableResponse])
+def list_dataset_tables(dataset_id: int) -> list[DatasetTableResponse]:
+    try:
+        return [
+            _dataset_table_response(item)
+            for item in build_dataset_repository().get(dataset_id).tables
+        ]
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/datasets/{dataset_id}/tables/preview", response_model=DatasetPreviewResponse)
+async def preview_dataset_table(
+    dataset_id: int,
+    file: Annotated[UploadFile, File()],
+    sheet_name: Annotated[str | None, Form()] = None,
+) -> DatasetPreviewResponse:
+    try:
+        build_dataset_repository().get(dataset_id)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _dataset_preview_response(await _parse_upload(file, sheet_name))
+
+
+@router.post(
+    "/datasets/{dataset_id}/tables/import",
+    response_model=DatasetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_dataset_table(
+    dataset_id: int,
+    file: Annotated[UploadFile, File()],
+    display_name: Annotated[str | None, Form(max_length=120)] = None,
+    sheet_name: Annotated[str | None, Form()] = None,
+) -> DatasetResponse:
+    parsed = await _parse_upload(file, sheet_name)
+    try:
+        dataset = build_dataset_repository().add_table(dataset_id, parsed, display_name)
+        return _dataset_response(dataset)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ResourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/datasets/{dataset_id}/documents",
+    response_model=list[DatasetDocumentResponse],
+)
+def list_dataset_documents(dataset_id: int) -> list[DatasetDocumentResponse]:
+    try:
+        return [
+            _dataset_document_response(item)
+            for item in build_document_repository().list_documents(dataset_id)
+        ]
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/datasets/{dataset_id}/documents",
+    response_model=DatasetDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_dataset_document(
+    dataset_id: int, file: Annotated[UploadFile, File()]
+) -> DatasetDocumentResponse:
+    settings = get_settings()
+    content = await file.read(settings.upload_max_bytes + 1)
+    try:
+        parsed = parse_document_file(
+            file.filename or "", content, max_bytes=settings.upload_max_bytes
+        )
+        item = build_document_repository().add_document(dataset_id, parsed, GeminiGateway(settings))
+        return _dataset_document_response(item)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ResourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ShopQueryError as exc:
+        logger.warning("Document ingestion failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Không thể tạo embedding; tài liệu chưa được lưu.",
+        ) from exc
+    finally:
+        await file.close()
+
+
+@router.get(
+    "/datasets/{dataset_id}/documents/{document_id}",
+    response_model=DatasetDocumentResponse,
+)
+def get_dataset_document(dataset_id: int, document_id: int) -> DatasetDocumentResponse:
+    try:
+        return _dataset_document_response(
+            build_document_repository().get_document(dataset_id, document_id)
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/datasets/{dataset_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_dataset_document(dataset_id: int, document_id: int) -> Response:
+    try:
+        build_document_repository().delete_document(dataset_id, document_id)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 async def _parse_upload(file: UploadFile, sheet_name: str | None) -> ParsedTable:
     settings = get_settings()
     content = await file.read(settings.upload_max_bytes + 1)
@@ -262,8 +387,7 @@ def _chat_response(result: ChatResult) -> ChatResponse:
         sql=result.sql,
         rows=result.rows,
         sources=[
-            SourceResponse.model_validate(source, from_attributes=True)
-            for source in result.sources
+            SourceResponse.model_validate(source, from_attributes=True) for source in result.sources
         ],
     )
 
@@ -319,18 +443,41 @@ def _default_dataset_response() -> DatasetResponse:
 
 
 def _dataset_response(item: DatasetInfo) -> DatasetResponse:
+    first = item.table
     return DatasetResponse(
         dataset_id=item.dataset_id,
         kind="uploaded",
         name=item.name,
         original_filename=item.original_filename,
         file_type=item.file_type,
-        sheet_name=item.table.sheet_name,
+        sheet_name=first.sheet_name if first else None,
         row_count=item.row_count,
         column_count=item.column_count,
-        columns=[DatasetColumnResponse(**column.as_dict()) for column in item.table.columns],
+        columns=(
+            [DatasetColumnResponse(**column.as_dict()) for column in first.columns] if first else []
+        ),
+        table_count=item.table_count,
+        document_count=item.document_count,
+        tables=[_dataset_table_response(table) for table in item.tables],
         created_at=item.created_at,
     )
+
+
+def _dataset_table_response(item: DatasetTableInfo) -> DatasetTableResponse:
+    return DatasetTableResponse(
+        dataset_table_id=item.dataset_table_id,
+        display_name=item.display_name,
+        original_filename=item.original_filename,
+        file_type=item.file_type,
+        sheet_name=item.sheet_name,
+        row_count=item.row_count,
+        column_count=len(item.columns),
+        columns=[DatasetColumnResponse(**column.as_dict()) for column in item.columns],
+    )
+
+
+def _dataset_document_response(item: DatasetDocumentInfo) -> DatasetDocumentResponse:
+    return DatasetDocumentResponse.model_validate(item, from_attributes=True)
 
 
 def _dataset_preview_response(parsed: ParsedTable) -> DatasetPreviewResponse:

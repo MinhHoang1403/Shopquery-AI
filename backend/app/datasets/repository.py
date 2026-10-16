@@ -1,4 +1,4 @@
-"""PostgreSQL persistence for managed uploaded datasets."""
+"""PostgreSQL persistence for dataset workspaces and their tabular sources."""
 
 from __future__ import annotations
 
@@ -19,13 +19,12 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
-    func,
     insert,
     select,
     text,
 )
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ResourceConflictError, ResourceNotFoundError
 from app.database.models import Dataset, DatasetTable
@@ -50,18 +49,27 @@ class DatasetTableInfo:
     physical_table_name: str
     columns: tuple[ColumnSpec, ...]
     row_count: int
+    dataset_table_id: int | None = None
+    original_filename: str | None = None
+    file_type: str | None = None
 
 
 @dataclass(frozen=True)
 class DatasetInfo:
     dataset_id: int
     name: str
-    original_filename: str
-    file_type: str
-    row_count: int
-    column_count: int
+    original_filename: str | None
+    file_type: str | None
+    row_count: int | None
+    column_count: int | None
     created_at: datetime
-    table: DatasetTableInfo
+    table: DatasetTableInfo | None
+    tables: tuple[DatasetTableInfo, ...] = ()
+    document_count: int = 0
+
+    @property
+    def table_count(self) -> int:
+        return len(self.tables) if self.tables else int(self.table is not None)
 
 
 class DatasetRepository:
@@ -71,47 +79,47 @@ class DatasetRepository:
 
     def list(self) -> list[DatasetInfo]:
         statement = (
-            select(Dataset, DatasetTable)
-            .join(DatasetTable, DatasetTable.dataset_id == Dataset.dataset_id)
+            select(Dataset)
+            .options(selectinload(Dataset.tables), selectinload(Dataset.documents))
             .order_by(Dataset.created_at.desc(), Dataset.dataset_id.desc())
         )
         with Session(self._setup_engine) as session:
-            return [
-                self._to_info(dataset, table)
-                for dataset, table in session.execute(statement)
-            ]
+            return [self._to_info(item) for item in session.scalars(statement).unique()]
 
     def get(self, dataset_id: int) -> DatasetInfo:
         statement = (
-            select(Dataset, DatasetTable)
-            .join(DatasetTable, DatasetTable.dataset_id == Dataset.dataset_id)
+            select(Dataset)
+            .options(selectinload(Dataset.tables), selectinload(Dataset.documents))
             .where(Dataset.dataset_id == dataset_id)
         )
         with Session(self._setup_engine) as session:
-            row = session.execute(statement).first()
-        if row is None:
+            dataset = session.scalar(statement)
+            info = self._to_info(dataset) if dataset is not None else None
+        if info is None:
             raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")
-        return self._to_info(row[0], row[1])
+        return info
+
+    def create_workspace(self, name: str) -> DatasetInfo:
+        normalized_name = self._validate_name(name)
+        try:
+            with Session(self._setup_engine) as session:
+                dataset = Dataset(name=normalized_name)
+                session.add(dataset)
+                session.commit()
+                dataset_id = dataset.dataset_id
+        except IntegrityError as exc:
+            raise ResourceConflictError("Tên bộ dữ liệu đã tồn tại.") from exc
+        return self.get(dataset_id)
 
     def create(self, name: str, parsed: ParsedTable) -> DatasetInfo:
-        normalized_name = name.strip()
-        if not normalized_name:
-            raise ValueError("Tên bộ dữ liệu không được để trống.")
-        if len(normalized_name) > 120:
-            raise ValueError("Tên bộ dữ liệu không được vượt quá 120 ký tự.")
+        """Keep the legacy create-and-import flow atomic."""
 
-        physical_table_name = f"dataset_{uuid4().hex}"
-        dynamic_table = self._table(physical_table_name, parsed.columns)
-        filename_stem = PurePosixPath(parsed.filename).stem[:120]
+        normalized_name = self._validate_name(name)
+        physical_name = f"dataset_{uuid4().hex}"
+        dynamic_table = self._table(physical_name, parsed.columns)
+        display_name = parsed.sheet_name or PurePosixPath(parsed.filename).stem[:120]
         try:
             with self._setup_engine.begin() as connection:
-                existing = connection.scalar(
-                    select(Dataset.dataset_id).where(
-                        func.lower(Dataset.name) == normalized_name.lower()
-                    )
-                )
-                if existing is not None:
-                    raise ResourceConflictError("Tên bộ dữ liệu đã tồn tại.")
                 dataset_id = connection.scalar(
                     insert(Dataset)
                     .values(
@@ -125,39 +133,52 @@ class DatasetRepository:
                 )
                 if dataset_id is None:
                     raise RuntimeError("Dataset insert did not return an identifier")
-                dynamic_table.create(connection)
-                if parsed.rows:
-                    connection.execute(insert(dynamic_table), parsed.database_rows())
-                connection.execute(
-                    insert(DatasetTable).values(
-                        dataset_id=dataset_id,
-                        display_name=parsed.sheet_name or filename_stem,
-                        sheet_name=parsed.sheet_name,
-                        physical_table_name=physical_table_name,
-                        columns=[column.as_dict() for column in parsed.columns],
-                        row_count=parsed.row_count,
-                    )
-                )
-                connection.execute(
-                    text(
-                        f'GRANT SELECT ON TABLE "{UPLOADED_SCHEMA}".'
-                        f'"{physical_table_name}" TO shopquery_reader'
-                    )
+                self._insert_table(
+                    connection,
+                    dataset_id,
+                    display_name,
+                    physical_name,
+                    parsed,
+                    dynamic_table,
                 )
         except IntegrityError as exc:
-            raise ResourceConflictError("Tên bộ dữ liệu đã tồn tại.") from exc
+            raise ResourceConflictError("Tên bộ dữ liệu hoặc bảng đã tồn tại.") from exc
         return self.get(dataset_id)
 
-    def preview_rows(self, dataset_id: int, limit: int = 10) -> list[dict[str, Any]]:
+    def add_table(
+        self, dataset_id: int, parsed: ParsedTable, display_name: str | None = None
+    ) -> DatasetInfo:
+        self.get(dataset_id)
+        name = (display_name or parsed.sheet_name or PurePosixPath(parsed.filename).stem).strip()
+        if not name or len(name) > 120:
+            raise ValueError("Tên bảng phải có từ 1 đến 120 ký tự.")
+        physical_name = f"dataset_{uuid4().hex}"
+        dynamic_table = self._table(physical_name, parsed.columns)
+        try:
+            with self._setup_engine.begin() as connection:
+                self._insert_table(
+                    connection,
+                    dataset_id,
+                    name,
+                    physical_name,
+                    parsed,
+                    dynamic_table,
+                )
+        except IntegrityError as exc:
+            raise ResourceConflictError("Tên bảng đã tồn tại trong bộ dữ liệu.") from exc
+        return self.get(dataset_id)
+
+    def preview_rows(
+        self, dataset_id: int, limit: int = 10, table_id: int | None = None
+    ) -> list[dict[str, Any]]:
         dataset = self.get(dataset_id)
-        table = self._table(dataset.table.physical_table_name, dataset.table.columns)
+        table_info = self._select_table(dataset, table_id)
+        table = self._table(table_info.physical_table_name, table_info.columns)
         with self._readonly_engine.connect() as connection:
-            result = connection.execute(select(table).limit(limit)).mappings()
-            rows = [dict(row) for row in result]
-        source_names = {column.name: column.source_name for column in dataset.table.columns}
+            rows = [dict(row) for row in connection.execute(select(table).limit(limit)).mappings()]
+        source_names = {column.name: column.source_name for column in table_info.columns}
         return [
-            {source_names[key]: _json_safe(value) for key, value in row.items()}
-            for row in rows
+            {source_names[key]: _json_safe(value) for key, value in row.items()} for row in rows
         ]
 
     def categorical_values(
@@ -166,38 +187,91 @@ class DatasetRepository:
         *,
         max_distinct_values: int = 20,
         max_value_length: int = 80,
-    ) -> dict[str, tuple[str, ...]]:
-        """Return bounded exact values for low-cardinality text columns."""
+    ) -> dict[str, tuple[str, ...]] | dict[str, dict[str, tuple[str, ...]]]:
+        """Return bounded exact values grouped by physical table name."""
 
-        table = self._table(dataset.table.physical_table_name, dataset.table.columns)
-        hints: dict[str, tuple[str, ...]] = {}
+        result: dict[str, dict[str, tuple[str, ...]]] = {}
         with self._readonly_engine.connect() as connection:
-            for column in dataset.table.columns:
-                if column.data_type != "TEXT":
-                    continue
-                expression = table.c[column.name]
-                statement = (
-                    select(expression)
-                    .where(expression.is_not(None), expression != "")
-                    .distinct()
-                    .limit(max_distinct_values + 1)
-                )
-                values = list(connection.scalars(statement))
-                if (
-                    len(values) <= max_distinct_values
-                    and all(len(value) <= max_value_length for value in values)
-                ):
-                    hints[column.name] = tuple(
-                        sorted(values, key=lambda value: value.casefold())
+            for info in dataset.tables or (() if dataset.table is None else (dataset.table,)):
+                table = self._table(info.physical_table_name, info.columns)
+                hints: dict[str, tuple[str, ...]] = {}
+                for column in info.columns:
+                    if column.data_type != "TEXT":
+                        continue
+                    expression = table.c[column.name]
+                    values = list(
+                        connection.scalars(
+                            select(expression)
+                            .where(expression.is_not(None), expression != "")
+                            .distinct()
+                            .limit(max_distinct_values + 1)
+                        )
                     )
-        return hints
+                    if len(values) <= max_distinct_values and all(
+                        len(value) <= max_value_length for value in values
+                    ):
+                        hints[column.name] = tuple(
+                            sorted(values, key=lambda value: value.casefold())
+                        )
+                result[info.physical_table_name] = hints
+        if len(result) == 1:
+            return next(iter(result.values()))
+        return result
+
+    def _insert_table(
+        self,
+        connection: Any,
+        dataset_id: int,
+        display_name: str,
+        physical_name: str,
+        parsed: ParsedTable,
+        dynamic_table: Table,
+    ) -> None:
+        dynamic_table.create(connection)
+        if parsed.rows:
+            connection.execute(insert(dynamic_table), parsed.database_rows())
+        connection.execute(
+            insert(DatasetTable).values(
+                dataset_id=dataset_id,
+                display_name=display_name,
+                original_filename=parsed.filename,
+                file_type=parsed.file_type,
+                sheet_name=parsed.sheet_name,
+                physical_table_name=physical_name,
+                columns=[column.as_dict() for column in parsed.columns],
+                row_count=parsed.row_count,
+            )
+        )
+        connection.execute(
+            text(f'GRANT SELECT ON TABLE "{UPLOADED_SCHEMA}"."{physical_name}" TO shopquery_reader')
+        )
+
+    @staticmethod
+    def _select_table(dataset: DatasetInfo, table_id: int | None) -> DatasetTableInfo:
+        tables = dataset.tables or (() if dataset.table is None else (dataset.table,))
+        if not tables:
+            raise ResourceNotFoundError("Bộ dữ liệu chưa có bảng dữ liệu.")
+        if table_id is None:
+            return tables[0]
+        for item in tables:
+            if item.dataset_table_id == table_id:
+                return item
+        raise ResourceNotFoundError("Không tìm thấy bảng trong bộ dữ liệu.")
+
+    @staticmethod
+    def _validate_name(name: str) -> str:
+        normalized = name.strip()
+        if not normalized:
+            raise ValueError("Tên bộ dữ liệu không được để trống.")
+        if len(normalized) > 120:
+            raise ValueError("Tên bộ dữ liệu không được vượt quá 120 ký tự.")
+        return normalized
 
     @staticmethod
     def _table(name: str, columns: tuple[ColumnSpec, ...]) -> Table:
-        metadata = MetaData()
         return Table(
             name,
-            metadata,
+            MetaData(),
             *[
                 Column(column.name, SQL_TYPES[column.data_type](), nullable=True)
                 for column in columns
@@ -206,21 +280,36 @@ class DatasetRepository:
         )
 
     @staticmethod
-    def _to_info(dataset: Any, table: Any) -> DatasetInfo:
-        columns = tuple(ColumnSpec(**column) for column in table.columns)
+    def _to_info(dataset: Dataset) -> DatasetInfo:
+        tables = tuple(
+            DatasetTableInfo(
+                dataset_table_id=table.dataset_table_id,
+                display_name=table.display_name,
+                original_filename=table.original_filename,
+                file_type=table.file_type,
+                sheet_name=table.sheet_name,
+                physical_table_name=table.physical_table_name,
+                columns=tuple(ColumnSpec(**column) for column in table.columns),
+                row_count=table.row_count,
+            )
+            for table in sorted(dataset.tables, key=lambda item: item.dataset_table_id)
+        )
+        first = tables[0] if tables else None
         return DatasetInfo(
             dataset_id=dataset.dataset_id,
             name=dataset.name,
-            original_filename=dataset.original_filename,
-            file_type=dataset.file_type,
-            row_count=dataset.row_count,
-            column_count=dataset.column_count,
-            created_at=dataset.created_at,
-            table=DatasetTableInfo(
-                display_name=table.display_name,
-                sheet_name=table.sheet_name,
-                physical_table_name=table.physical_table_name,
-                columns=columns,
-                row_count=table.row_count,
+            original_filename=(
+                dataset.original_filename or (first.original_filename if first else None)
             ),
+            file_type=dataset.file_type or (first.file_type if first else None),
+            row_count=dataset.row_count
+            if dataset.row_count is not None
+            else (first.row_count if first else None),
+            column_count=dataset.column_count
+            if dataset.column_count is not None
+            else (len(first.columns) if first else None),
+            created_at=dataset.created_at,
+            table=first,
+            tables=tables,
+            document_count=len(dataset.documents),
         )

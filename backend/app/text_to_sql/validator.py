@@ -56,15 +56,16 @@ class SqlValidator:
         self,
         table_columns: dict[str, set[str]] | None = None,
         allowed_schemas: dict[str, str] | None = None,
+        max_tables: int | None = None,
     ) -> None:
         self._table_columns = {
             table.lower(): {column.lower() for column in columns}
             for table, columns in (table_columns or TABLE_COLUMNS).items()
         }
         self._allowed_schemas = {
-            table.lower(): schema.lower()
-            for table, schema in (allowed_schemas or {}).items()
+            table.lower(): schema.lower() for table, schema in (allowed_schemas or {}).items()
         }
+        self._max_tables = max_tables
 
     def validate(self, sql: str) -> ValidatedSql:
         if not sql.strip():
@@ -106,6 +107,10 @@ class SqlValidator:
             aliases[table_name] = table_name
         if not tables:
             raise SqlValidationError("A business table is required")
+        if self._max_tables is not None and len(tables) > self._max_tables:
+            raise SqlValidationError("Multiple tables require declared relationship metadata")
+        if self._max_tables == 1 and root.find(exp.Join) is not None:
+            raise SqlValidationError("JOIN is not supported without declared relationship metadata")
         return tables, aliases
 
     @staticmethod
@@ -119,9 +124,7 @@ class SqlValidator:
         self, root: exp.Select, tables: set[str], aliases: dict[str, str]
     ) -> None:
         projection_aliases = {
-            expression.alias.lower()
-            for expression in root.expressions
-            if expression.alias
+            expression.alias.lower() for expression in root.expressions if expression.alias
         }
         for column in root.find_all(exp.Column):
             column_name = column.name.lower()

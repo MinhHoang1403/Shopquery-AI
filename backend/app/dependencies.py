@@ -54,27 +54,48 @@ def build_chat_service(settings: Settings) -> ChatService:
 def build_dataset_chat_service(
     settings: Settings, context: DatasetSqlContext
 ) -> DatasetChatService:
-    """Build an SQL-only pipeline scoped to one uploaded dataset."""
+    """Build request-local pipelines scoped to one uploaded workspace."""
 
     gateway = GeminiGateway(settings)
-    sql_pipeline = TextToSqlPipeline(
-        generator=SqlGenerator(
-            gateway,
-            settings.demo_reference_date,
-            schema_context=context.schema_context,
-        ),
-        validator=SqlValidator(
-            table_columns=context.table_columns,
-            allowed_schemas=context.allowed_schemas,
-        ),
-        executor=SqlExecutor(
-            get_readonly_engine(),
-            settings.sql_statement_timeout_ms,
-            settings.sql_max_rows,
-        ),
-        gateway=gateway,
+    sql_pipeline = None
+    if context.table_columns:
+        sql_pipeline = TextToSqlPipeline(
+            generator=SqlGenerator(
+                gateway,
+                settings.demo_reference_date,
+                schema_context=context.schema_context,
+            ),
+            validator=SqlValidator(
+                table_columns=context.table_columns,
+                allowed_schemas=context.allowed_schemas,
+                max_tables=1,
+            ),
+            executor=SqlExecutor(
+                get_readonly_engine(),
+                settings.sql_statement_timeout_ms,
+                settings.sql_max_rows,
+            ),
+            gateway=gateway,
+        )
+    rag_pipeline = None
+    if context.has_documents:
+        rag_pipeline = RagPipeline(
+            embedder=gateway,
+            gateway=gateway,
+            repository=DocumentRepository(get_setup_engine(), get_readonly_engine()),
+            dataset_id=context.dataset_id,
+        )
+    hybrid_pipeline = (
+        HybridPipeline(sql_pipeline, rag_pipeline, gateway)
+        if sql_pipeline is not None and rag_pipeline is not None
+        else None
     )
-    return DatasetChatService(sql_pipeline)
+    return DatasetChatService(QueryRouter(gateway), sql_pipeline, rag_pipeline, hybrid_pipeline)
+
+
+def build_document_repository() -> DocumentRepository:
+    ensure_application_schema(get_settings_url())
+    return DocumentRepository(get_setup_engine(), get_readonly_engine())
 
 
 def build_dataset_repository() -> DatasetRepository:

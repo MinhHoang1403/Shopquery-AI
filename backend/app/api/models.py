@@ -49,6 +49,39 @@ class DatasetColumnResponse(BaseModel):
     data_type: str
 
 
+class DatasetTableResponse(BaseModel):
+    dataset_table_id: int | None
+    display_name: str
+    original_filename: str | None
+    file_type: str | None
+    sheet_name: str | None
+    row_count: int
+    column_count: int
+    columns: list[DatasetColumnResponse] = Field(default_factory=list)
+
+
+class DatasetDocumentResponse(BaseModel):
+    document_id: int
+    dataset_id: int
+    original_filename: str
+    file_type: str
+    title: str
+    chunk_count: int
+    created_at: datetime
+
+
+class DatasetCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        stripped = " ".join(value.split())
+        if not stripped:
+            raise ValueError("name must not be blank")
+        return stripped
+
+
 class DatasetResponse(BaseModel):
     dataset_id: int | None
     kind: Literal["default", "uploaded"]
@@ -59,6 +92,9 @@ class DatasetResponse(BaseModel):
     row_count: int | None = None
     column_count: int | None = None
     columns: list[DatasetColumnResponse] = Field(default_factory=list)
+    table_count: int = 0
+    document_count: int = 0
+    tables: list[DatasetTableResponse] = Field(default_factory=list)
     created_at: datetime | None = None
 
 
