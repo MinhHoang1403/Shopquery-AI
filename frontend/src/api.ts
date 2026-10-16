@@ -194,11 +194,15 @@ export async function previewDataset(
   file: File,
   sheetName?: string | null,
   signal?: AbortSignal,
+  datasetId?: number | null,
 ): Promise<DatasetPreview> {
   const form = new FormData();
   form.append("file", file);
   if (sheetName) form.append("sheet_name", sheetName);
-  return await requestJson("/api/datasets/preview", {
+  const url = datasetId
+    ? `/api/datasets/${datasetId}/tables/preview`
+    : "/api/datasets/preview";
+  return await requestJson(url, {
     method: "POST",
     body: form,
     signal,

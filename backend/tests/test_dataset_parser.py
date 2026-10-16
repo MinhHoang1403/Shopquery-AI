@@ -65,6 +65,18 @@ def test_csv_utf8_bom_unicode_and_leading_zero_identifier() -> None:
     }
 
 
+def test_csv_transliterates_vietnamese_d_in_database_identifiers() -> None:
+    parsed = parse(
+        "orders.csv",
+        "Đơn hàng,Giá trị đơn hàng\nA01,500000\n".encode(),
+    )
+
+    assert [column.name for column in parsed.columns] == [
+        "don_hang",
+        "gia_tri_don_hang",
+    ]
+
+
 @pytest.mark.parametrize(
     ("content", "message"),
     [

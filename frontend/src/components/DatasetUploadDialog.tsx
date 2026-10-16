@@ -80,7 +80,12 @@ export function DatasetUploadDialog({ datasets, onClose, onImported }: DatasetUp
     setIsPreviewing(true);
     setError(null);
     try {
-      const result = await previewDataset(selectedFile, sheetName, controller.signal);
+      const result = await previewDataset(
+        selectedFile,
+        sheetName,
+        controller.signal,
+        workspace?.dataset_id,
+      );
       setPreview(result);
       setSelectedSheet(result.sheet_name);
     } catch (previewError) {

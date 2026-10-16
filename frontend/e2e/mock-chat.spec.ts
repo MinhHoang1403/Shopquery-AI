@@ -85,6 +85,7 @@ interface ApiState {
   messages: Array<Record<string, unknown>>;
   documents: Array<Record<string, unknown>>;
   messageRequests: number;
+  previewPaths: string[];
 }
 
 const runtimeErrors = new WeakMap<Page, { console: string[]; page: string[]; requests: string[]; responses: string[] }>();
@@ -136,6 +137,7 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
       : [],
     documents: [],
     messageRequests: 0,
+    previewPaths: [],
   };
   const summary = () => ({
     conversation_id: conversationId,
@@ -156,7 +158,12 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
       state.datasets = [defaultDataset, emptyWorkspace];
       return json(route, emptyWorkspace, 201);
     }
-    if (url.pathname === "/api/datasets/preview" && method === "POST") {
+    if (
+      (url.pathname === "/api/datasets/preview" ||
+        url.pathname === "/api/datasets/7/tables/preview") &&
+      method === "POST"
+    ) {
+      state.previewPaths.push(url.pathname);
       return json(route, {
         filename: "sales.csv", file_type: "csv", sheet_name: null, sheet_names: [],
         row_count: 2, column_count: 2, columns: uploadedDataset.columns,
@@ -438,7 +445,7 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
 });
 
 test("previews and imports a CSV before selecting the uploaded dataset", async ({ page }) => {
-  await installApi(page);
+  const state = await installApi(page);
   await openApp(page);
   await openSidebar(page);
   await page.getByRole("button", { name: "Nạp dữ liệu mới" }).click();
@@ -446,6 +453,7 @@ test("previews and imports a CSV before selecting the uploaded dataset", async (
   await page.getByRole("button", { name: "Tạo workspace rỗng" }).click();
   await page.getByLabel(/Thêm CSV hoặc XLSX/).setInputFiles("e2e/fixtures/sales.csv");
   await expect(page.getByText("120000")).toBeVisible();
+  expect(state.previewPaths).toEqual(["/api/datasets/7/tables/preview"]);
   await expect(page.locator(".preview-stats span").filter({ hasText: "2 dòng" })).toBeVisible();
   await page.getByRole("button", { name: "Thêm bảng" }).click();
   await expect(page.getByText("Đã cập nhật Doanh số 2026 thành công.")).toBeVisible();

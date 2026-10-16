@@ -297,6 +297,7 @@ def _build_columns(
 
 
 def _identifier(header: str, position: int) -> str:
+    header = header.translate(str.maketrans({"Đ": "D", "đ": "d"}))
     ascii_name = (
         unicodedata.normalize("NFKD", header).encode("ascii", "ignore").decode("ascii")
     )

@@ -1,5 +1,11 @@
 import { defineConfig } from "@playwright/test";
 
+const runtimeEnv = (
+  globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  }
+).process?.env ?? {};
+
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "./test-results",
@@ -8,7 +14,7 @@ export default defineConfig({
   timeout: 120_000,
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:8080",
+    baseURL: runtimeEnv.SHOPQUERY_E2E_BASE_URL ?? "http://127.0.0.1:8080",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },

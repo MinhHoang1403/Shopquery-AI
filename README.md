@@ -281,7 +281,22 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Mock E2E chạy ở năm viewport 1440, 1280, 768, 390 và 320 px. `npm run test:e2e:live` gọi API thật, database và Gemini; chỉ chạy khi full stack đã healthy, đã ingest corpus và muốn dùng quota. GitHub Actions chỉ chạy Ruff/unit tests và frontend quality gates, không nhận Gemini key và không gọi live tests.
+Mock E2E chạy ở năm viewport 1440, 1280, 768, 390 và 320 px. `npm run test:e2e:live` gọi API thật, database và Gemini cho dữ liệu cửa hàng mẫu.
+
+`npm run test:e2e:workspace-live` kiểm tra qua giao diện việc tạo workspace, preview/import CSV và XLSX có chọn sheet, upload PDF/DOCX/TXT/MD, chat SQL/RAG/Hybrid và khôi phục hội thoại. Bắt buộc dùng database test riêng và API test, không trỏ bài này vào database `shopquery`:
+
+```powershell
+# Terminal frontend dev, API test đang chạy ở cổng 8002
+$env:SHOPQUERY_API_PROXY_TARGET = "http://127.0.0.1:8002"
+npm run dev -- --port 5174 --strictPort
+
+# Terminal Playwright
+$env:SHOPQUERY_LIVE_WORKSPACE = "1"
+$env:SHOPQUERY_E2E_BASE_URL = "http://127.0.0.1:5174"
+npm run test:e2e:workspace-live
+```
+
+Hai live suite đều dùng quota Gemini. Chỉ chạy khi API/database tương ứng healthy. GitHub Actions chỉ chạy Ruff/unit tests và frontend quality gates, không nhận Gemini key và không gọi live tests.
 
 ### Docker Compose
 

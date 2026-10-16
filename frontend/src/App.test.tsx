@@ -148,7 +148,11 @@ function installApi(options: MockOptions = {}) {
       return jsonResponse(summary(conversationId, { title: "Tên đã đổi" }));
     }
     if (url.pathname === `/api/conversations/${conversationId}` && method === "DELETE") return jsonResponse(null, 204);
-    if (url.pathname === "/api/datasets/preview" && method === "POST") {
+    if (
+      (url.pathname === "/api/datasets/preview" ||
+        url.pathname === "/api/datasets/7/tables/preview") &&
+      method === "POST"
+    ) {
       if (options.previewError) return jsonResponse({ detail: options.previewError }, 422);
       return jsonResponse({
         filename: "sales.csv",
