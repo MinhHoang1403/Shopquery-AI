@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from io import BytesIO
 from uuid import UUID, uuid4
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
@@ -135,6 +137,12 @@ class FakeDatasetRepository:
         self.get(dataset_id)
         return [{"Sản phẩm": "Áo", "Doanh thu": 120_000}][:limit]
 
+    def categorical_values(
+        self, dataset: DatasetInfo
+    ) -> dict[str, tuple[str, ...]]:
+        assert dataset.dataset_id == 7
+        return {"san_pham": ("Áo",)}
+
 
 def test_conversation_crud_and_message_contract(monkeypatch) -> None:
     repository = FakeConversationRepository()
@@ -218,6 +226,14 @@ def test_dataset_preview_accepts_xlsx_and_selected_sheet() -> None:
     content = BytesIO()
     workbook.save(content)
     workbook.close()
+    source = BytesIO(content.getvalue())
+    content = BytesIO()
+    with ZipFile(source) as archive, ZipFile(content, "w", ZIP_DEFLATED) as rewritten:
+        for info in archive.infolist():
+            data = archive.read(info.filename)
+            if info.filename.startswith("xl/worksheets/"):
+                data = re.sub(rb"<dimension[^>]*/>", b"", data)
+            rewritten.writestr(info, data)
 
     response = TestClient(app).post(
         "/api/datasets/preview",

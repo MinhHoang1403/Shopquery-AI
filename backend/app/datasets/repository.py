@@ -160,6 +160,38 @@ class DatasetRepository:
             for row in rows
         ]
 
+    def categorical_values(
+        self,
+        dataset: DatasetInfo,
+        *,
+        max_distinct_values: int = 20,
+        max_value_length: int = 80,
+    ) -> dict[str, tuple[str, ...]]:
+        """Return bounded exact values for low-cardinality text columns."""
+
+        table = self._table(dataset.table.physical_table_name, dataset.table.columns)
+        hints: dict[str, tuple[str, ...]] = {}
+        with self._readonly_engine.connect() as connection:
+            for column in dataset.table.columns:
+                if column.data_type != "TEXT":
+                    continue
+                expression = table.c[column.name]
+                statement = (
+                    select(expression)
+                    .where(expression.is_not(None), expression != "")
+                    .distinct()
+                    .limit(max_distinct_values + 1)
+                )
+                values = list(connection.scalars(statement))
+                if (
+                    len(values) <= max_distinct_values
+                    and all(len(value) <= max_value_length for value in values)
+                ):
+                    hints[column.name] = tuple(
+                        sorted(values, key=lambda value: value.casefold())
+                    )
+        return hints
+
     @staticmethod
     def _table(name: str, columns: tuple[ColumnSpec, ...]) -> Table:
         metadata = MetaData()

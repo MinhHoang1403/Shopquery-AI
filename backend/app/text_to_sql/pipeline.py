@@ -42,6 +42,10 @@ class TextToSqlPipeline:
 Answer the user's question in the same language as the question.
 Use only the JSON query result below. Do not invent, estimate, or supplement numbers.
 If the result is empty, clearly say that no matching data was found.
+Treat numeric zero as a real result, never as missing data.
+For aggregate results, a null value is not zero. If matched_row_count is zero, say no rows
+matched. If matched_row_count is positive and the aggregate is null, say matching rows exist
+but their aggregated values are null. If no count is present, do not invent which case occurred.
 
 Question: {question}
 Query result: {json.dumps(rows, ensure_ascii=False)}

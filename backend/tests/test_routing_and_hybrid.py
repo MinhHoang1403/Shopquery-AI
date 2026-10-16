@@ -100,6 +100,10 @@ def test_sql_prompt_requires_category_evidence_for_policy_comparison() -> None:
 
     assert "include category_code and category_name" in gateway.prompt
     assert "infer a category from product_name" in gateway.prompt
+    assert "Do not add date, status, category, or other filters" in gateway.prompt
+    assert "COUNT(*)" in gateway.prompt
+    assert "AS matched_row_count" in gateway.prompt
+    assert "Never label a SUM, AVG" in gateway.prompt
 
 
 @pytest.mark.parametrize(

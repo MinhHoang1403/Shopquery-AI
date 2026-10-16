@@ -12,8 +12,10 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import PurePosixPath
 from typing import Any
+from xml.etree.ElementTree import ParseError
 
 from openpyxl import load_workbook
+from openpyxl.utils.cell import range_boundaries
 
 from app.core.errors import UploadValidationError
 
@@ -173,7 +175,9 @@ def _parse_xlsx(
         if selected_sheet not in sheet_names:
             raise UploadValidationError("Sheet đã chọn không tồn tại trong file.")
         worksheet = workbook[selected_sheet]
-        if worksheet.max_column > max_columns:
+        dimension = worksheet.calculate_dimension(force=True)
+        _, _, sheet_max_column, _ = range_boundaries(dimension)
+        if sheet_max_column > max_columns:
             raise UploadValidationError(
                 f"File vượt quá giới hạn {max_columns} cột dữ liệu."
             )
@@ -186,7 +190,7 @@ def _parse_xlsx(
         rows: list[tuple[Any, ...]] = []
         formula_warning = False
         for cells in row_iterator:
-            values = tuple(cell.value for cell in cells[: len(headers)])
+            values = tuple(_xlsx_cell_value(cell) for cell in cells[: len(headers)])
             if len(values) != len(headers):
                 values += (None,) * (len(headers) - len(values))
             if all(value is None or str(value).strip() == "" for value in values):
@@ -216,8 +220,21 @@ def _parse_xlsx(
             tuple(rows),
             warnings,
         )
+    except UploadValidationError:
+        raise
+    except ParseError as exc:
+        raise UploadValidationError("XLSX không hợp lệ hoặc không thể đọc an toàn.") from exc
     finally:
         workbook.close()
+
+
+def _xlsx_cell_value(cell: Any) -> Any:
+    value = cell.value
+    if isinstance(value, datetime):
+        number_format = re.sub(r'"[^"]*"|\\.', "", cell.number_format.casefold())
+        if "h" not in number_format and "s" not in number_format:
+            return value.date()
+    return value
 
 
 def _validate_xlsx_archive(content: bytes) -> None:

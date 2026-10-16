@@ -69,3 +69,16 @@ Các test parser xác định bao phủ UTF-8 BOM, Unicode, mã có số 0 đầ
 - Dataset upload hiện là một bảng/một sheet mỗi lần, không join datasets và không dùng RAG/Hybrid của corpus demo.
 - Chưa có authentication, tenant isolation, antivirus và endpoint xóa dataset; không phù hợp để nhận dữ liệu nhạy cảm trên Internet.
 - Live LLM có tính không tất định. Báo cáo này chỉ phản ánh đúng các request đã chạy ở ngày/ môi trường nêu trên.
+
+## Bổ sung đánh giá độ tin cậy ngày 2026-10-16
+
+Đợt kiểm tra này tập trung vào dataset CSV thật từng trả `SUM = NULL` và workbook XLSX thật từng làm endpoint preview trả 500. Ground truth được tính độc lập từ file nguồn và PostgreSQL, không lấy output Gemini làm expected result.
+
+- CSV 120 dòng: 31 đơn `Hoàn thành` tại `Bắc`, tổng `32.465.000`. Sau sửa, generated SQL dùng đúng literal `Bắc` và trả đúng tổng/count.
+- XLSX `Ton_kho`: 60 dòng, tổng tồn `2.229`, 20 dòng dưới tồn tối thiểu.
+- XLSX `Nhap_kho`: 28 dòng, tổng số lượng nhập `732`.
+- 95 ca xác định được thu thập và đều pass: 81 unit/API/parser/security cùng 14 PostgreSQL integration.
+- 11 luồng live đại diện đều pass: 7 SQL (gồm CSV/XLSX và 1 Chromium UI upload/query file thật), 2 RAG, 1 Hybrid và 1 Unsupported. Không có 429/503 trong đợt này.
+- RAG/Hybrid chỉ trả chunk ID tồn tại; SQL rows khớp truy vấn PostgreSQL độc lập; Unsupported không tạo SQL, rows hoặc source.
+
+Chi tiết root cause, SQL/evidence từng ca, ma trận kiểm thử và inventory cleanup nằm trong `docs/system_reliability_audit.md`.

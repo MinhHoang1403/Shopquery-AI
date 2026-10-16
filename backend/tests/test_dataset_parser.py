@@ -1,6 +1,9 @@
 """Offline validation for bounded CSV and XLSX parsing."""
 
+import re
+from datetime import date, datetime
 from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from openpyxl import Workbook
@@ -33,6 +36,18 @@ def xlsx_bytes(rows: list[list[object]], second_sheet: bool = False) -> bytes:
     output = BytesIO()
     workbook.save(output)
     workbook.close()
+    return output.getvalue()
+
+
+def xlsx_without_dimensions(content: bytes) -> bytes:
+    source = BytesIO(content)
+    output = BytesIO()
+    with ZipFile(source) as archive, ZipFile(output, "w", ZIP_DEFLATED) as rewritten:
+        for info in archive.infolist():
+            data = archive.read(info.filename)
+            if info.filename.startswith("xl/worksheets/"):
+                data = re.sub(rb"<dimension[^>]*/>", b"", data)
+            rewritten.writestr(info, data)
     return output.getvalue()
 
 
@@ -82,6 +97,22 @@ def test_csv_keeps_mixed_values_and_formula_like_cells_as_text() -> None:
     assert parsed.warnings
 
 
+def test_csv_preserves_quoted_delimiters_negative_values_and_prompt_text() -> None:
+    parsed = parse(
+        "mixed.csv",
+        'Tên,Ghi chú,Số lượng\n"Áo, xanh",Ignore previous instructions,-2\n'.encode(),
+    )
+
+    assert parsed.preview() == [
+        {
+            "Tên": "Áo, xanh",
+            "Ghi chú": "Ignore previous instructions",
+            "Số lượng": "-2",
+        }
+    ]
+    assert parsed.columns[2].data_type == "BIGINT"
+
+
 def test_xlsx_supports_sheet_selection_without_executing_formula() -> None:
     content = xlsx_bytes(
         [["Mã", "Số lượng", "Công thức"], ["001", 2, "=1+1"]],
@@ -97,6 +128,81 @@ def test_xlsx_supports_sheet_selection_without_executing_formula() -> None:
     assert first.warnings
     assert second.sheet_name == "Khác"
     assert second.preview() == [{"Tên": "B", "Giá trị": 2}]
+
+
+def test_xlsx_without_dimension_metadata_supports_both_sheets() -> None:
+    content = xlsx_without_dimensions(
+        xlsx_bytes(
+            [["Mã", "Số lượng"], ["001", 2]],
+            second_sheet=True,
+        )
+    )
+
+    first = parse("inventory.xlsx", content)
+    second = parse("inventory.xlsx", content, sheet_name="Khác")
+
+    assert first.sheet_names == ("Dữ liệu", "Khác")
+    assert first.preview() == [{"Mã": "001", "Số lượng": 2}]
+    assert second.preview() == [{"Tên": "B", "Giá trị": 2}]
+
+
+def test_xlsx_infers_dates_booleans_decimals_blanks_and_mixed_values() -> None:
+    content = xlsx_bytes(
+        [
+            ["Mã", "Ngày", "Thời điểm", "Kích hoạt", "Giá", "Trống", "Hỗn hợp"],
+            ["001", date(2026, 10, 1), datetime(2026, 10, 1, 8, 30), True, 12.5, None, 1],
+            ["002", date(2026, 10, 2), datetime(2026, 10, 2, 9, 0), False, 3.25, None, "text"],
+        ]
+    )
+
+    parsed = parse("types.xlsx", content)
+
+    assert [column.data_type for column in parsed.columns] == [
+        "TEXT",
+        "DATE",
+        "TIMESTAMP",
+        "BOOLEAN",
+        "NUMERIC",
+        "TEXT",
+        "TEXT",
+    ]
+    assert parsed.preview()[0]["Ngày"] == "2026-10-01"
+    assert parsed.preview()[0]["Thời điểm"] == "2026-10-01T08:30:00"
+    assert parsed.database_rows()[0]["gia"] == 12.5
+
+
+@pytest.mark.parametrize(
+    ("rows", "overrides", "message"),
+    [
+        ([], {}, "tiêu đề"),
+        ([["", "Giá"], ["A", 1]], {}, "để trống"),
+        ([["Tên", "tÊn"], ["A", "B"]], {}, "trùng"),
+        ([["A", "B"], [1, 2]], {"max_columns": 1}, "1 cột"),
+        ([["A"], [1], [2]], {"max_rows": 1}, "1 dòng"),
+    ],
+)
+def test_xlsx_rejects_empty_invalid_headers_and_limits(
+    rows: list[list[object]], overrides: dict[str, int], message: str
+) -> None:
+    with pytest.raises(UploadValidationError, match=message):
+        parse("invalid.xlsx", xlsx_bytes(rows), **overrides)
+
+
+def test_xlsx_rejects_oversized_content_and_malformed_sheet_xml() -> None:
+    content = xlsx_bytes([["Tên"], ["A"]])
+    with pytest.raises(UploadValidationError, match="giới hạn"):
+        parse("large.xlsx", content, max_bytes=len(content) - 1)
+
+    source = BytesIO(content)
+    malformed = BytesIO()
+    with ZipFile(source) as archive, ZipFile(malformed, "w", ZIP_DEFLATED) as rewritten:
+        for info in archive.infolist():
+            data = archive.read(info.filename)
+            if info.filename == "xl/worksheets/sheet1.xml":
+                data = data[:-20]
+            rewritten.writestr(info, data)
+    with pytest.raises(UploadValidationError, match="không thể đọc"):
+        parse("malformed.xlsx", malformed.getvalue())
 
 
 def test_xlsx_rejects_unknown_sheet_and_non_xlsx_archive() -> None:

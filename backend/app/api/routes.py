@@ -58,9 +58,13 @@ def chat(request: ChatRequest) -> ChatResponse:
         if request.dataset_id is None:
             service = build_chat_service(get_settings())
         else:
-            dataset = build_dataset_repository().get(request.dataset_id)
+            repository = build_dataset_repository()
+            dataset = repository.get(request.dataset_id)
             service = build_dataset_chat_service(
-                get_settings(), build_dataset_sql_context(dataset)
+                get_settings(),
+                build_dataset_sql_context(
+                    dataset, repository.categorical_values(dataset)
+                ),
             )
         return _chat_response(service.chat(request.message))
     except ResourceNotFoundError as exc:
@@ -145,9 +149,13 @@ def send_conversation_message(
         if conversation.dataset_id is None:
             service = build_chat_service(get_settings())
         else:
-            dataset = build_dataset_repository().get(conversation.dataset_id)
+            dataset_repository = build_dataset_repository()
+            dataset = dataset_repository.get(conversation.dataset_id)
             service = build_dataset_chat_service(
-                get_settings(), build_dataset_sql_context(dataset)
+                get_settings(),
+                build_dataset_sql_context(
+                    dataset, dataset_repository.categorical_values(dataset)
+                ),
             )
         try:
             response = _chat_response(service.chat(request.message))

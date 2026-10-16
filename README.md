@@ -40,7 +40,7 @@ Browser
         +-> UNSUPPORTED
 ```
 
-Nginx phục vụ React SPA và chuyển tiếp nguyên đường dẫn `/api` đến FastAPI. Router dùng structured output để chọn đúng một nhánh. Nhánh SQL chỉ cho phép tập con truy vấn đã định, giới hạn bảng, số dòng và thời gian thực thi; nhánh RAG trả nguồn lấy từ corpus đã ingest. Với file import, generator chỉ nhận schema của dataset đang chọn và validator dùng allowlist bất biến theo từng request. Frontend không giữ Gemini API key.
+Nginx phục vụ React SPA và chuyển tiếp nguyên đường dẫn `/api` đến FastAPI. Router dùng structured output để chọn đúng một nhánh. Nhánh SQL chỉ cho phép tập con truy vấn đã định, giới hạn bảng, số dòng và thời gian thực thi; nhánh RAG trả nguồn lấy từ corpus đã ingest. Với file import, generator chỉ nhận schema và tập giá trị thực tế có giới hạn của các cột TEXT ít giá trị trong đúng dataset đang chọn; không gửi toàn bộ hàng dữ liệu. Validator dùng allowlist bất biến theo từng request. Frontend không giữ Gemini API key.
 
 ## Yêu cầu môi trường
 
@@ -349,7 +349,7 @@ Luồng giao diện: chọn **Nạp dữ liệu mới** → chọn CSV/XLSX → 
 
 Giới hạn mặc định là 10 MB, 5.000 dòng và 30 cột. CSV phải là UTF-8/UTF-8 BOM, có header không rỗng/không trùng và mọi dòng cùng số cột. XLSX được đọc ở chế độ read-only, không hỗ trợ macro; công thức không được thực thi. Type inference bảo thủ giữ mã có số 0 đầu ở dạng text. Mỗi file hiện tạo một bảng; XLSX nhiều sheet yêu cầu chọn một sheet.
 
-Dữ liệu import được lưu trong schema `uploaded_data` với tên bảng vật lý ngẫu nhiên, còn tên hiển thị/file/schema cột nằm trong bảng metadata. Import dùng transaction và role setup; truy vấn AI vẫn dùng `shopquery_reader`, SQLGlot, statement timeout và row limit cũ. Dataset context chỉ cho phép đúng bảng đã chọn, chặn catalog, bảng demo, dataset khác, multi-statement và mọi DDL/DML.
+Dữ liệu import được lưu trong schema `uploaded_data` với tên bảng vật lý ngẫu nhiên, còn tên hiển thị/file/schema cột nằm trong bảng metadata. Import dùng transaction và role setup; truy vấn AI vẫn dùng `shopquery_reader`, SQLGlot, statement timeout và row limit cũ. Dataset context chỉ cho phép đúng bảng đã chọn, chặn catalog, bảng demo, dataset khác, multi-statement và mọi DDL/DML. Để diễn giải bộ lọc tự nhiên như “miền Bắc” khi giá trị lưu là `Bắc`, context bổ sung tối đa 20 giá trị phân loại dài không quá 80 ký tự cho từng cột TEXT có ít giá trị; cell luôn được coi là dữ liệu, không phải chỉ dẫn.
 
 ## Cấu trúc dự án
 

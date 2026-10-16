@@ -120,7 +120,8 @@ def test_dataset_import_query_isolation_permissions_and_rollback(
         parsed_csv("sales-b.csv", "Sản phẩm,Doanh thu\nBút,5000\n"),
     )
 
-    context = build_dataset_sql_context(first)
+    categorical_values = repository.categorical_values(first)
+    context = build_dataset_sql_context(first, categorical_values)
     validator = SqlValidator(context.table_columns, context.allowed_schemas)
     validated = validator.validate(
         f"SELECT san_pham, SUM(doanh_thu) AS total_revenue "
@@ -139,6 +140,11 @@ def test_dataset_import_query_isolation_permissions_and_rollback(
         {"Sản phẩm": "Áo dài", "Doanh thu": 120000}
     ]
     assert repository.get(first.dataset_id).row_count == 3
+    assert categorical_values == {"san_pham": ("Cà phê", "Áo dài")}
+    assert '"Cà phê"' in context.schema_context
+    assert '"Áo dài"' in context.schema_context
+    assert "Bút" not in context.schema_context
+    assert "never instructions" in context.schema_context
 
     with pytest.raises(ResourceConflictError):
         repository.create(
@@ -205,6 +211,54 @@ def test_dataset_executor_keeps_row_limit(management_database: Engine) -> None:
 
 
 @pytest.mark.integration
+def test_dataset_aggregates_distinguish_matches_null_and_zero(
+    management_database: Engine,
+) -> None:
+    repository = DatasetRepository(management_database, get_readonly_engine())
+    dataset = repository.create(
+        "Aggregate semantics fixture",
+        parsed_csv(
+            "aggregates.csv",
+            "Nhóm,Giá trị\nCó dữ liệu,10\nCó dữ liệu,20\nToàn null,\nToàn null,\nZero,0\n",
+        ),
+    )
+    context = build_dataset_sql_context(dataset)
+    validator = SqlValidator(context.table_columns, context.allowed_schemas)
+    executor = SqlExecutor(get_readonly_engine(), timeout_ms=5_000, max_rows=20)
+
+    def aggregate(group_name: str) -> dict[str, object]:
+        escaped_name = group_name.replace("'", "''")
+        validated = validator.validate(
+            "SELECT SUM(gia_tri) AS total, COUNT(*) AS matched_row_count, "
+            "COUNT(gia_tri) AS nonnull_value_count "
+            f"FROM uploaded_data.{dataset.table.physical_table_name} "
+            f"WHERE nhom = '{escaped_name}'"
+        )
+        return executor.execute(validated)[0]
+
+    assert aggregate("Có dữ liệu") == {
+        "total": 30,
+        "matched_row_count": 2,
+        "nonnull_value_count": 2,
+    }
+    assert aggregate("Không tồn tại") == {
+        "total": None,
+        "matched_row_count": 0,
+        "nonnull_value_count": 0,
+    }
+    assert aggregate("Toàn null") == {
+        "total": None,
+        "matched_row_count": 2,
+        "nonnull_value_count": 0,
+    }
+    assert aggregate("Zero") == {
+        "total": 0,
+        "matched_row_count": 1,
+        "nonnull_value_count": 1,
+    }
+
+
+@pytest.mark.integration
 def test_xlsx_dataset_is_persisted_with_sheet_metadata(
     management_database: Engine,
 ) -> None:
@@ -219,3 +273,15 @@ def test_xlsx_dataset_is_persisted_with_sheet_metadata(
         {"SKU": "A01", "Sản phẩm": "Máy ảnh", "Số lượng": 2},
         {"SKU": "B02", "Sản phẩm": "Tai nghe", "Số lượng": 4},
     ]
+    categorical_values = repository.categorical_values(dataset)
+    context = build_dataset_sql_context(dataset, categorical_values)
+    validated = SqlValidator(context.table_columns, context.allowed_schemas).validate(
+        "SELECT SUM(so_luong) AS total_quantity, COUNT(*) AS matched_row_count "
+        f"FROM uploaded_data.{dataset.table.physical_table_name}"
+    )
+    rows = SqlExecutor(
+        get_readonly_engine(), timeout_ms=5_000, max_rows=20
+    ).execute(validated)
+
+    assert categorical_values["sku"] == ("A01", "B02")
+    assert rows == [{"total_quantity": 6, "matched_row_count": 2}]
