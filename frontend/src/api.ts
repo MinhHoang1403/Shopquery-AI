@@ -4,6 +4,7 @@ import type {
   ConversationSendResponse,
   ConversationSummary,
   Dataset,
+  DatasetDocument,
   DatasetPreview,
   HealthResponse,
   RouteLabel,
@@ -181,6 +182,14 @@ export async function getDatasets(signal?: AbortSignal): Promise<Dataset[]> {
   return body as Dataset[];
 }
 
+export async function createDataset(name: string): Promise<Dataset> {
+  return await requestJson("/api/datasets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  }) as Dataset;
+}
+
 export async function previewDataset(
   file: File,
   sheetName?: string | null,
@@ -209,4 +218,45 @@ export async function importDataset(
     method: "POST",
     body: form,
   }, "Không thể import file.") as Dataset;
+}
+
+export async function importDatasetTable(
+  datasetId: number,
+  file: File,
+  displayName: string,
+  sheetName?: string | null,
+): Promise<Dataset> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("display_name", displayName);
+  if (sheetName) form.append("sheet_name", sheetName);
+  return await requestJson(`/api/datasets/${datasetId}/tables/import`, {
+    method: "POST",
+    body: form,
+  }, "Không thể import bảng.") as Dataset;
+}
+
+export async function getDatasetDocuments(datasetId: number): Promise<DatasetDocument[]> {
+  return await requestJson(`/api/datasets/${datasetId}/documents`) as DatasetDocument[];
+}
+
+export async function uploadDatasetDocument(
+  datasetId: number,
+  file: File,
+): Promise<DatasetDocument> {
+  const form = new FormData();
+  form.append("file", file);
+  return await requestJson(`/api/datasets/${datasetId}/documents`, {
+    method: "POST",
+    body: form,
+  }, "Không thể nạp tài liệu.") as DatasetDocument;
+}
+
+export async function deleteDatasetDocument(
+  datasetId: number,
+  documentId: number,
+): Promise<void> {
+  await requestJson(`/api/datasets/${datasetId}/documents/${documentId}`, {
+    method: "DELETE",
+  });
 }

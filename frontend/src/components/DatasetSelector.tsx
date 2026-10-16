@@ -67,7 +67,7 @@ export function DatasetSelector({ datasets, selectedDataset, onSelect }: Dataset
                   <span>
                     <strong>{dataset.name}</strong>
                     {dataset.kind === "uploaded" ? (
-                      <small>{dataset.row_count?.toLocaleString("vi-VN")} dòng · {dataset.column_count} cột</small>
+                      <small>{dataset.table_count ?? 0} bảng · {dataset.document_count ?? 0} tài liệu</small>
                     ) : <small>Dữ liệu E-commerce mẫu</small>}
                   </span>
                   {selected ? <Check className="dataset-option-check" size={15} /> : null}
@@ -80,9 +80,8 @@ export function DatasetSelector({ datasets, selectedDataset, onSelect }: Dataset
             <details className="dataset-info">
               <summary>Xem thông tin dữ liệu</summary>
               <dl>
-                <div><dt>File</dt><dd>{selectedDataset.original_filename}</dd></div>
-                <div><dt>Định dạng</dt><dd>{selectedDataset.file_type?.toUpperCase()}</dd></div>
-                <div><dt>Kích thước</dt><dd>{selectedDataset.row_count?.toLocaleString("vi-VN")} dòng · {selectedDataset.column_count} cột</dd></div>
+                <div><dt>Bảng</dt><dd>{selectedDataset.table_count ?? 0}</dd></div>
+                <div><dt>Tài liệu</dt><dd>{selectedDataset.document_count ?? 0}</dd></div>
               </dl>
               <p>{selectedDataset.columns.map((column) => `${column.source_name}: ${column.data_type}`).join(" · ")}</p>
             </details>

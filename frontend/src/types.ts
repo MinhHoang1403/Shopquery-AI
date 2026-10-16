@@ -27,6 +27,27 @@ export interface DatasetColumn {
   data_type: string;
 }
 
+export interface DatasetTable {
+  dataset_table_id: number | null;
+  display_name: string;
+  original_filename: string | null;
+  file_type: string | null;
+  sheet_name: string | null;
+  row_count: number;
+  column_count: number;
+  columns: DatasetColumn[];
+}
+
+export interface DatasetDocument {
+  document_id: number;
+  dataset_id: number;
+  original_filename: string;
+  file_type: string;
+  title: string;
+  chunk_count: number;
+  created_at: string;
+}
+
 export interface Dataset {
   dataset_id: number | null;
   kind: "default" | "uploaded";
@@ -37,6 +58,9 @@ export interface Dataset {
   row_count: number | null;
   column_count: number | null;
   columns: DatasetColumn[];
+  table_count?: number;
+  document_count?: number;
+  tables?: DatasetTable[];
   created_at: string | null;
 }
 

@@ -36,7 +36,33 @@ const uploadedDataset: Dataset = {
     { source_name: "Sản phẩm", name: "san_pham", data_type: "TEXT" },
     { source_name: "Doanh thu", name: "doanh_thu", data_type: "BIGINT" },
   ],
+  table_count: 1,
+  document_count: 0,
+  tables: [{
+    dataset_table_id: 12,
+    display_name: "sales",
+    original_filename: "sales.csv",
+    file_type: "csv",
+    sheet_name: null,
+    row_count: 2,
+    column_count: 2,
+    columns: [
+      { source_name: "Sản phẩm", name: "san_pham", data_type: "TEXT" },
+      { source_name: "Doanh thu", name: "doanh_thu", data_type: "BIGINT" },
+    ],
+  }],
   created_at: "2026-10-14T00:00:00Z",
+};
+const emptyWorkspace: Dataset = {
+  ...uploadedDataset,
+  name: "Doanh số 2026",
+  original_filename: null,
+  file_type: null,
+  row_count: null,
+  column_count: null,
+  columns: [],
+  table_count: 0,
+  tables: [],
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -95,6 +121,10 @@ function installApi(options: MockOptions = {}) {
     const method = init?.method ?? "GET";
     if (url.pathname === "/api/health") return jsonResponse({ status: "ok", service: "ShopQuery AI" });
     if (url.pathname === "/api/datasets" && method === "GET") return jsonResponse(datasets);
+    if (url.pathname === "/api/datasets" && method === "POST") {
+      if (options.importError) return jsonResponse({ detail: options.importError }, 409);
+      return jsonResponse(emptyWorkspace, 201);
+    }
     if (url.pathname === "/api/conversations" && method === "GET") {
       if (options.delayBootstrap) await new Promise((resolve) => setTimeout(resolve, 80));
       return jsonResponse(conversations);
@@ -132,8 +162,10 @@ function installApi(options: MockOptions = {}) {
         warnings: [],
       });
     }
-    if (url.pathname === "/api/datasets/import" && method === "POST") {
-      if (options.importError) return jsonResponse({ detail: options.importError }, 409);
+    if (url.pathname === "/api/datasets/7/documents" && method === "GET") {
+      return jsonResponse([]);
+    }
+    if (url.pathname === "/api/datasets/7/tables/import" && method === "POST") {
       return jsonResponse(uploadedDataset, 201);
     }
     return jsonResponse({ detail: "not mocked" }, 404);
@@ -311,17 +343,19 @@ describe("ShopQuery workspace", () => {
     await screen.findByText("API sẵn sàng");
     await user.click(screen.getByRole("button", { name: "Nạp dữ liệu mới" }));
 
+    await user.type(screen.getByLabelText("Tên bộ dữ liệu"), "Doanh số 2026");
+    await user.click(screen.getByRole("button", { name: "Tạo workspace rỗng" }));
+
     const file = new File(["Sản phẩm,Doanh thu\nÁo,120000\n"], "sales.csv", { type: "text/csv" });
-    await user.upload(screen.getByLabelText(/Chọn file CSV hoặc XLSX/), file);
+    await user.upload(await screen.findByLabelText(/Thêm CSV hoặc XLSX/), file);
 
     expect(await screen.findByText("120000")).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.textContent === "2 dòng")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Xác nhận import" }));
-    expect(await screen.findByText("Đã import Doanh số 2026 thành công.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Thêm bảng" }));
+    expect(await screen.findByText("Đã cập nhật Doanh số 2026 thành công.")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Đóng" })[1]);
     await user.click(screen.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ }));
+    expect(screen.getByText("1 bảng · 0 tài liệu")).toBeInTheDocument();
     await user.click(screen.getByText("Xem thông tin dữ liệu"));
-    expect(screen.getByText("sales.csv")).toBeInTheDocument();
-    expect(screen.getByText(/Sản phẩm: TEXT/)).toBeInTheDocument();
   });
 
   it("hiển thị lỗi 422 khi file tải lên không hợp lệ", async () => {
@@ -330,12 +364,15 @@ describe("ShopQuery workspace", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Nạp dữ liệu mới" }));
 
-    const file = new File(["invalid"], "sales.csv", { type: "text/csv" });
-    await user.upload(screen.getByLabelText(/Chọn file CSV hoặc XLSX/), file);
+    await user.type(screen.getByLabelText("Tên bộ dữ liệu"), "Doanh số 2026");
+    await user.click(screen.getByRole("button", { name: "Tạo workspace rỗng" }));
 
-    const dialog = screen.getByRole("dialog", { name: "Nạp dữ liệu mới" });
+    const file = new File(["invalid"], "sales.csv", { type: "text/csv" });
+    await user.upload(await screen.findByLabelText(/Thêm CSV hoặc XLSX/), file);
+
+    const dialog = screen.getByRole("dialog", { name: "Quản lý bộ dữ liệu" });
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("File vượt quá giới hạn 10 MB.");
-    expect(screen.getByRole("button", { name: "Xác nhận import" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Thêm bảng" })).not.toBeInTheDocument();
   });
 
   it("giữ hộp thoại và báo lỗi 409 khi tên bộ dữ liệu bị trùng", async () => {
@@ -344,14 +381,13 @@ describe("ShopQuery workspace", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Nạp dữ liệu mới" }));
 
-    const file = new File(["Sản phẩm,Doanh thu\nÁo,120000\n"], "sales.csv", { type: "text/csv" });
-    await user.upload(screen.getByLabelText(/Chọn file CSV hoặc XLSX/), file);
-    await user.click(await screen.findByRole("button", { name: "Xác nhận import" }));
+    await user.type(screen.getByLabelText("Tên bộ dữ liệu"), "Doanh số 2026");
+    await user.click(screen.getByRole("button", { name: "Tạo workspace rỗng" }));
 
-    const dialog = screen.getByRole("dialog", { name: "Nạp dữ liệu mới" });
+    const dialog = screen.getByRole("dialog", { name: "Quản lý bộ dữ liệu" });
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Tên bộ dữ liệu đã tồn tại.");
     expect(dialog).toBeInTheDocument();
-    expect(screen.queryByText(/Đã import .* thành công/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Đã cập nhật .* thành công/)).not.toBeInTheDocument();
   });
 
   it("hiển thị toolbar đúng theo RAG, Hybrid và response không có evidence", async () => {

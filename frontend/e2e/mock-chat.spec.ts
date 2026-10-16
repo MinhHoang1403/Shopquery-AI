@@ -27,7 +27,27 @@ const uploadedDataset = {
     { source_name: "Sản phẩm", name: "san_pham", data_type: "TEXT" },
     { source_name: "Doanh thu", name: "doanh_thu", data_type: "BIGINT" },
   ],
+  table_count: 1,
+  document_count: 0,
+  tables: [{
+    dataset_table_id: 12, display_name: "sales", original_filename: "sales.csv",
+    file_type: "csv", sheet_name: null, row_count: 2, column_count: 2,
+    columns: [
+      { source_name: "Sản phẩm", name: "san_pham", data_type: "TEXT" },
+      { source_name: "Doanh thu", name: "doanh_thu", data_type: "BIGINT" },
+    ],
+  }],
   created_at: "2026-10-14T00:00:00Z",
+};
+const emptyWorkspace = {
+  ...uploadedDataset,
+  original_filename: null,
+  file_type: null,
+  row_count: null,
+  column_count: null,
+  columns: [],
+  table_count: 0,
+  tables: [],
 };
 
 const sqlResponse = {
@@ -61,8 +81,9 @@ const hybridResponse = {
 interface ApiState {
   title: string;
   exists: boolean;
-  datasets: typeof defaultDataset[] | (typeof defaultDataset | typeof uploadedDataset)[];
+  datasets: Array<typeof defaultDataset | typeof uploadedDataset | typeof emptyWorkspace>;
   messages: Array<Record<string, unknown>>;
+  documents: Array<Record<string, unknown>>;
   messageRequests: number;
 }
 
@@ -113,6 +134,7 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
           { message_id: 2, role: "assistant", content: sqlResponse.answer, response: sqlResponse, created_at: "2026-10-14T00:00:02Z" },
         ]
       : [],
+    documents: [],
     messageRequests: 0,
   };
   const summary = () => ({
@@ -130,6 +152,10 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     const method = request.method();
     if (url.pathname === "/api/health") return json(route, health);
     if (url.pathname === "/api/datasets" && method === "GET") return json(route, state.datasets);
+    if (url.pathname === "/api/datasets" && method === "POST") {
+      state.datasets = [defaultDataset, emptyWorkspace];
+      return json(route, emptyWorkspace, 201);
+    }
     if (url.pathname === "/api/datasets/preview" && method === "POST") {
       return json(route, {
         filename: "sales.csv", file_type: "csv", sheet_name: null, sheet_names: [],
@@ -137,7 +163,30 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
         rows: [{ "Sản phẩm": "Áo linen", "Doanh thu": "120000" }], warnings: [],
       });
     }
-    if (url.pathname === "/api/datasets/import" && method === "POST") {
+    if (url.pathname === "/api/datasets/7/documents" && method === "GET") {
+      return json(route, state.documents);
+    }
+    if (url.pathname === "/api/datasets/7/documents" && method === "POST") {
+      const filenames = ["policy.pdf", "policy.docx", "policy.txt", "policy.md"];
+      const originalFilename = filenames[state.documents.length] ?? "policy.md";
+      const document = {
+        document_id: state.documents.length + 1,
+        dataset_id: 7,
+        original_filename: originalFilename,
+        file_type: originalFilename.split(".").pop(),
+        title: "Chính sách",
+        chunk_count: 1,
+        created_at: "2026-10-16T00:00:00Z",
+      };
+      state.documents = [document, ...state.documents];
+      return json(route, document, 201);
+    }
+    if (/^\/api\/datasets\/7\/documents\/\d+$/.test(url.pathname) && method === "DELETE") {
+      const documentId = Number(url.pathname.split("/").pop());
+      state.documents = state.documents.filter((item) => item.document_id !== documentId);
+      return json(route, null, 204);
+    }
+    if (url.pathname === "/api/datasets/7/tables/import" && method === "POST") {
       state.datasets = [defaultDataset, uploadedDataset];
       return json(route, uploadedDataset, 201);
     }
@@ -393,11 +442,20 @@ test("previews and imports a CSV before selecting the uploaded dataset", async (
   await openApp(page);
   await openSidebar(page);
   await page.getByRole("button", { name: "Nạp dữ liệu mới" }).click();
-  await page.getByLabel(/Chọn file CSV hoặc XLSX/).setInputFiles("e2e/fixtures/sales.csv");
+  await page.getByLabel("Tên bộ dữ liệu").fill("Doanh số 2026");
+  await page.getByRole("button", { name: "Tạo workspace rỗng" }).click();
+  await page.getByLabel(/Thêm CSV hoặc XLSX/).setInputFiles("e2e/fixtures/sales.csv");
   await expect(page.getByText("120000")).toBeVisible();
   await expect(page.locator(".preview-stats span").filter({ hasText: "2 dòng" })).toBeVisible();
-  await page.getByRole("button", { name: "Xác nhận import" }).click();
-  await expect(page.getByText("Đã import Doanh số 2026 thành công.")).toBeVisible();
+  await page.getByRole("button", { name: "Thêm bảng" }).click();
+  await expect(page.getByText("Đã cập nhật Doanh số 2026 thành công.")).toBeVisible();
+  const documentInput = page.getByLabel(/Thêm PDF, DOCX, TXT hoặc MD/);
+  for (const filename of ["policy.pdf", "policy.docx", "policy.txt", "policy.md"]) {
+    await documentInput.setInputFiles(`e2e/fixtures/${filename}`);
+    await expect(page.getByText(filename)).toBeVisible();
+  }
+  await expect(page.getByText("4 tài liệu")).toBeVisible();
+  await page.getByRole("button", { name: "Đóng", exact: true }).last().click();
   await expect(page.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ })).toBeVisible();
   await expectNoPageOverflow(page);
 });

@@ -297,9 +297,10 @@ export default function App() {
 
   function datasetImported(dataset: Dataset) {
     setDatasets((current) => [...current.filter((item) => item.dataset_id !== dataset.dataset_id), dataset]);
-    setUploadOpen(false);
-    startNewChat(dataset.dataset_id);
-    setImportNotice(`Đã import ${dataset.name} thành công.`);
+    if (!activeConversation.current && messages.length === 0) {
+      setSelectedDatasetId(dataset.dataset_id);
+    }
+    setImportNotice(`Đã cập nhật ${dataset.name} thành công.`);
   }
 
   return (
@@ -377,7 +378,7 @@ export default function App() {
         </footer>
       </div>
 
-      {uploadOpen ? <DatasetUploadDialog onClose={() => setUploadOpen(false)} onImported={datasetImported} /> : null}
+      {uploadOpen ? <DatasetUploadDialog datasets={datasets} onClose={() => setUploadOpen(false)} onImported={datasetImported} /> : null}
       {renameTarget ? <RenameDialog currentTitle={renameTarget.title} error={renameError} onClose={() => setRenameTarget(null)} onSave={saveRename} saving={isRenaming} /> : null}
       {deleteTarget ? <ConfirmDialog busy={isDeleting} confirmLabel="Xóa cuộc trò chuyện" danger description={`“${deleteTarget.title}” và toàn bộ tin nhắn sẽ bị xóa vĩnh viễn.`} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} title="Xóa cuộc trò chuyện?" /> : null}
       {pendingDataset ? <ConfirmDialog confirmLabel="Bắt đầu chat mới" description={`Cuộc trò chuyện hiện tại gắn với ${datasetName}. Chuyển sang ${pendingDataset.name} sẽ bắt đầu một đoạn chat mới.`} onClose={() => setPendingDataset(null)} onConfirm={() => { const dataset = pendingDataset; setPendingDataset(null); startNewChat(dataset.dataset_id); }} title="Chuyển bộ dữ liệu?" /> : null}
