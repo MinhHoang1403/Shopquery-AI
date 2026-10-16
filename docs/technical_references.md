@@ -28,6 +28,12 @@ Tài liệu này ghi lại cơ sở cho các quyết định AI và dữ liệu 
 - Áp dụng: heading-aware chunking và tách theo paragraph khi section dài, thay vì semantic chunking bằng LLM.
 - Lý do: giữ điều kiện chính sách và metadata, đồng thời tránh chi phí/độ phức tạp chưa cần thiết. Khoảng 200–400 token chỉ là cấu hình khởi đầu.
 
+## PDF, DOCX và giới hạn tài nguyên
+
+- Nguồn: [pypdf text extraction](https://pypdf.readthedocs.io/en/stable/user/extract-text.html), [python-docx document API](https://python-docx.readthedocs.io/en/latest/api/document.html) và [Python `zipfile` decompression pitfalls](https://docs.python.org/3/library/zipfile.html#decompression-pitfalls).
+- Áp dụng: pypdf chỉ trích xuất PDF có text layer và từ chối file mã hóa; python-docx đọc paragraph/heading từ stream sau khi archive đã qua kiểm tra số entry, kích thước giải nén, tỷ lệ nén và đường dẫn.
+- Giới hạn: pypdf không phải OCR. PDF scan không có text được từ chối rõ ràng. Các ngưỡng 10 MB, 100 trang, 500.000 ký tự và 50 MB giải nén là giới hạn phòng vệ của MVP, không phải bảo đảm parser an toàn tuyệt đối trước mọi file đối kháng.
+
 ## pgvector và cosine distance
 
 - Nguồn: [pgvector](https://github.com/pgvector/pgvector) và [pgvector-python](https://github.com/pgvector/pgvector-python).

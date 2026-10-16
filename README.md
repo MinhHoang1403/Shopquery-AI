@@ -11,7 +11,7 @@ ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời c�
 - **Kết hợp (`HYBRID`)**: dùng cả kết quả SQL và bằng chứng tài liệu. Ví dụ: “Top 5 sản phẩm bán chạy nhất có thuộc danh mục được miễn phí vận chuyển không?”
 - **Ngoài phạm vi (`UNSUPPORTED`)**: từ chối câu hỏi không thuộc dữ liệu và tài liệu của cửa hàng. Ví dụ: “Thời tiết Hà Nội hôm nay thế nào?”
 - **Lịch sử hội thoại**: lưu conversation và từng message trong PostgreSQL; hỗ trợ tạo mới, chuyển, đổi tên, xóa và khôi phục sau khi tải lại trang.
-- **Dữ liệu riêng**: xem trước rồi import CSV/XLSX vào schema `uploaded_data`, chọn dataset trên header chat và hỏi AI bằng Text-to-SQL được giới hạn riêng cho dataset đó.
+- **Dataset workspace**: tạo bộ dữ liệu rỗng, thêm nhiều bảng CSV/XLSX và nhiều tài liệu PDF/DOCX/TXT/MD, sau đó dùng SQL, RAG hoặc Hybrid trong đúng workspace đã chọn.
 - **Giao diện responsive**: light theme, sidebar thu gọn/off-canvas, composer đa dòng và evidence toolbar gọn với các nút **Bảng dữ liệu**, **SQL** và **Nguồn tham khảo**; mỗi lần chỉ mở một panel.
 
 ## Công nghệ
@@ -32,7 +32,8 @@ ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời c�
 Browser
   -> Nginx
     -> FastAPI
-      +-> Conversations/Datasets -> PostgreSQL metadata + uploaded_data
+      +-> Conversations/Dataset workspaces -> PostgreSQL metadata + uploaded_data
+      +-> Document ingestion -> bounded parser -> Gemini Embedding -> pgvector
       -> Gemini Router
         +-> SQL ------> Gemini -> SQLGlot -> PostgreSQL read-only
         +-> RAG ------> Gemini Embedding -> pgvector -> Gemini
@@ -40,7 +41,7 @@ Browser
         +-> UNSUPPORTED
 ```
 
-Nginx phục vụ React SPA và chuyển tiếp nguyên đường dẫn `/api` đến FastAPI. Router dùng structured output để chọn đúng một nhánh. Nhánh SQL chỉ cho phép tập con truy vấn đã định, giới hạn bảng, số dòng và thời gian thực thi; nhánh RAG trả nguồn lấy từ corpus đã ingest. Với file import, generator chỉ nhận schema và tập giá trị thực tế có giới hạn của các cột TEXT ít giá trị trong đúng dataset đang chọn; không gửi toàn bộ hàng dữ liệu. Validator dùng allowlist bất biến theo từng request. Frontend không giữ Gemini API key.
+Nginx phục vụ React SPA và chuyển tiếp nguyên đường dẫn `/api` đến FastAPI. Router dùng structured output và chỉ được chọn những nhánh mà workspace thực sự hỗ trợ: chỉ bảng có SQL, chỉ tài liệu có RAG, cả hai có thêm Hybrid. SQL allowlist và điều kiện RAG `dataset_id` đều được áp dụng ở backend theo từng request. Default corpus dùng `dataset_id = NULL` và không được dùng để bù cho tài liệu thiếu trong workspace upload. Frontend không giữ Gemini API key.
 
 ## Yêu cầu môi trường
 
@@ -113,7 +114,12 @@ docker compose exec api python scripts/ingest_documents.py
 
 Chờ ba service `db`, `api`, `web` healthy rồi mở `http://127.0.0.1:8080`. API trực tiếp ở `http://127.0.0.1:8000` và PostgreSQL ở `127.0.0.1:54321`. Nếu cổng host 8000 đang bị chiếm, có thể đổi riêng ánh xạ host của service `api`; kết nối nội bộ Nginx vẫn luôn dùng `api:8000`.
 
-API tự chạy `setup_database.py` khi container khởi động. Thao tác này chỉ tạo bổ sung các bảng/schema còn thiếu (`chat_conversations`, `chat_messages`, `datasets`, `dataset_tables`, `uploaded_data`) và không xóa seed hiện có. Vẫn có thể chạy script thủ công khi phát triển native hoặc cần kiểm tra migration.
+API tự chạy `setup_database.py` khi container khởi động. Migration idempotent thêm metadata workspace, `dataset_documents` và scope cho `document_chunks`; nó không drop bảng/cột hoặc xóa seed, conversation, dataset hay chunks cũ. Với database quan trọng, tạo `pg_dump -Fc` trước, thử restore/migration trên database riêng rồi mới chạy script trên database chính:
+
+```powershell
+cd backend
+uv run python scripts/setup_database.py
+```
 
 `ingest_documents.py` gọi Gemini Embedding và có thể tiêu thụ quota. Chỉ cần ingest lần đầu hoặc khi tài liệu thay đổi; `content_hash` giúp bỏ qua các chunk không đổi.
 
@@ -320,7 +326,7 @@ Response ổn định có dạng:
 
 `route` là `SQL`, `RAG`, `HYBRID` hoặc `UNSUPPORTED`. `sql`/`rows` chỉ có dữ liệu cho SQL và Hybrid; `sources` chỉ có dữ liệu cho RAG và Hybrid. Với lỗi nghiệp vụ đã dự kiến, API hiện có thể trả HTTP 200 cùng `route: null` và nội dung trong trường `error`; client phải kiểm tra trường này.
 
-`POST /api/chat` vẫn tương thích với client cũ. Có thể truyền thêm `dataset_id` để truy vấn một dataset import; với dataset upload, route chỉ là SQL và không tự ghép tài liệu policy của dữ liệu demo.
+`POST /api/chat` vẫn tương thích với client cũ. Có thể truyền thêm `dataset_id`; router sẽ giới hạn route theo số bảng/tài liệu của workspace và không tự ghép corpus demo.
 
 ### Conversations
 
@@ -340,16 +346,26 @@ Tiêu đề mặc định được thay bằng phần đầu câu hỏi đầu t
 | Method | Endpoint | Chức năng |
 | --- | --- | --- |
 | `GET` | `/api/datasets` | Dataset demo và các dataset đã import |
+| `POST` | `/api/datasets` | Tạo workspace rỗng với JSON `{"name": "..."}` |
 | `GET` | `/api/datasets/{id}` | Metadata cùng các dòng preview |
 | `GET` | `/api/datasets/{id}/preview?limit=10` | Đọc tối đa 50 dòng bằng role chỉ đọc |
 | `POST` | `/api/datasets/preview` | Multipart `file`, tùy chọn `sheet_name`; chưa ghi database |
 | `POST` | `/api/datasets/import` | Multipart `file`, `dataset_name`, tùy chọn `sheet_name` |
+| `GET` | `/api/datasets/{id}/tables` | Danh sách bảng của workspace |
+| `POST` | `/api/datasets/{id}/tables/preview` | Preview CSV/XLSX trước khi thêm bảng |
+| `POST` | `/api/datasets/{id}/tables/import` | Thêm bảng với `file`, `display_name`, `sheet_name` tùy chọn |
+| `GET` | `/api/datasets/{id}/documents` | Danh sách tài liệu đã ingest |
+| `POST` | `/api/datasets/{id}/documents` | Parse, chunk, embed và lưu tài liệu |
+| `GET` | `/api/datasets/{id}/documents/{document_id}` | Metadata một tài liệu |
+| `DELETE` | `/api/datasets/{id}/documents/{document_id}` | Xóa đúng tài liệu và chunks của nó |
 
-Luồng giao diện: chọn **Nạp dữ liệu mới** → chọn CSV/XLSX → kiểm tra header, kiểu cột, số dòng và preview → đặt tên → **Xác nhận import**. Sau import, dataset xuất hiện trong bộ chọn trên header chat và được chọn cho chat mới.
+Luồng giao diện: chọn **Nạp dữ liệu mới** → **Tạo bộ dữ liệu mới** hoặc **Thêm vào bộ hiện có**. Sau khi tạo workspace rỗng, có thể preview/thêm nhiều CSV/XLSX và ingest nhiều PDF/DOCX/TXT/MD. Bộ chọn trên header hiển thị gọn số bảng và tài liệu.
 
-Giới hạn mặc định là 10 MB, 5.000 dòng và 30 cột. CSV phải là UTF-8/UTF-8 BOM, có header không rỗng/không trùng và mọi dòng cùng số cột. XLSX được đọc ở chế độ read-only, không hỗ trợ macro; công thức không được thực thi. Type inference bảo thủ giữ mã có số 0 đầu ở dạng text. Mỗi file hiện tạo một bảng; XLSX nhiều sheet yêu cầu chọn một sheet.
+Giới hạn bảng mặc định là 10 MB, 5.000 dòng và 30 cột. CSV phải là UTF-8/UTF-8 BOM. XLSX được đọc read-only, không hỗ trợ macro và không thực thi công thức. Mỗi lần import tạo một bảng; XLSX nhiều sheet yêu cầu chọn một sheet.
 
-Dữ liệu import được lưu trong schema `uploaded_data` với tên bảng vật lý ngẫu nhiên, còn tên hiển thị/file/schema cột nằm trong bảng metadata. Import dùng transaction và role setup; truy vấn AI vẫn dùng `shopquery_reader`, SQLGlot, statement timeout và row limit cũ. Dataset context chỉ cho phép đúng bảng đã chọn, chặn catalog, bảng demo, dataset khác, multi-statement và mọi DDL/DML. Để diễn giải bộ lọc tự nhiên như “miền Bắc” khi giá trị lưu là `Bắc`, context bổ sung tối đa 20 giá trị phân loại dài không quá 80 ký tự cho từng cột TEXT có ít giá trị; cell luôn được coi là dữ liệu, không phải chỉ dẫn.
+Tài liệu tối đa 10 MB; PDF tối đa 100 trang và phải có text layer. DOCX được kiểm tra số entry, tổng kích thước giải nén, tỷ lệ nén và đường dẫn archive. TXT/MD phải là UTF-8. Hệ thống không hỗ trợ OCR, PDF scan, DOC cũ, macro, URL ingestion hoặc ảnh. MVP chỉ lưu metadata, extracted text/chunks và embedding, không lưu binary gốc để tải lại. Nội dung tài liệu luôn được coi là dữ liệu không tin cậy. Nếu embedding 429/503, transaction không tạo metadata/chunks dở dang; hãy chờ quota/dịch vụ rồi tải lại.
+
+Dữ liệu bảng nằm trong `uploaded_data` với tên vật lý ngẫu nhiên. Context chỉ đưa các bảng của workspace đang chọn vào allowlist. Trong bản này, mỗi SQL chỉ được tham chiếu đúng một bảng; mọi JOIN bị từ chối vì chưa có relationship metadata, kể cả khi tên cột giống nhau. RAG lọc `dataset_id` ngay trong truy vấn pgvector. Hybrid tái sử dụng SQL và RAG đã scope trong cùng workspace, không suy đoán thuộc tính hoặc nguồn thiếu.
 
 ## Cấu trúc dự án
 
@@ -406,7 +422,8 @@ Dữ liệu import được lưu trong schema `uploaded_data` với tên bảng 
 - Dữ liệu bán hàng và tài liệu đều là dữ liệu giả lập.
 - Không có authentication hoặc rate limiting dành cho production.
 - Chỉ hỗ trợ tập con SQL và bốn bảng nghiệp vụ; CTE, subquery và câu lệnh ghi bị từ chối.
-- Dataset upload chỉ hỗ trợ một bảng/một sheet mỗi lần, không join giữa datasets và không dùng RAG/Hybrid của corpus demo.
+- Mỗi lần upload bảng chỉ chọn một sheet; workspace có thể chứa nhiều bảng nhưng chưa khai báo quan hệ nên không hỗ trợ JOIN.
+- PDF scan cần OCR không được hỗ trợ; binary tài liệu gốc không được lưu.
 - Chưa có endpoint xóa dataset; chỉ conversation có đầy đủ CRUD ở thời điểm hiện tại.
 - File upload có validation và giới hạn tài nguyên nhưng demo chưa có authentication, phân quyền theo người dùng, antivirus hoặc object storage; không đưa dữ liệu nhạy cảm lên bản local dùng chung.
 - Corpus chỉ có sáu tài liệu và chưa có benchmark chứng minh cấu hình retrieval là tối ưu.
