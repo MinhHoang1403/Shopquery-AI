@@ -195,6 +195,7 @@ class ChatConversation(Base):
     conversation_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     title: Mapped[str] = mapped_column(String(120), nullable=False, default="Cuộc trò chuyện mới")
     title_customized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    model_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     dataset_id: Mapped[int | None] = mapped_column(
         ForeignKey("datasets.dataset_id", ondelete="RESTRICT"), nullable=True, index=True
     )

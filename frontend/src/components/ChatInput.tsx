@@ -1,5 +1,7 @@
 import { ArrowUp } from "lucide-react";
 import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
+import type { ModelId, ModelOption } from "../types";
+import { ModelSelector } from "./ModelSelector";
 
 interface ChatInputProps {
   value: string;
@@ -8,6 +10,9 @@ interface ChatInputProps {
   datasetName: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  models: ModelOption[];
+  selectedModel: ModelId;
+  onModelSelect: (model: ModelId) => void;
 }
 
 export function ChatInput({
@@ -17,6 +22,9 @@ export function ChatInput({
   datasetName,
   onChange,
   onSubmit,
+  models,
+  selectedModel,
+  onModelSelect,
 }: ChatInputProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const showCharacterCount = value.length > 0;
@@ -60,6 +68,8 @@ export function ChatInput({
           rows={1}
           value={value}
         />
+        <div className="composer-controls">
+        <ModelSelector models={models} selectedModel={selectedModel} disabled={disabled} onSelect={onModelSelect} />
         <button
           aria-label="Gửi câu hỏi"
           className="send-button"
@@ -68,6 +78,7 @@ export function ChatInput({
         >
           <ArrowUp size={19} strokeWidth={2.4} aria-hidden="true" />
         </button>
+        </div>
       </div>
       {validationError || showCharacterCount ? (
         <div className="composer-meta">

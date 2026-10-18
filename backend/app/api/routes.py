@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
 
 from app.ai.gemini import GeminiGateway
+from app.ai.providers import MODEL_LABELS
 from app.api.models import (
     ChatRequest,
     ChatResponse,
@@ -24,11 +25,14 @@ from app.api.models import (
     DatasetResponse,
     DatasetTableResponse,
     HealthResponse,
+    ModelOption,
+    ModelsResponse,
     SourceResponse,
 )
 from app.conversations.repository import ConversationRecord, MessageRecord
 from app.core.config import get_settings
 from app.core.errors import (
+    ChatTurnError,
     ResourceConflictError,
     ResourceNotFoundError,
     ShopQueryError,
@@ -52,6 +56,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 
+@router.get("/models", response_model=ModelsResponse)
+def list_models() -> ModelsResponse:
+    settings = get_settings()
+    return ModelsResponse(
+        default_model=settings.ai_default_model,
+        models=[
+            ModelOption(
+                id=model_id,
+                label=label,
+                provider="inetcloud" if model_id == "inetcloud-knowledge" else "gemini",
+                configured=bool(settings.inetcloud_base_url)
+                if model_id == "inetcloud-knowledge"
+                else bool(settings.gemini_api_key),
+            )
+            for model_id, label in MODEL_LABELS.items()
+        ],
+        gemini_fallback_enabled=settings.ai_gemini_fallback_enabled,
+    )
+
+
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     """Report API liveness without invoking Gemini or the full pipeline."""
@@ -61,21 +85,24 @@ def health() -> HealthResponse:
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
+    settings = get_settings()
+    if request.model_id is not None:
+        settings = settings.model_copy(update={"ai_default_model": request.model_id})
     try:
         if request.dataset_id is None:
-            service = build_chat_service(get_settings())
+            service = build_chat_service(settings)
         else:
             repository = build_dataset_repository()
             dataset = repository.get(request.dataset_id)
             service = build_dataset_chat_service(
-                get_settings(),
+                settings,
                 build_dataset_sql_context(dataset, repository.categorical_values(dataset)),
             )
         return _chat_response(service.chat(request.message))
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ShopQueryError as exc:
-        return _chat_error(exc)
+        return _chat_error(exc, settings.ai_default_model)
 
 
 @router.get("/conversations", response_model=list[ConversationSummaryResponse])
@@ -96,7 +123,11 @@ def create_conversation(
     request: ConversationCreateRequest,
 ) -> ConversationSummaryResponse:
     try:
-        return _conversation_summary(build_conversation_repository().create(request.dataset_id))
+        return _conversation_summary(
+            build_conversation_repository().create(
+                request.dataset_id, request.model_id or get_settings().ai_default_model
+            )
+        )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -114,9 +145,12 @@ def rename_conversation(
     conversation_id: UUID, request: ConversationRenameRequest
 ) -> ConversationSummaryResponse:
     try:
-        return _conversation_summary(
-            build_conversation_repository().rename(conversation_id, request.title)
-        )
+        repository = build_conversation_repository()
+        if request.model_id is not None:
+            repository.set_model(conversation_id, request.model_id)
+        if request.title is None:
+            return _conversation_summary(repository.get(conversation_id))
+        return _conversation_summary(repository.rename(conversation_id, request.title))
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -142,20 +176,26 @@ def send_conversation_message(
     repository = build_conversation_repository()
     try:
         conversation = repository.get(conversation_id)
+        selected_model = request.model_id or conversation.model_id
+        settings = get_settings().model_copy(update={"ai_default_model": selected_model})
+        if request.model_id is not None:
+            repository.set_model(conversation_id, selected_model)
         user_message = repository.add_user_message(conversation_id, request.message)
-        if conversation.dataset_id is None:
-            service = build_chat_service(get_settings())
-        else:
-            dataset_repository = build_dataset_repository()
-            dataset = dataset_repository.get(conversation.dataset_id)
-            service = build_dataset_chat_service(
-                get_settings(),
-                build_dataset_sql_context(dataset, dataset_repository.categorical_values(dataset)),
-            )
         try:
+            if conversation.dataset_id is None:
+                service = build_chat_service(settings)
+            else:
+                dataset_repository = build_dataset_repository()
+                dataset = dataset_repository.get(conversation.dataset_id)
+                service = build_dataset_chat_service(
+                    settings,
+                    build_dataset_sql_context(
+                        dataset, dataset_repository.categorical_values(dataset)
+                    ),
+                )
             response = _chat_response(service.chat(request.message))
         except ShopQueryError as exc:
-            response = _chat_error(exc)
+            response = _chat_error(exc, selected_model)
         assistant_message = repository.add_response_message(
             conversation_id,
             content=response.answer,
@@ -386,18 +426,29 @@ def _chat_response(result: ChatResult) -> ChatResponse:
         route=result.route,
         sql=result.sql,
         rows=result.rows,
+        requested_model=result.requested_model,
+        used_model=result.used_model,
+        fallback_used=result.fallback_used,
+        fallback_reason=result.fallback_reason,
         sources=[
             SourceResponse.model_validate(source, from_attributes=True) for source in result.sources
         ],
     )
 
 
-def _chat_error(exc: ShopQueryError) -> ChatResponse:
+def _chat_error(exc: ShopQueryError, requested_model: str | None = None) -> ChatResponse:
     logger.warning("Chat request could not be completed: %s", type(exc).__name__)
     return ChatResponse(
         answer="Không thể hoàn tất câu hỏi bằng dữ liệu hiện có.",
         route=None,
         error=str(exc),
+        requested_model=exc.requested_model if isinstance(exc, ChatTurnError) else requested_model,
+        fallback_used=isinstance(exc, ChatTurnError) and exc.fallback_used,
+        fallback_reason=(
+            "primary_provider_unavailable"
+            if isinstance(exc, ChatTurnError) and exc.fallback_used
+            else None
+        ),
     )
 
 
@@ -409,6 +460,7 @@ def _conversation_summary(item: ConversationRecord) -> ConversationSummaryRespon
         dataset_name=item.dataset_name,
         created_at=item.created_at,
         updated_at=item.updated_at,
+        model_id=item.model_id,
     )
 
 

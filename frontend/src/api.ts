@@ -7,6 +7,8 @@ import type {
   DatasetDocument,
   DatasetPreview,
   HealthResponse,
+  ModelId,
+  ModelsResponse,
   RouteLabel,
   SourceReference,
 } from "./types";
@@ -52,7 +54,11 @@ function parseChatResponse(value: unknown): ChatResponse {
     !value.rows.every(isRecord) ||
     !Array.isArray(value.sources) ||
     !value.sources.every(isSource) ||
-    !isNullableString(value.error)
+    !isNullableString(value.error) ||
+    ![undefined, null, "gemini", "inetcloud-knowledge"].includes(value.requested_model as string | null | undefined) ||
+    ![undefined, null, "gemini", "inetcloud-knowledge"].includes(value.used_model as string | null | undefined) ||
+    !(value.fallback_used === undefined || typeof value.fallback_used === "boolean") ||
+    !(value.fallback_reason === undefined || isNullableString(value.fallback_reason))
   ) {
     throw new ChatApiError("Phản hồi từ máy chủ không đúng định dạng.", "invalid_response");
   }
@@ -127,11 +133,33 @@ export async function getConversations(signal?: AbortSignal): Promise<Conversati
   return body as ConversationSummary[];
 }
 
-export async function createConversation(datasetId: number | null): Promise<ConversationSummary> {
+export async function getModels(signal?: AbortSignal): Promise<ModelsResponse> {
+  const body = await requestJson("/api/models", { signal });
+  if (!isRecord(body) || !Array.isArray(body.models) ||
+    !(body.default_model === "gemini" || body.default_model === "inetcloud-knowledge") ||
+    !body.models.every((model) => isRecord(model) &&
+      (model.id === "gemini" || model.id === "inetcloud-knowledge") &&
+      typeof model.label === "string" && typeof model.configured === "boolean")) {
+    throw new ChatApiError("Danh sách mô hình không hợp lệ.", "invalid_response");
+  }
+  return body as unknown as ModelsResponse;
+}
+
+export async function setConversationModel(conversationId: string, modelId: ModelId) {
+  return await requestJson(`/api/conversations/${conversationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model_id: modelId }),
+  }) as ConversationSummary;
+}
+
+export async function createConversation(
+  datasetId: number | null, modelId?: ModelId,
+): Promise<ConversationSummary> {
   return await requestJson("/api/conversations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dataset_id: datasetId }),
+    body: JSON.stringify({ dataset_id: datasetId, model_id: modelId }),
   }) as ConversationSummary;
 }
 
@@ -161,11 +189,12 @@ export async function sendConversationMessage(
   conversationId: string,
   message: string,
   signal?: AbortSignal,
+  modelId?: ModelId,
 ): Promise<ConversationSendResponse> {
   const body = await requestJson(`/api/conversations/${conversationId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, model_id: modelId }),
     signal,
   });
   if (!isRecord(body) || !isRecord(body.user_message) || !isRecord(body.assistant_message)) {

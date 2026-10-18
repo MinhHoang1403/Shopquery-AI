@@ -2,8 +2,9 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, HttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,12 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "ShopQuery AI"
+    ai_default_model: Literal["inetcloud-knowledge", "gemini"] = "inetcloud-knowledge"
+    inetcloud_base_url: str | None = None
+    inetcloud_model: Literal["knowledge"] = "knowledge"
+    inetcloud_timeout_seconds: float = Field(default=60, ge=1, le=120)
+    inetcloud_retry_attempts: int = Field(default=1, ge=1, le=3)
+    ai_gemini_fallback_enabled: bool = False
     gemini_api_key: str | None = None
     gemini_generation_model: str = "gemini-3.5-flash-lite"
     gemini_embedding_model: str = "gemini-embedding-2"
@@ -37,6 +44,23 @@ class Settings(BaseSettings):
     upload_max_rows: int = Field(default=5_000, ge=1, le=20_000)
     upload_max_columns: int = Field(default=30, ge=1, le=100)
     log_level: str = "INFO"
+
+    @field_validator("inetcloud_base_url")
+    @classmethod
+    def validate_inetcloud_url(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        parsed = HttpUrl(value)
+        if (
+            parsed.scheme != "https"
+            or not parsed.host
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("INETCLOUD_BASE_URL must be an HTTPS URL without credentials")
+        return str(parsed).rstrip("/")
 
     @field_validator("embedding_dimensions")
     @classmethod

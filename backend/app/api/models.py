@@ -4,14 +4,18 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.ai.providers import ModelId
 from app.routing.router import RouteLabel
 
 
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     message: str = Field(min_length=1, max_length=2_000)
     dataset_id: int | None = Field(default=None, ge=1)
+    model_id: ModelId | None = None
 
     @field_validator("message")
     @classmethod
@@ -36,6 +40,23 @@ class ChatResponse(BaseModel):
     rows: list[dict[str, Any]] = Field(default_factory=list)
     sources: list[SourceResponse] = Field(default_factory=list)
     error: str | None = None
+    requested_model: ModelId | None = None
+    used_model: ModelId | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+
+
+class ModelOption(BaseModel):
+    id: ModelId
+    label: str
+    provider: str
+    configured: bool
+
+
+class ModelsResponse(BaseModel):
+    default_model: ModelId
+    models: list[ModelOption]
+    gemini_fallback_enabled: bool
 
 
 class HealthResponse(BaseModel):
@@ -116,18 +137,28 @@ class DatasetDetailResponse(DatasetResponse):
 
 class ConversationCreateRequest(BaseModel):
     dataset_id: int | None = Field(default=None, ge=1)
+    model_id: ModelId | None = None
 
 
 class ConversationRenameRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    model_id: ModelId | None = None
 
     @field_validator("title")
     @classmethod
-    def reject_blank_title(cls, value: str) -> str:
+    def reject_blank_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         stripped = " ".join(value.split())
         if not stripped:
             raise ValueError("title must not be blank")
         return stripped
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ConversationRenameRequest":
+        if self.title is None and self.model_id is None:
+            raise ValueError("title or model_id is required")
+        return self
 
 
 class ConversationSummaryResponse(BaseModel):
@@ -137,6 +168,7 @@ class ConversationSummaryResponse(BaseModel):
     dataset_name: str
     created_at: datetime
     updated_at: datetime
+    model_id: ModelId = "gemini"
 
 
 class ConversationMessageResponse(BaseModel):

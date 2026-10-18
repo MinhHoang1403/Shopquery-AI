@@ -3,7 +3,9 @@
 from functools import lru_cache
 from threading import Lock
 
-from app.ai.gemini import GeminiGateway
+from app.ai.chat import ModelChatService
+from app.ai.gemini import GenerationGateway
+from app.ai.providers import build_embedding_gateway
 from app.conversations.repository import ConversationRepository
 from app.core.config import Settings
 from app.database.session import get_readonly_engine, get_setup_engine
@@ -23,10 +25,13 @@ from app.text_to_sql.validator import SqlValidator
 _schema_setup_lock = Lock()
 
 
-def build_chat_service(settings: Settings) -> ChatService:
+def build_chat_service(settings: Settings) -> ModelChatService:
+    return ModelChatService(settings, lambda gateway: _build_chat_service(settings, gateway))
+
+
+def _build_chat_service(settings: Settings, gateway: GenerationGateway) -> ChatService:
     """Create request-safe stateless pipelines around shared connection pools."""
 
-    gateway = GeminiGateway(settings)
     readonly_engine = get_readonly_engine()
     sql_pipeline = TextToSqlPipeline(
         generator=SqlGenerator(gateway, settings.demo_reference_date),
@@ -39,7 +44,7 @@ def build_chat_service(settings: Settings) -> ChatService:
         gateway=gateway,
     )
     rag_pipeline = RagPipeline(
-        embedder=gateway,
+        embedder=build_embedding_gateway(settings),
         gateway=gateway,
         repository=DocumentRepository(get_setup_engine(), readonly_engine),
     )
@@ -53,10 +58,19 @@ def build_chat_service(settings: Settings) -> ChatService:
 
 def build_dataset_chat_service(
     settings: Settings, context: DatasetSqlContext
+) -> ModelChatService | DatasetChatService:
+    if not context.table_columns and not context.has_documents:
+        return DatasetChatService(None, None, None, None, settings.ai_default_model)
+    return ModelChatService(
+        settings, lambda gateway: _build_dataset_chat_service(settings, context, gateway)
+    )
+
+
+def _build_dataset_chat_service(
+    settings: Settings, context: DatasetSqlContext, gateway: GenerationGateway
 ) -> DatasetChatService:
     """Build request-local pipelines scoped to one uploaded workspace."""
 
-    gateway = GeminiGateway(settings)
     sql_pipeline = None
     if context.table_columns:
         sql_pipeline = TextToSqlPipeline(
@@ -80,7 +94,7 @@ def build_dataset_chat_service(
     rag_pipeline = None
     if context.has_documents:
         rag_pipeline = RagPipeline(
-            embedder=gateway,
+            embedder=build_embedding_gateway(settings),
             gateway=gateway,
             repository=DocumentRepository(get_setup_engine(), get_readonly_engine()),
             dataset_id=context.dataset_id,

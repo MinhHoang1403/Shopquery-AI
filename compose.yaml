@@ -25,6 +25,12 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
+      AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:-inetcloud-knowledge}
+      INETCLOUD_BASE_URL: ${INETCLOUD_BASE_URL:-}
+      INETCLOUD_MODEL: ${INETCLOUD_MODEL:-knowledge}
+      INETCLOUD_TIMEOUT_SECONDS: ${INETCLOUD_TIMEOUT_SECONDS:-60}
+      INETCLOUD_RETRY_ATTEMPTS: ${INETCLOUD_RETRY_ATTEMPTS:-1}
+      AI_GEMINI_FALLBACK_ENABLED: ${AI_GEMINI_FALLBACK_ENABLED:-false}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_GENERATION_MODEL: ${GEMINI_GENERATION_MODEL:-gemini-3.5-flash-lite}
       GEMINI_EMBEDDING_MODEL: gemini-embedding-2

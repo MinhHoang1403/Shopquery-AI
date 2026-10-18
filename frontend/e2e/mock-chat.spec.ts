@@ -86,13 +86,16 @@ interface ApiState {
   documents: Array<Record<string, unknown>>;
   messageRequests: number;
   previewPaths: string[];
+  modelId: string;
+  messageModels: string[];
+  fallbackNext: boolean;
 }
 
 const runtimeErrors = new WeakMap<Page, { console: string[]; page: string[]; requests: string[]; responses: string[] }>();
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: "http://127.0.0.1:8080",
+    origin: new URL(testInfo.project.use.baseURL ?? "http://127.0.0.1:8080").origin,
   });
   const errors = { console: [] as string[], page: [] as string[], requests: [] as string[], responses: [] as string[] };
   runtimeErrors.set(page, errors);
@@ -138,12 +141,16 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     documents: [],
     messageRequests: 0,
     previewPaths: [],
+    modelId: "inetcloud-knowledge",
+    messageModels: [],
+    fallbackNext: false,
   };
   const summary = () => ({
     conversation_id: conversationId,
     title: state.title,
     dataset_id: null,
     dataset_name: "Dữ liệu cửa hàng mẫu",
+    model_id: state.modelId,
     created_at: "2026-10-14T00:00:00Z",
     updated_at: "2026-10-14T00:00:02Z",
   });
@@ -152,6 +159,13 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method();
+    if (url.pathname === "/api/models") return json(route, {
+      default_model: "inetcloud-knowledge", gemini_fallback_enabled: true,
+      models: [
+        { id: "inetcloud-knowledge", label: "iNetCloud Knowledge", provider: "inetcloud", configured: true },
+        { id: "gemini", label: "Gemini", provider: "gemini", configured: true },
+      ],
+    });
     if (url.pathname === "/api/health") return json(route, health);
     if (url.pathname === "/api/datasets" && method === "GET") return json(route, state.datasets);
     if (url.pathname === "/api/datasets" && method === "POST") {
@@ -199,6 +213,7 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     }
     if (url.pathname === "/api/conversations" && method === "GET") return json(route, state.exists ? [summary()] : []);
     if (url.pathname === "/api/conversations" && method === "POST") {
+      state.modelId = request.postDataJSON().model_id ?? "inetcloud-knowledge";
       state.exists = true;
       state.messages = [];
       return json(route, summary(), 201);
@@ -207,6 +222,10 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
       return state.exists ? json(route, { ...summary(), messages: state.messages }) : json(route, { detail: "Không tìm thấy." }, 404);
     }
     if (url.pathname === `/api/conversations/${conversationId}` && method === "PATCH") {
+      if (request.postDataJSON().model_id) {
+        state.modelId = request.postDataJSON().model_id;
+        return json(route, summary());
+      }
       state.title = String(request.postDataJSON().title);
       return json(route, summary());
     }
@@ -218,7 +237,16 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     if (url.pathname === `/api/conversations/${conversationId}/messages` && method === "POST") {
       state.messageRequests += 1;
       const question = String(request.postDataJSON().message);
-      const response = responseFor(question);
+      const requestedModel = request.postDataJSON().model_id ?? state.modelId;
+      state.messageModels.push(requestedModel);
+      state.modelId = requestedModel;
+      const response = {
+        ...responseFor(question), requested_model: requestedModel,
+        used_model: state.fallbackNext ? "gemini" : requestedModel,
+        fallback_used: state.fallbackNext,
+        fallback_reason: state.fallbackNext ? "primary_provider_unavailable" : null,
+      };
+      state.fallbackNext = false;
       if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
       state.title = question.slice(0, 56);
       const userMessage = { message_id: state.messages.length + 1, role: "user", content: question, response: null, created_at: "2026-10-14T00:00:03Z" };
@@ -442,6 +470,35 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await expect(page.getByText("Ngoài phạm vi", { exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Bằng chứng hỗ trợ" })).toHaveCount(0);
   await expectNoPageOverflow(page);
+});
+
+test("selects models, preserves attribution and restores a fallback conversation", async ({ page }, testInfo) => {
+  const state = await installApi(page);
+  await openApp(page);
+  const selector = page.getByLabel("Chọn mô hình AI");
+  await expect(selector).toHaveValue("inetcloud-knowledge");
+  await selector.focus();
+  await expect(selector).toBeFocused();
+  await page.keyboard.press("Escape");
+  await selector.selectOption("gemini");
+  const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+  await input.fill("Top sản phẩm");
+  await input.press("Enter");
+  await expect(page.locator(".model-attribution").last()).toHaveText("Gemini");
+  expect(state.messageModels).toEqual(["gemini"]);
+  await selector.selectOption("inetcloud-knowledge");
+  await expect.poll(() => state.modelId).toBe("inetcloud-knowledge");
+  state.fallbackNext = true;
+  await input.fill("Chính sách đổi trả như thế nào?");
+  await input.press("Enter");
+  await expect(page.getByText(/Đã chuyển từ Knowledge sang Gemini/)).toBeVisible();
+  expect(state.messageModels).toEqual(["gemini", "inetcloud-knowledge"]);
+  await page.reload();
+  await expect(page.getByText(/Đã chuyển từ Knowledge sang Gemini/)).toBeVisible();
+  await expect(selector).toHaveValue("inetcloud-knowledge");
+  await expect(page.locator(".model-attribution")).toHaveText(["Gemini", "Gemini"]);
+  await expectNoPageOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath("model-selector-fallback.png"), fullPage: true });
 });
 
 test("previews and imports a CSV before selecting the uploaded dataset", async ({ page }) => {

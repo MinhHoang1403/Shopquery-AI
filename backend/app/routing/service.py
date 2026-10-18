@@ -16,6 +16,10 @@ class ChatResult:
     sql: str | None = None
     rows: list[dict[str, Any]] = field(default_factory=list)
     sources: list[Source] = field(default_factory=list)
+    requested_model: str | None = None
+    used_model: str | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
 
 
 class ChatService:
@@ -56,15 +60,17 @@ class DatasetChatService:
 
     def __init__(
         self,
-        router: QueryRouter,
+        router: QueryRouter | None,
         sql_pipeline: TextToSqlPipeline | None,
         rag_pipeline: RagPipeline | None,
         hybrid_pipeline: HybridPipeline | None,
+        requested_model: str | None = None,
     ) -> None:
         self._router = router
         self._sql_pipeline = sql_pipeline
         self._rag_pipeline = rag_pipeline
         self._hybrid_pipeline = hybrid_pipeline
+        self._requested_model = requested_model
 
     def chat(self, question: str) -> ChatResult:
         allowed = {RouteLabel.UNSUPPORTED}
@@ -74,10 +80,11 @@ class DatasetChatService:
             allowed.add(RouteLabel.RAG)
         if self._hybrid_pipeline is not None:
             allowed.add(RouteLabel.HYBRID)
-        if len(allowed) == 1:
+        if len(allowed) == 1 or self._router is None:
             return ChatResult(
                 "Bộ dữ liệu chưa có bảng hoặc tài liệu để trả lời câu hỏi.",
                 RouteLabel.UNSUPPORTED,
+                requested_model=self._requested_model,
             )
         route = self._router.route(question, frozenset(allowed)).route
         if route == RouteLabel.SQL and self._sql_pipeline is not None:

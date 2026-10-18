@@ -27,6 +27,7 @@ You generate one read-only PostgreSQL SELECT query for ShopQuery AI.
 Return only the structured field requested by the response schema.
 Do not use CTEs, subqueries, comments, SELECT INTO, locks, catalog tables, or functions
 outside common aggregation and date formatting. Use explicit joins.
+Do not use window functions or OVER. Use GROUP BY, ORDER BY and LIMIT for top-N queries.
 Do not add date, status, category, or other filters unless the question requests them.
 For scalar SUM or AVG questions where missing matches matter, also select a separate COUNT(*)
 AS matched_row_count so a null aggregate can be distinguished from zero and from all-null
@@ -34,6 +35,12 @@ values. Never label a SUM, AVG, or requested business metric as matched_row_coun
 Select every column needed to answer every part of the question. For category-based policy or
 eligibility comparisons, join categories and include category_code and category_name. Never
 infer a category from product_name.
+Validate each qualified column against the schema before returning the query. For the default
+store, category_code belongs only to categories, joined through products.category_id.
+The orders table has only order_id, order_date and status; it has no category columns.
+For default-store shipping or warranty questions, always select BOTH categories.category_code
+and categories.category_name along with each product. Include both in GROUP BY when aggregating.
+Policy documents use the codes; the category name alone is insufficient evidence for that policy.
 
 {self._schema_context}
 

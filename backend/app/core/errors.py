@@ -13,6 +13,25 @@ class ModelResponseError(ShopQueryError):
     """Raised when a model response cannot be validated."""
 
 
+class ProviderError(ModelResponseError):
+    """Generation failure classified before applying the fallback policy."""
+
+    def __init__(self, message: str, *, fallback_allowed: bool = False) -> None:
+        super().__init__(message)
+        self.fallback_allowed = fallback_allowed
+
+
+class ChatTurnError(ShopQueryError):
+    """Preserve attribution when no final model answer could be produced."""
+
+    def __init__(
+        self, cause: ShopQueryError, requested_model: str, *, fallback_used: bool = False
+    ) -> None:
+        super().__init__(str(cause))
+        self.requested_model = requested_model
+        self.fallback_used = fallback_used
+
+
 class SqlValidationError(ShopQueryError):
     """Raised when generated SQL is outside the supported safe subset."""
 

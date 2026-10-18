@@ -8,6 +8,8 @@ import {
   getConversations,
   getDatasets,
   getHealth,
+  getModels,
+  setConversationModel,
   renameConversation,
   sendConversationMessage,
 } from "./api";
@@ -23,6 +25,8 @@ import type {
   ConversationMessage,
   ConversationSummary,
   Dataset,
+  ModelId,
+  ModelOption,
 } from "./types";
 
 const DEFAULT_QUESTIONS = [
@@ -55,6 +59,10 @@ export default function App() {
   const [messages, setMessages] = useState<ConversationEntry[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [defaultModel, setDefaultModel] = useState<ModelId>("inetcloud-knowledge");
+  const [selectedModel, setSelectedModel] = useState<ModelId>("inetcloud-knowledge");
+  const [isSavingModel, setIsSavingModel] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -104,9 +112,14 @@ export default function App() {
       .then((result) => setHealth({ checked: true, online: result.status === "ok" }))
       .catch(() => setHealth({ checked: true, online: false }));
 
-    Promise.all([getDatasets(controller.signal), getConversations(controller.signal)])
-      .then(async ([availableDatasets, availableConversations]) => {
+    Promise.all([getDatasets(controller.signal), getConversations(controller.signal), getModels(controller.signal)])
+      .then(async ([availableDatasets, availableConversations, modelRegistry]) => {
         setDatasets(availableDatasets);
+        setModels(modelRegistry.models);
+        setDefaultModel(modelRegistry.default_model);
+        if (selectionSequence.current === bootstrapSequence || !activeConversation.current) {
+          setSelectedModel(modelRegistry.default_model);
+        }
         setConversations(availableConversations);
         if (
           availableConversations.length > 0 &&
@@ -118,6 +131,7 @@ export default function App() {
           activeConversation.current = latest.conversation_id;
           setActiveConversationId(latest.conversation_id);
           setSelectedDatasetId(detail.dataset_id);
+          setSelectedModel(detail.model_id ?? "gemini");
           setMessages(detail.messages.map(entryFromMessage));
         }
       })
@@ -151,6 +165,7 @@ export default function App() {
     activeConversation.current = null;
     setActiveConversationId(null);
     setSelectedDatasetId(datasetId);
+    setSelectedModel(defaultModel);
     setMessages([]);
     setDraft("");
     setValidationError(null);
@@ -172,6 +187,7 @@ export default function App() {
       activeConversation.current = detail.conversation_id;
       setActiveConversationId(detail.conversation_id);
       setSelectedDatasetId(detail.dataset_id);
+      setSelectedModel(detail.model_id ?? "gemini");
       setMessages(detail.messages.map(entryFromMessage));
       setSidebarOpen(false);
     } catch (error) {
@@ -189,7 +205,8 @@ export default function App() {
   }
 
   async function submitQuestion(questionOverride?: string) {
-    if (isLoading || isBooting) return;
+    if (isLoading || isBooting || isSavingModel) return;
+    const requestModel = selectedModel;
     const question = (questionOverride ?? draft).trim();
     if (!question) {
       setValidationError("Vui lòng nhập câu hỏi.");
@@ -202,10 +219,11 @@ export default function App() {
 
     setValidationError(null);
     setDraft("");
+    setIsLoading(true);
     let conversationId = activeConversation.current;
     try {
       if (!conversationId) {
-        const created = await createConversation(selectedDatasetId);
+        const created = await createConversation(selectedDatasetId, requestModel);
         conversationId = created.conversation_id;
         activeConversation.current = conversationId;
         setActiveConversationId(conversationId);
@@ -214,6 +232,7 @@ export default function App() {
     } catch (error) {
       setValidationError(errorMessage(error));
       setDraft(question);
+      setIsLoading(false);
       return;
     }
 
@@ -225,7 +244,7 @@ export default function App() {
     requestController.current = controller;
 
     try {
-      const result = await sendConversationMessage(requestConversationId, question, controller.signal);
+      const result = await sendConversationMessage(requestConversationId, question, controller.signal, requestModel);
       upsertConversation(result.conversation);
       if (activeConversation.current === requestConversationId) {
         setMessages((current) => [
@@ -262,6 +281,26 @@ export default function App() {
     }
     setSelectedDatasetId(dataset.dataset_id);
     setSidebarOpen(false);
+  }
+
+  async function chooseModel(modelId: ModelId) {
+    if (isLoading || isBooting || isSavingModel || modelId === selectedModel) return;
+    const previous = selectedModel;
+    const targetConversation = activeConversation.current;
+    setSelectedModel(modelId);
+    if (!targetConversation) return;
+    setIsSavingModel(true);
+    try {
+      const updated = await setConversationModel(targetConversation, modelId);
+      upsertConversation(updated);
+    } catch (error) {
+      if (activeConversation.current === targetConversation) {
+        setSelectedModel(previous);
+        setValidationError(errorMessage(error));
+      }
+    } finally {
+      setIsSavingModel(false);
+    }
   }
 
   async function saveRename(title: string) {
@@ -367,7 +406,10 @@ export default function App() {
           <div className="chat-column">
             <ChatInput
               datasetName={datasetName}
-              disabled={isLoading || isBooting}
+              disabled={isLoading || isBooting || isSavingModel}
+              models={models}
+              selectedModel={selectedModel}
+              onModelSelect={chooseModel}
               onChange={updateDraft}
               onSubmit={() => submitQuestion()}
               validationError={validationError}

@@ -37,6 +37,7 @@ test("creates a multi-source workspace and completes SQL, RAG and Hybrid", async
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/");
   await expect(page.getByRole("status", { name: "API sẵn sàng" })).toBeVisible();
+  await page.getByRole("button", { name: "Đoạn chat mới" }).click();
   await page.getByRole("button", { name: "Nạp dữ liệu mới" }).click();
 
   const workspaceName = `Workspace browser ${Date.now()}`;

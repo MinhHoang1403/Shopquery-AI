@@ -1,4 +1,18 @@
 export type RouteLabel = "SQL" | "RAG" | "HYBRID" | "UNSUPPORTED";
+export type ModelId = "inetcloud-knowledge" | "gemini";
+
+export interface ModelOption {
+  id: ModelId;
+  label: string;
+  provider: string;
+  configured: boolean;
+}
+
+export interface ModelsResponse {
+  default_model: ModelId;
+  models: ModelOption[];
+  gemini_fallback_enabled: boolean;
+}
 
 export interface SourceReference {
   chunk_id: number;
@@ -14,6 +28,10 @@ export interface ChatResponse {
   rows: Record<string, unknown>[];
   sources: SourceReference[];
   error: string | null;
+  requested_model?: ModelId | null;
+  used_model?: ModelId | null;
+  fallback_used?: boolean;
+  fallback_reason?: string | null;
 }
 
 export interface HealthResponse {
@@ -83,6 +101,7 @@ export interface ConversationSummary {
   dataset_name: string;
   created_at: string;
   updated_at: string;
+  model_id?: ModelId;
 }
 
 export interface ConversationMessage {

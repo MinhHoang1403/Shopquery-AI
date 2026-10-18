@@ -119,6 +119,14 @@ function installApi(options: MockOptions = {}) {
         : input?.url ?? "http://localhost/__aborted_request__";
     const url = new URL(rawUrl, "http://localhost");
     const method = init?.method ?? "GET";
+    if (url.pathname === "/api/models") return jsonResponse({
+      default_model: "inetcloud-knowledge",
+      gemini_fallback_enabled: false,
+      models: [
+        { id: "inetcloud-knowledge", label: "iNetCloud Knowledge", provider: "inetcloud", configured: true },
+        { id: "gemini", label: "Gemini", provider: "gemini", configured: true },
+      ],
+    });
     if (url.pathname === "/api/health") return jsonResponse({ status: "ok", service: "ShopQuery AI" });
     if (url.pathname === "/api/datasets" && method === "GET") return jsonResponse(datasets);
     if (url.pathname === "/api/datasets" && method === "POST") {
@@ -186,6 +194,54 @@ afterEach(() => {
 });
 
 describe("ShopQuery workspace", () => {
+  it("gửi model đã chọn và không đổi attribution của câu trả lời khi đổi lựa chọn", async () => {
+    const response = chatResponse({ requested_model: "gemini", used_model: "gemini", fallback_used: false });
+    const fetchMock = installApi({ response });
+    const user = userEvent.setup();
+    render(<App />);
+    const selector = await screen.findByLabelText("Chọn mô hình AI");
+    await waitFor(() => expect(selector).not.toBeDisabled());
+    expect(selector).toHaveValue("inetcloud-knowledge");
+    await user.selectOptions(selector, "gemini");
+    await user.type(screen.getByLabelText("Nhập câu hỏi cho ShopQuery AI"), "Top sản phẩm{Enter}");
+    await screen.findByText("Đây là câu trả lời.");
+    const sent = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/messages"));
+    expect(JSON.parse(String(sent?.[1]?.body)).model_id).toBe("gemini");
+    expect(document.querySelector(".model-attribution")).toHaveTextContent("Gemini");
+    await user.selectOptions(selector, "inetcloud-knowledge");
+    expect(document.querySelector(".model-attribution")).toHaveTextContent("Gemini");
+    const patch = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
+    expect(JSON.parse(String(patch?.[1]?.body)).model_id).toBe("inetcloud-knowledge");
+  });
+
+  it("khôi phục model preference và hiển thị thông báo fallback từ metadata", async () => {
+    const response = chatResponse({ requested_model: "inetcloud-knowledge", used_model: "gemini", fallback_used: true });
+    installApi({
+      conversations: [summary()],
+      details: { [conversationId]: { ...summary(), model_id: "gemini", messages: [
+        { message_id: 2, role: "assistant", content: response.answer, response, created_at: "2026-10-18T00:00:00Z" },
+      ] } },
+    });
+    render(<App />);
+    await screen.findByText("Đây là câu trả lời.");
+    expect(screen.getByLabelText("Chọn mô hình AI")).toHaveValue("gemini");
+    expect(screen.getByText(/Đã chuyển từ Knowledge sang Gemini/)).toBeVisible();
+  });
+
+  it("khóa model selector khi đang gửi để request giữ đúng model", async () => {
+    const fetchMock = installApi({ delayMessage: true });
+    const user = userEvent.setup();
+    render(<App />);
+    const selector = await screen.findByLabelText("Chọn mô hình AI");
+    await waitFor(() => expect(selector).not.toBeDisabled());
+    await user.type(screen.getByLabelText("Nhập câu hỏi cho ShopQuery AI"), "Top sản phẩm");
+    await user.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+    expect(selector).toBeDisabled();
+    await screen.findByText("Đây là câu trả lời.");
+    const sent = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/messages"));
+    expect(JSON.parse(String(sent?.[1]?.body)).model_id).toBe("inetcloud-knowledge");
+  });
+
   it("hiển thị sidebar tối giản, dataset selector và empty state", async () => {
     const user = userEvent.setup();
     render(<App />);

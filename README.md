@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MinhHoang1403/Shopquery-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/MinhHoang1403/Shopquery-AI/actions/workflows/ci.yml)
 
-ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời câu hỏi từ dữ liệu bán hàng và tài liệu chính sách. Dự án dùng dữ liệu giả lập để minh họa toàn bộ luồng từ giao diện React, FastAPI, Gemini đến PostgreSQL/pgvector; đây không phải hệ thống doanh nghiệp hoặc dịch vụ thương mại thật.
+ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời câu hỏi từ dữ liệu bán hàng và tài liệu chính sách. Dự án dùng dữ liệu giả lập để minh họa toàn bộ luồng từ giao diện React, FastAPI, iNetCloud Knowledge/Gemini đến PostgreSQL/pgvector; đây không phải hệ thống doanh nghiệp hoặc dịch vụ thương mại thật.
 
 ## Chức năng
 
@@ -20,7 +20,7 @@ ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời c�
 | --- | --- |
 | Giao diện | React 19, TypeScript, Vite |
 | API | FastAPI, Pydantic, Uvicorn |
-| AI | Gemini, Google GenAI SDK |
+| AI | iNetCloud Knowledge qua LangChain ChatOpenAI; Gemini qua Google GenAI SDK |
 | Truy vấn | SQLGlot, SQLAlchemy, Psycopg |
 | Dữ liệu | PostgreSQL 17, pgvector |
 | Triển khai local | Nginx, Docker, Docker Compose |
@@ -34,11 +34,13 @@ Browser
     -> FastAPI
       +-> Conversations/Dataset workspaces -> PostgreSQL metadata + uploaded_data
       +-> Document ingestion -> bounded parser -> Gemini Embedding -> pgvector
-      -> Gemini Router
-        +-> SQL ------> Gemini -> SQLGlot -> PostgreSQL read-only
-        +-> RAG ------> Gemini Embedding -> pgvector -> Gemini
-        +-> HYBRID ---> SQL + RAG -> Gemini tổng hợp
+      -> Model selection: Knowledge (default) / Gemini (manual)
+        -> Router -> SQL / RAG / HYBRID / UNSUPPORTED
+        +-> SQL ------> selected generation -> SQLGlot -> PostgreSQL read-only
+        +-> RAG ------> Gemini Embedding -> pgvector -> selected generation
+        +-> HYBRID ---> SQL + RAG -> selected generation
         +-> UNSUPPORTED
+        -> Optional whole-turn fallback: Knowledge -> Gemini
 ```
 
 Nginx phục vụ React SPA và chuyển tiếp nguyên đường dẫn `/api` đến FastAPI. Router dùng structured output và chỉ được chọn những nhánh mà workspace thực sự hỗ trợ: chỉ bảng có SQL, chỉ tài liệu có RAG, cả hai có thêm Hybrid. SQL allowlist và điều kiện RAG `dataset_id` đều được áp dụng ở backend theo từng request. Default corpus dùng `dataset_id = NULL` và không được dùng để bù cho tài liệu thiếu trong workspace upload. Frontend không giữ Gemini API key.
@@ -59,7 +61,7 @@ Python, Node.js, PostgreSQL và Nginx được cung cấp trong container nên k
 - `uv` là công cụ Python được ưu tiên; `pip` là phương án thay thế cho runtime.
 - Node.js 24 và npm để chạy frontend.
 - Docker Desktop/Compose để chạy PostgreSQL có pgvector.
-- Gemini API key cho generation, embedding, ingestion và live tests.
+- Địa chỉ Knowledge do công ty cung cấp; Gemini API key cho Gemini generation, embedding, ingestion và các live tests tương ứng.
 
 ## Clone repository
 
@@ -79,12 +81,18 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-Điền `GEMINI_API_KEY` bằng key của bạn. Không commit `.env` và không đưa key vào frontend hoặc GitHub Actions.
+Điền `INETCLOUD_BASE_URL` bằng địa chỉ HTTPS do công ty cung cấp trong `.env` local. Điền `GEMINI_API_KEY` để dùng Gemini thủ công, embedding hoặc fallback được bật. SQL-only bằng Knowledge không cần Gemini key. Không commit `.env` và không đưa key vào frontend hoặc GitHub Actions.
 
 Các biến chính:
 
 | Biến | Vai trò |
 | --- | --- |
+| `AI_DEFAULT_MODEL` | `inetcloud-knowledge` (mặc định) hoặc `gemini` |
+| `INETCLOUD_BASE_URL` | Base URL HTTPS Chat Completions của công ty; chỉ cấu hình local |
+| `INETCLOUD_MODEL` | Model gửi provider, bắt buộc `knowledge` |
+| `INETCLOUD_TIMEOUT_SECONDS` | Timeout hữu hạn mỗi lần gọi, mặc định 60 giây |
+| `INETCLOUD_RETRY_ATTEMPTS` | Tổng số lần thử SDK, 1–3, mặc định 1 |
+| `AI_GEMINI_FALLBACK_ENABLED` | Mặc định `false`; cho phép fallback generation tới Google |
 | `GEMINI_API_KEY` | Xác thực Google Gemini; không có giá trị mặc định |
 | `GEMINI_GENERATION_MODEL` | Model generation/router, mặc định `gemini-3.5-flash-lite` |
 | `GEMINI_EMBEDDING_MODEL` | Bắt buộc `gemini-embedding-2` |
@@ -97,6 +105,16 @@ Các biến chính:
 | `DEMO_REFERENCE_DATE` | Ngày tham chiếu ổn định cho dữ liệu demo |
 
 Compose tự dùng hostname `db` cho các container. Các URL mặc định trong `.env.example` dùng `127.0.0.1:54321` cho backend chạy native.
+
+Trong composer, chọn **iNetCloud Knowledge** hoặc **Gemini** trước khi gửi. Lựa chọn được lưu theo conversation; đổi model không sửa nhãn câu trả lời cũ. Mỗi response ghi `requested_model`, `used_model`, `fallback_used` và `fallback_reason`. Conversation cũ chưa có preference được hiểu là Gemini; New Chat dùng default cấu hình.
+
+Knowledge không yêu cầu key. `ChatOpenAI` dùng placeholder công khai `not-required` để đáp ứng constructor của SDK; đây không phải credential và server đã được probe chấp nhận Bearer header này. Generation dùng Chat Completions và JSON Schema đã kiểm chứng, không dùng tool calling hay Responses API. Structured output sai được thử tối đa hai lượt, không sửa JSON hoặc bỏ SQL validation.
+
+Fallback chỉ chạy lại toàn bộ lượt chat một lần khi Knowledge lỗi mạng/timeout, HTTP 408/429/500/502/503/504 hoặc structured output hết giới hạn. Lỗi cấu hình 400/401/403/404, SQL validation/execution, không có tài liệu và citation sai không kích hoạt fallback. Nếu Gemini cũng lỗi, response trả lỗi và không tạo đáp án giả.
+
+Chỉ bật `AI_GEMINI_FALLBACK_ENABLED=true` khi được phép gửi câu hỏi, schema, giá trị phân loại, SQL rows và document chunks tới Google. Tắt fallback generation không tắt Gemini Embedding: RAG và ingestion vẫn gửi dữ liệu embedding tới Google như trước. Không dùng dữ liệu công ty chưa được phép cho các live test.
+
+Chi tiết API, giới hạn và cách kiểm thử: [Multi-model integration](docs/multi_model_integration.md).
 
 ## Khởi động nhanh bằng Docker Compose
 

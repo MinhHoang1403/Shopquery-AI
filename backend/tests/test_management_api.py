@@ -28,6 +28,7 @@ class FakeConversationRepository:
         self.title = "Cuộc trò chuyện mới"
         self.messages: list[MessageRecord] = []
         self.exists = True
+        self.model_id = "inetcloud-knowledge"
 
     def _record(self, *, include_messages: bool = False) -> ConversationRecord:
         if not self.exists:
@@ -40,15 +41,24 @@ class FakeConversationRepository:
             created_at=NOW,
             updated_at=NOW,
             messages=tuple(self.messages) if include_messages else (),
+            model_id=self.model_id,
         )
 
     def list(self, limit: int, offset: int) -> list[ConversationRecord]:
         del limit, offset
         return [self._record()] if self.exists else []
 
-    def create(self, dataset_id: int | None) -> ConversationRecord:
+    def create(
+        self, dataset_id: int | None, model_id: str = "inetcloud-knowledge"
+    ) -> ConversationRecord:
         assert dataset_id is None
         self.exists = True
+        self.model_id = model_id
+        return self._record()
+
+    def set_model(self, conversation_id: UUID, model_id: str) -> ConversationRecord:
+        self.get(conversation_id)
+        self.model_id = model_id
         return self._record()
 
     def get(self, conversation_id: UUID) -> ConversationRecord:
@@ -137,9 +147,7 @@ class FakeDatasetRepository:
         self.get(dataset_id)
         return [{"Sản phẩm": "Áo", "Doanh thu": 120_000}][:limit]
 
-    def categorical_values(
-        self, dataset: DatasetInfo
-    ) -> dict[str, tuple[str, ...]]:
+    def categorical_values(self, dataset: DatasetInfo) -> dict[str, tuple[str, ...]]:
         assert dataset.dataset_id == 7
         return {"san_pham": ("Áo",)}
 

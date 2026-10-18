@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.ai.providers import MODEL_LABELS
 from app.core.errors import ResourceNotFoundError
 from app.database.models import ChatConversation, ChatMessage, Dataset
 
@@ -34,6 +35,7 @@ class ConversationRecord:
     created_at: datetime
     updated_at: datetime
     messages: tuple[MessageRecord, ...] = ()
+    model_id: str = "gemini"
 
 
 class ConversationRepository:
@@ -52,14 +54,18 @@ class ConversationRepository:
             conversations = session.scalars(statement).all()
             return [self._to_record(conversation) for conversation in conversations]
 
-    def create(self, dataset_id: int | None) -> ConversationRecord:
+    def create(
+        self, dataset_id: int | None, model_id: str = "inetcloud-knowledge"
+    ) -> ConversationRecord:
+        if model_id not in MODEL_LABELS:
+            raise ValueError("Mô hình AI không được hỗ trợ.")
         with Session(self._engine, expire_on_commit=False) as session, session.begin():
             dataset = None
             if dataset_id is not None:
                 dataset = session.get(Dataset, dataset_id)
                 if dataset is None:
                     raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")
-            conversation = ChatConversation(dataset_id=dataset_id)
+            conversation = ChatConversation(dataset_id=dataset_id, model_id=model_id)
             session.add(conversation)
             session.flush()
             conversation.dataset = dataset
@@ -101,6 +107,21 @@ class ConversationRepository:
             if conversation is None:
                 raise ResourceNotFoundError("Không tìm thấy cuộc trò chuyện.")
             session.delete(conversation)
+
+    def set_model(self, conversation_id: UUID, model_id: str) -> ConversationRecord:
+        if model_id not in MODEL_LABELS:
+            raise ValueError("Mô hình AI không được hỗ trợ.")
+        with Session(self._engine) as session, session.begin():
+            conversation = session.scalar(
+                select(ChatConversation)
+                .where(ChatConversation.conversation_id == conversation_id)
+                .with_for_update()
+            )
+            if conversation is None:
+                raise ResourceNotFoundError("Không tìm thấy cuộc trò chuyện.")
+            conversation.model_id = model_id
+            conversation.updated_at = datetime.now(UTC)
+        return self.get(conversation_id)
 
     def add_user_message(self, conversation_id: UUID, content: str) -> MessageRecord:
         with Session(self._engine, expire_on_commit=False) as session, session.begin():
@@ -165,12 +186,11 @@ class ConversationRepository:
             title=conversation.title,
             dataset_id=conversation.dataset_id,
             dataset_name=(
-                conversation.dataset.name
-                if conversation.dataset
-                else "Dữ liệu cửa hàng mẫu"
+                conversation.dataset.name if conversation.dataset else "Dữ liệu cửa hàng mẫu"
             ),
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
+            model_id=conversation.model_id or "gemini",
             messages=(
                 tuple(
                     ConversationRepository._message_record(message)

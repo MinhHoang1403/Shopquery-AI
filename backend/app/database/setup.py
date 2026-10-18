@@ -40,6 +40,9 @@ def _prepare_legacy_schema(connection: Connection) -> None:
             """
             DO $$
             BEGIN
+              IF to_regclass('public.chat_conversations') IS NOT NULL THEN
+                ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS model_id VARCHAR(40);
+              END IF;
               IF to_regclass('public.datasets') IS NOT NULL THEN
                 ALTER TABLE datasets ALTER COLUMN original_filename DROP NOT NULL;
                 ALTER TABLE datasets ALTER COLUMN file_type DROP NOT NULL;

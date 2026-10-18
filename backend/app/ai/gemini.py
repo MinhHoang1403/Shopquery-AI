@@ -30,11 +30,12 @@ class EmbeddingGateway(Protocol):
 class GeminiGateway:
     """Synchronous Gemini gateway used by the request-oriented backend."""
 
+    def close(self) -> None:
+        self._client.close()
+
     def __init__(self, settings: Settings) -> None:
         if not settings.gemini_api_key:
-            raise ConfigurationError(
-                "GEMINI_API_KEY is required for AI generation and embeddings"
-            )
+            raise ConfigurationError("GEMINI_API_KEY is required for AI generation and embeddings")
         self._settings = settings
         self._client = genai.Client(
             api_key=settings.gemini_api_key,

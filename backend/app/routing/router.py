@@ -37,7 +37,15 @@ Classify the ShopQuery question into exactly one route:
 - HYBRID: needs both computed commerce rows and document policy evidence.
 - UNSUPPORTED: outside this demo store's data and documents.
 
+Store documents cover shipping eligibility by category code, returns, warranty periods,
+product guides and shopping FAQs. A question asking which category codes have free shipping
+is a policy lookup (RAG), not an out-of-scope question. Use HYBRID only when an actual table
+calculation or product lookup must be combined with one of these document conditions.
+
 Available routes for the selected data source: {route_names}.
+These capabilities have already been checked by the application. Downstream pipelines will
+query the tables and retrieve the documents. Do not choose UNSUPPORTED merely because the
+actual table rows or policy text are not included in this classification prompt.
 Return UNSUPPORTED when the required evidence type is unavailable. Never select an unavailable
 route. For uploaded workspaces, "commerce tables" means their uploaded tables and "documents"
 means only documents uploaded to that same workspace.

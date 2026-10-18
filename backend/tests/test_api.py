@@ -15,9 +15,7 @@ class FakeChatService:
 
 class FailingChatService:
     def chat(self, question: str) -> ChatResult:
-        raise ModelResponseError(
-            "Gemini generation remained unavailable after retry attempts"
-        )
+        raise ModelResponseError("Gemini generation remained unavailable after retry attempts")
 
 
 def test_health_does_not_require_gemini() -> None:
@@ -37,6 +35,10 @@ def test_chat_has_consistent_response(monkeypatch) -> None:
         "rows": [{"total": 10}],
         "sources": [],
         "error": None,
+        "requested_model": None,
+        "used_model": None,
+        "fallback_used": False,
+        "fallback_reason": None,
     }
 
 
@@ -47,9 +49,7 @@ def test_chat_rejects_blank_and_oversized_input() -> None:
 
 
 def test_chat_does_not_fabricate_response_when_generation_fails(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "app.api.routes.build_chat_service", lambda settings: FailingChatService()
-    )
+    monkeypatch.setattr("app.api.routes.build_chat_service", lambda settings: FailingChatService())
 
     response = TestClient(app).post("/api/chat", json={"message": "Top sản phẩm?"})
 
@@ -61,4 +61,8 @@ def test_chat_does_not_fabricate_response_when_generation_fails(monkeypatch) -> 
         "rows": [],
         "sources": [],
         "error": "Gemini generation remained unavailable after retry attempts",
+        "requested_model": "inetcloud-knowledge",
+        "used_model": None,
+        "fallback_used": False,
+        "fallback_reason": None,
     }

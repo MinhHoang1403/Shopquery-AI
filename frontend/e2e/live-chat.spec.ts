@@ -20,6 +20,7 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
   await page.goto("/");
   await expect(page.getByRole("status", { name: "API sẵn sàng" })).toBeVisible();
   await page.getByRole("button", { name: "Đoạn chat mới" }).click();
+  await page.getByLabel("Chọn mô hình AI").selectOption("gemini");
   const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
 
   const questions = [
