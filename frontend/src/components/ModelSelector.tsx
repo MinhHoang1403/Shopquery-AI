@@ -16,11 +16,12 @@ export function ModelSelector({ models, selectedModel, disabled, onSelect }: Mod
         disabled={disabled}
         id="generation-model"
         onChange={(event) => onSelect(event.target.value as ModelId)}
+        title={models.find((model) => model.id === selectedModel)?.label}
         value={selectedModel}
       >
         {models.map((model) => (
-          <option disabled={!model.configured} key={model.id} value={model.id}>
-            {model.label}{model.configured ? "" : " · Chưa cấu hình"}
+          <option aria-label={`${model.label}${model.configured ? "" : " · Chưa cấu hình"}`} disabled={!model.configured} key={model.id} value={model.id}>
+            {model.id === "inetcloud-knowledge" ? "Knowledge" : model.label}{model.configured ? "" : " · Chưa cấu hình"}
           </option>
         ))}
       </select>

@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route, type TestInfo } from "@playwright/test";
+import type { ChatResponse } from "../src/types";
 
 const conversationId = "11111111-1111-4111-8111-111111111111";
 const health = { status: "ok", service: "ShopQuery AI" };
@@ -127,7 +128,7 @@ function responseFor(question: string) {
   return sqlResponse;
 }
 
-async function installApi(page: Page, options: { seed?: boolean; delayMs?: number } = {}) {
+async function installApi(page: Page, options: { seed?: boolean; delayMs?: number; response?: Partial<ChatResponse> } = {}) {
   const state: ApiState = {
     title: options.seed ? "Doanh thu tháng 9" : "Cuộc trò chuyện mới",
     exists: Boolean(options.seed),
@@ -241,8 +242,8 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
       state.messageModels.push(requestedModel);
       state.modelId = requestedModel;
       const response = {
-        ...responseFor(question), requested_model: requestedModel,
-        used_model: state.fallbackNext ? "gemini" : requestedModel,
+        ...responseFor(question), ...options.response, requested_model: requestedModel,
+        used_model: options.response?.error ? null : state.fallbackNext ? "gemini" : requestedModel,
         fallback_used: state.fallbackNext,
         fallback_reason: state.fallbackNext ? "primary_provider_unavailable" : null,
       };
@@ -250,7 +251,7 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
       if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
       state.title = question.slice(0, 56);
       const userMessage = { message_id: state.messages.length + 1, role: "user", content: question, response: null, created_at: "2026-10-14T00:00:03Z" };
-      const assistantMessage = { message_id: state.messages.length + 2, role: "assistant", content: response.answer, response, created_at: "2026-10-14T00:00:04Z" };
+      const assistantMessage = { message_id: state.messages.length + 2, role: response.error ? "error" : "assistant", content: response.answer, response, created_at: "2026-10-14T00:00:04Z" };
       state.messages.push(userMessage, assistantMessage);
       return json(route, { conversation: summary(), user_message: userMessage, assistant_message: assistantMessage });
     }
@@ -289,13 +290,50 @@ async function closeSidebar(page: Page) {
 
 async function expectNoPageOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
-  expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
+  const viewport = page.viewportSize()?.width ?? dimensions.viewport;
+  expect(dimensions.document).toBeLessThanOrEqual(viewport);
+  const main = await page.locator(".chat-main").evaluate((element) => ({ scroll: element.scrollWidth, visible: element.clientWidth }));
+  expect(main.visible).toBeLessThanOrEqual(viewport);
+  expect(main.scroll).toBeLessThanOrEqual(main.visible);
+}
+
+async function expectComposerLayout(page: Page, singleLine = true) {
+  const box = await page.locator(".composer-box").boundingBox();
+  const input = await page.getByLabel("Nhập câu hỏi cho ShopQuery AI").boundingBox();
+  const selector = await page.getByLabel("Chọn mô hình AI").boundingBox();
+  const send = await page.getByRole("button", { name: "Gửi câu hỏi" }).boundingBox();
+  expect(box).not.toBeNull();
+  expect(input).not.toBeNull();
+  expect(selector).not.toBeNull();
+  expect(send).not.toBeNull();
+  if (!box || !input || !selector || !send) throw new Error("Composer controls must be measurable.");
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(input.width).toBeGreaterThanOrEqual(100);
+  expect(input.x + input.width).toBeLessThanOrEqual(selector.x);
+  expect(selector.x + selector.width).toBeLessThanOrEqual(send.x);
+  for (const control of [input, selector, send]) {
+    expect(control.x).toBeGreaterThanOrEqual(box.x);
+    expect(control.y).toBeGreaterThanOrEqual(box.y);
+    expect(control.x + control.width).toBeLessThanOrEqual(box.x + box.width);
+    expect(control.y + control.height).toBeLessThanOrEqual(box.y + box.height);
+    expect(Math.abs(control.y + control.height / 2 - box.y - box.height / 2)).toBeLessThanOrEqual(2);
+  }
+  if (singleLine) {
+    expect(box.height).toBeGreaterThanOrEqual(58);
+    expect(box.height).toBeLessThanOrEqual(68);
+  } else {
+    expect(box.height).toBeGreaterThan(68);
+    expect(input.height).toBeLessThanOrEqual(160);
+  }
+  await expectNoPageOverflow(page);
 }
 
 test("responsive shell, drawer and composer keyboard behavior", async ({ page }, testInfo: TestInfo) => {
   await installApi(page);
   await openApp(page);
   await expect(page.getByText("Khám phá dữ liệu, phân tích kinh doanh và tra cứu thông tin bằng AI.")).toBeVisible();
+  await expectComposerLayout(page);
   await page.screenshot({ path: testInfo.outputPath("empty-chat.png"), fullPage: true });
   await openSidebar(page);
   await expect(page.getByText("ShopQuery AI", { exact: true })).toBeVisible();
@@ -325,10 +363,18 @@ test("responsive shell, drawer and composer keyboard behavior", async ({ page },
   expect(composerFocus).not.toBe("none");
   await page.screenshot({ path: testInfo.outputPath("input-focused.png"), fullPage: true });
   await input.fill("Dòng một");
+  await expectComposerLayout(page);
+  await page.screenshot({ path: testInfo.outputPath("input-single-line.png"), fullPage: true });
   await input.press("Shift+Enter");
   await input.type("Dòng hai");
   await expect(input).toHaveValue("Dòng một\nDòng hai");
+  await expectComposerLayout(page, false);
   await page.screenshot({ path: testInfo.outputPath("input-multiline.png"), fullPage: true });
+  await input.fill(Array.from({ length: 20 }, (_, index) => `Dòng ${index + 1}`).join("\n"));
+  await expectComposerLayout(page, false);
+  expect(await input.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await input.fill("");
+  await expectComposerLayout(page);
 
   await page.getByRole("button", { name: /Chọn bộ dữ liệu/ }).click();
   await expect(page.getByRole("menu", { name: "Chọn bộ dữ liệu" })).toBeVisible();
@@ -375,6 +421,7 @@ test("creates chat once and renders SQL evidence with history controls", async (
   await page.screenshot({ path: testInfo.outputPath("sql-code-expanded.png"), fullPage: true });
   await firstResponse.getByRole("button", { name: "Sao chép SQL" }).click();
   await expect(firstResponse.getByRole("button", { name: "Sao chép SQL" })).toContainText("Đã sao chép");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(sqlResponse.sql);
   await sqlControl.click();
   await expect(sqlControl).toHaveAttribute("aria-expanded", "false");
   await expect(sqlCode).toHaveCount(0);
@@ -426,6 +473,7 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await ragSources.press("Enter");
   await expect(ragSources).toHaveAttribute("aria-expanded", "true");
   await expect(ragMessage.getByLabel("Nguồn tham khảo")).toContainText("return_policy.md");
+  await page.screenshot({ path: testInfo.outputPath("rag-sources-expanded.png"), fullPage: true });
 
   await openSidebar(page);
   await page.getByRole("button", { name: "Đoạn chat mới" }).click();
@@ -477,17 +525,30 @@ test("selects models, preserves attribution and restores a fallback conversation
   await openApp(page);
   const selector = page.getByLabel("Chọn mô hình AI");
   await expect(selector).toHaveValue("inetcloud-knowledge");
+  await expect(selector).toHaveAttribute("title", "iNetCloud Knowledge");
+  await page.getByLabel("Nhập câu hỏi cho ShopQuery AI").focus();
+  await page.keyboard.press("Tab");
+  await expect(selector).toBeFocused();
+  await selector.press("Alt+ArrowDown");
+  await page.screenshot({ path: testInfo.outputPath("model-selector-open.png"), fullPage: true });
+  await page.keyboard.press("Escape");
   await selector.focus();
   await expect(selector).toBeFocused();
   await page.keyboard.press("Escape");
   await selector.selectOption("gemini");
+  await expect(selector).toHaveAttribute("title", "Gemini");
+  await page.screenshot({ path: testInfo.outputPath("model-gemini-selected.png"), fullPage: true });
   const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
   await input.fill("Top sản phẩm");
+  await selector.focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Gửi câu hỏi" })).toBeFocused();
   await input.press("Enter");
   await expect(page.locator(".model-attribution").last()).toHaveText("Gemini");
   expect(state.messageModels).toEqual(["gemini"]);
   await selector.selectOption("inetcloud-knowledge");
   await expect.poll(() => state.modelId).toBe("inetcloud-knowledge");
+  await page.screenshot({ path: testInfo.outputPath("model-knowledge-selected.png"), fullPage: true });
   state.fallbackNext = true;
   await input.fill("Chính sách đổi trả như thế nào?");
   await input.press("Enter");
@@ -499,6 +560,113 @@ test("selects models, preserves attribution and restores a fallback conversation
   await expect(page.locator(".model-attribution")).toHaveText(["Gemini", "Gemini"]);
   await expectNoPageOverflow(page);
   await page.screenshot({ path: testInfo.outputPath("model-selector-fallback.png"), fullPage: true });
+});
+
+test("renders long Markdown answers without unsafe markup or horizontal page overflow", async ({ page }, testInfo) => {
+  const url = `https://example.com/policy/${"chi-tiet-".repeat(24)}`;
+  const answer = [
+    "Báo cáo minh họa với **dữ liệu kiểm thử**, không phải dữ liệu bán hàng thực.",
+    Array.from({ length: 20 }, (_, index) => `${index + 1}. **Sản phẩm mẫu ${index + 1}** — ${20 - index} đơn vị. Mô tả tiếng Việt để kiểm tra khả năng đọc danh sách dài.`).join("\n"),
+    "Các điều kiện tham khảo:\n\n- Giữ hóa đơn mua hàng.\n- Kiểm tra chính sách áp dụng.",
+    `Chuỗi dài: ${"sanpham".repeat(40)}`,
+    `Tài liệu: ${url}`,
+    `Ví dụ mã \`quantity\`:\n\n\`\`\`sql\nSELECT '${"x".repeat(240)}' AS example;\n\`\`\``,
+    "| Sản phẩm | Số lượng | Danh mục | Chính sách |\n| --- | --- | --- | --- |\n| Áo linen mẫu | 42 | Thời trang | Đối chiếu điều kiện đổi trả |",
+    '[Liên kết bị chặn](javascript:alert%281%29)\n\n<script>window.markdownExecuted = true</script>\n\n![Mô tả ảnh](https://example.com/tracker.png)',
+  ].join("\n\n");
+  await installApi(page, { response: { answer } });
+  await openApp(page);
+  const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+  await input.fill("**Câu hỏi nguyên văn** <script>không thực thi</script>");
+  await input.press("Enter");
+  const content = page.locator(".assistant-content");
+  await expect(content.locator("ol > li")).toHaveCount(20);
+  await expect(content.locator("ul > li")).toHaveCount(2);
+  await expect(content.locator("strong").first()).toHaveText("dữ liệu kiểm thử");
+  await expect(page.locator(".message--user .message-text")).toHaveText("**Câu hỏi nguyên văn** <script>không thực thi</script>");
+  await expect(content.locator("img, script, iframe")).toHaveCount(0);
+  await expect(content.getByRole("link", { name: "Liên kết bị chặn" })).toHaveCount(0);
+  const link = content.getByRole("link", { name: url });
+  await expect(link).toHaveAttribute("href", url);
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  const code = content.locator("pre");
+  expect(await code.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await code.focus();
+  await expect(code).toBeFocused();
+  await code.press("End");
+  await expectNoPageOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath("markdown-code.png"), fullPage: true });
+  const table = content.getByRole("region", { name: "Bảng trong câu trả lời" });
+  await table.focus();
+  await expect(table).toBeFocused();
+  if ((page.viewportSize()?.width ?? 1440) <= 390) {
+    expect(await table.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    await table.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+    expect(await table.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  }
+  await expectComposerLayout(page);
+  await page.screenshot({ path: testInfo.outputPath("markdown-table.png"), fullPage: true });
+  await page.locator(".chat-main").evaluate((element) => { element.scrollTop = 0; });
+  await expect(content.locator("ol li").first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("long-answer-list.png"), fullPage: true });
+});
+
+test("keeps composer usable at zoom-equivalent viewports and on short mobile screens", async ({ page }, testInfo) => {
+  await installApi(page);
+  await openApp(page);
+  if ((page.viewportSize()?.width ?? 0) >= 1280) {
+    const original = page.viewportSize()!;
+    for (const zoom of [1.25, 1.5]) {
+      await page.setViewportSize({ width: Math.floor(original.width / zoom), height: Math.floor(original.height / zoom) });
+      await page.getByLabel("Nhập câu hỏi cho ShopQuery AI").fill("Câu hỏi");
+      const metrics = await page.locator(".composer-box").evaluate((box) => {
+        const controls = [box.querySelector("textarea"), box.querySelector("select"), box.querySelector("button")];
+        const bounds = box.getBoundingClientRect();
+        return {
+          right: bounds.right,
+          bottom: bounds.bottom,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          contained: controls.every((element) => {
+            if (!element) return false;
+            const rect = element.getBoundingClientRect();
+            return rect.left >= bounds.left && rect.right <= bounds.right && rect.top >= bounds.top && rect.bottom <= bounds.bottom;
+          }),
+        };
+      });
+      expect(metrics.contained).toBe(true);
+      expect(metrics.right).toBeLessThanOrEqual(metrics.viewportWidth);
+      expect(metrics.bottom).toBeLessThanOrEqual(metrics.viewportHeight);
+      await page.screenshot({ path: testInfo.outputPath(`zoom-equivalent-${zoom * 100}.png`), fullPage: true });
+    }
+  } else {
+    await page.setViewportSize({ width: page.viewportSize()!.width, height: 420 });
+    const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+    await input.fill("Câu hỏi");
+    await expectComposerLayout(page);
+    await expect(page.getByRole("button", { name: "Gửi câu hỏi" })).toBeInViewport();
+    await page.getByRole("heading", { name: "Bạn muốn hỏi gì hôm nay?" }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("heading", { name: "Bạn muốn hỏi gì hôm nay?" })).toBeInViewport();
+    await page.getByRole("button", { name: /Kết hợp dữ liệu:/ }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("button", { name: /Kết hợp dữ liệu:/ })).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath("short-screen.png"), fullPage: true });
+  }
+});
+
+test("shows provider failures without invented answers or evidence", async ({ page }, testInfo) => {
+  await installApi(page, { response: {
+    answer: "Không thể hoàn tất câu hỏi bằng dữ liệu hiện có.", route: null, sql: null, rows: [], sources: [],
+    error: "Knowledge tạm thời không khả dụng.",
+  } });
+  await openApp(page);
+  await page.getByLabel("Nhập câu hỏi cho ShopQuery AI").fill("Top sản phẩm");
+  await page.getByRole("button", { name: "Gửi câu hỏi" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Knowledge tạm thời không khả dụng.");
+  await expect(page.locator(".assistant-content")).toHaveCount(0);
+  await expect(page.locator(".model-attribution, .route-badge")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Bằng chứng hỗ trợ" })).toHaveCount(0);
+  await expectComposerLayout(page);
+  await page.screenshot({ path: testInfo.outputPath("provider-error.png"), fullPage: true });
 });
 
 test("previews and imports a CSV before selecting the uploaded dataset", async ({ page }) => {

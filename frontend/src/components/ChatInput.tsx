@@ -33,9 +33,24 @@ export function ChatInput({
     .join(" ") || undefined;
 
   useEffect(() => {
-    if (!textarea.current) return;
-    textarea.current.style.height = "0px";
-    textarea.current.style.height = `${Math.min(textarea.current.scrollHeight, 160)}px`;
+    const input = textarea.current;
+    if (!input) return;
+    function resize() {
+      if (!input) return;
+      input.style.height = "0px";
+      input.style.height = value ? `${Math.min(input.scrollHeight, 160)}px` : "";
+    }
+    resize();
+    if (typeof ResizeObserver === "undefined") return;
+    let previousWidth = input.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (input.clientWidth !== previousWidth) {
+        previousWidth = input.clientWidth;
+        resize();
+      }
+    });
+    observer.observe(input);
+    return () => observer.disconnect();
   }, [value]);
 
   function submit(event: FormEvent) {
@@ -69,15 +84,15 @@ export function ChatInput({
           value={value}
         />
         <div className="composer-controls">
-        <ModelSelector models={models} selectedModel={selectedModel} disabled={disabled} onSelect={onModelSelect} />
-        <button
-          aria-label="Gửi câu hỏi"
-          className="send-button"
-          disabled={disabled || value.trim().length === 0}
-          type="submit"
-        >
-          <ArrowUp size={19} strokeWidth={2.4} aria-hidden="true" />
-        </button>
+          <ModelSelector models={models} selectedModel={selectedModel} disabled={disabled} onSelect={onModelSelect} />
+          <button
+            aria-label="Gửi câu hỏi"
+            className="send-button"
+            disabled={disabled || value.trim().length === 0}
+            type="submit"
+          >
+            <ArrowUp size={19} strokeWidth={2.4} aria-hidden="true" />
+          </button>
         </div>
       </div>
       {validationError || showCharacterCount ? (

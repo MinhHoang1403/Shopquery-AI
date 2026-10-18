@@ -1,5 +1,6 @@
 import { AlertCircle, Database } from "lucide-react";
 import type { ConversationEntry, RouteLabel } from "../types";
+import { AssistantContent } from "./AssistantContent";
 import { ResponseEvidence } from "./ResponseEvidence";
 
 const ROUTE_LABELS: Record<RouteLabel, string> = {
@@ -34,7 +35,7 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
             ) : null}
           </div>
         ) : null}
-        <p className="message-text">{entry.text}</p>
+        {isUser || isError ? <p className="message-text">{entry.text}</p> : <AssistantContent text={entry.text} />}
         {isError && entry.response?.error ? (
           <p className="fallback-notice" role="alert">{entry.response.error}</p>
         ) : null}
