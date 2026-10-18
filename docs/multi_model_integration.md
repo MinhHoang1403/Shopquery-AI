@@ -63,7 +63,7 @@ Native select trong composer hỗ trợ bàn phím, Escape và focus bằng cont
 
 ## Giới hạn chất lượng
 
-Kết quả nghiệm thu local ngày 18/10/2026: Ruff pass; 142 unit/API tests và 17 PostgreSQL integration tests pass trên database riêng; frontend ESLint/TypeScript/build pass, Vitest 16/16; Playwright mock 25/25 trên năm viewport; live backend 8/8; live browser lựa chọn model 1/1 và workspace đa nguồn 1/1. Probe từ container Docker cũng xác nhận DNS, `/models` 200 và router qua ChatOpenAI chọn SQL. Các kết quả này là live snapshot, không phải cam kết uptime hoặc độ chính xác cho mọi câu hỏi.
+Kết quả nghiệm thu local ngày 18/10/2026: Ruff pass; 142 unit/API tests và 17 PostgreSQL integration tests pass trên database riêng; frontend ESLint/TypeScript/build pass, Vitest 17/17; Playwright mock 25/25 trên năm viewport; live backend 8/8; live browser lựa chọn model 1/1 và workspace đa nguồn 1/1. Probe từ container Docker cũng xác nhận DNS, `/models` 200 và router qua ChatOpenAI chọn SQL. Các kết quả này là live snapshot, không phải cam kết uptime hoặc độ chính xác cho mọi câu hỏi.
 
 Schema hợp lệ không chứng minh đáp án đúng. Các probe ban đầu đã phát hiện router phân loại sai, SQL sai cột/hàm và Hybrid thiếu mã danh mục; validator chặn SQL sai và không dùng fallback để vượt guardrail. Prompt được làm rõ về capability, alias, top-N, mã danh mục và câu trả lời theo từng sản phẩm. Live evaluation vẫn là một tập mẫu nhỏ, không bảo đảm mọi câu hỏi đều đúng; server cũng đã có lượt timeout. Giữ evidence toolbar để người dùng kiểm chứng kết quả thực tế.
 

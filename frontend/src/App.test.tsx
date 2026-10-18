@@ -194,6 +194,22 @@ afterEach(() => {
 });
 
 describe("ShopQuery workspace", () => {
+  it("hiển thị lý do provider thất bại và không gán model cho đáp án không tồn tại", async () => {
+    installApi({ response: chatResponse({
+      answer: "Không thể hoàn tất câu hỏi bằng dữ liệu hiện có.", route: null,
+      sql: null, rows: [], sources: [], error: "Knowledge tạm thời không khả dụng.",
+      requested_model: "inetcloud-knowledge", used_model: null, fallback_used: false,
+    }) });
+    const user = userEvent.setup();
+    render(<App />);
+    const input = await screen.findByLabelText("Nhập câu hỏi cho ShopQuery AI");
+    await waitFor(() => expect(input).not.toBeDisabled());
+    await user.type(input, "Top sản phẩm{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Knowledge tạm thời không khả dụng.");
+    expect(document.querySelector(".model-attribution")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Đã chuyển từ Knowledge sang Gemini/)).not.toBeInTheDocument();
+  });
+
   it("gửi model đã chọn và không đổi attribution của câu trả lời khi đổi lựa chọn", async () => {
     const response = chatResponse({ requested_model: "gemini", used_model: "gemini", fallback_used: false });
     const fetchMock = installApi({ response });

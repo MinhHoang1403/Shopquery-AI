@@ -35,6 +35,9 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
           </div>
         ) : null}
         <p className="message-text">{entry.text}</p>
+        {isError && entry.response?.error ? (
+          <p className="fallback-notice" role="alert">{entry.response.error}</p>
+        ) : null}
         {entry.response?.fallback_used ? (
           <p className="fallback-notice">{entry.response.used_model
             ? "Đã chuyển từ Knowledge sang Gemini do mô hình chính không khả dụng."
