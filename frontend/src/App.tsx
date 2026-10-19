@@ -1,23 +1,16 @@
 import { CheckCircle2, Database, LoaderCircle, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ChatApiError,
-  createConversation,
-  deleteConversation,
-  getConversation,
-  getConversations,
-  getDatasets,
-  getHealth,
-  getModels,
-  setConversationModel,
-  renameConversation,
-  sendConversationMessage,
-} from "./api";
+import { ChatApiError } from "./api";
+import * as persistentApi from "./api";
+import type { SessionInfo } from "./api";
+import { createGuestClient, type GuestClient, type GuestStatus } from "./guest";
 import { ChatHeader } from "./components/ChatHeader";
 import { ChatInput } from "./components/ChatInput";
 import { ChatMessage } from "./components/ChatMessage";
 import { ConfirmDialog, RenameDialog } from "./components/Dialogs";
 import { DatasetUploadDialog } from "./components/DatasetUploadDialog";
+import { GuestUploadDialog } from "./components/GuestUploadDialog";
+import { Modal } from "./components/Dialogs";
 import { Sidebar } from "./components/Sidebar";
 import { SuggestedQuestions } from "./components/SuggestedQuestions";
 import type {
@@ -53,7 +46,13 @@ function sameDataset(left: number | null, right: number | null) {
   return left === right;
 }
 
-export default function App({ account, onLogout }: { account?: string; onLogout?: () => void }) {
+export default function App({ account, onLogout, accessMode = "authenticated" }: { account?: SessionInfo["user"]; onLogout?: () => void; accessMode?: "guest" | "authenticated" }) {
+  const isGuest = accessMode === "guest";
+  const [guestStatus, setGuestStatus] = useState<GuestStatus | null>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const client = useMemo(() => isGuest ? createGuestClient(setGuestStatus) : persistentApi, [isGuest]);
+  const guestClient = isGuest ? client as GuestClient : null;
+  const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draft, setDraft] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationEntry[]>([]);
@@ -90,12 +89,23 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
   const currentConversation = conversations.find(
     (conversation) => conversation.conversation_id === activeConversationId,
   );
-  const datasetName = selectedDataset?.name ?? "Dữ liệu cửa hàng mẫu";
-  const welcomeSubtitle = selectedDataset?.kind === "uploaded"
+  const datasetName = selectedDataset?.name ?? "bộ dữ liệu của bạn";
+  const hasSources = Boolean(selectedDataset && (selectedDataset.kind === "default" ||
+    (selectedDataset.table_count ?? 0) > 0 || (selectedDataset.document_count ?? 0) > 0));
+  const welcomeSubtitle = isGuest && !hasSources
+    ? "Trò chuyện với AI hoặc tải bảng dữ liệu và tài liệu lên để phân tích."
+    : !hasSources
+    ? "Tạo bộ dữ liệu và tải bảng hoặc tài liệu lên để bắt đầu."
+    : selectedDataset?.kind === "uploaded"
     ? "Đặt câu hỏi để khám phá và phân tích bộ dữ liệu của bạn."
     : "Khám phá dữ liệu, phân tích kinh doanh và tra cứu thông tin bằng AI.";
   const suggestions = useMemo(() => {
-    if (!selectedDataset || selectedDataset.kind === "default") return DEFAULT_QUESTIONS;
+    if (!hasSources) return [];
+    if (selectedDataset?.kind === "default") return DEFAULT_QUESTIONS;
+    if (!selectedDataset) return [];
+    if (!(selectedDataset.table_count ?? 0)) return [
+      { label: "Tóm tắt tài liệu", question: "Hãy tóm tắt nội dung chính của các tài liệu trong bộ dữ liệu này.", kind: "document" as const },
+    ];
     const firstColumn = selectedDataset.columns[0]?.source_name;
     const secondColumn = selectedDataset.columns[1]?.source_name;
     return [
@@ -103,18 +113,19 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
       { label: "Phân nhóm", question: firstColumn ? `Hãy đếm số dòng theo cột ${firstColumn}.` : "Hãy phân nhóm dữ liệu theo cột đầu tiên.", kind: "analysis" as const },
       { label: "Tổng hợp", question: secondColumn ? `Hãy tổng hợp các giá trị theo cột ${secondColumn}.` : "Hãy tóm tắt các giá trị số trong dữ liệu.", kind: "analysis" as const },
     ];
-  }, [selectedDataset]);
+  }, [selectedDataset, hasSources]);
 
   useEffect(() => {
     const controller = new AbortController();
     const bootstrapSequence = selectionSequence.current;
-    getHealth(controller.signal)
+    persistentApi.getHealth(controller.signal)
       .then((result) => setHealth({ checked: true, online: result.status === "ok" }))
       .catch(() => setHealth({ checked: true, online: false }));
 
-    Promise.all([getDatasets(controller.signal), getConversations(controller.signal), getModels(controller.signal)])
+    Promise.all([client.getDatasets(controller.signal), client.getConversations(controller.signal), client.getModels(controller.signal)])
       .then(async ([availableDatasets, availableConversations, modelRegistry]) => {
         setDatasets(availableDatasets);
+        if (!availableConversations.length) setSelectedDatasetId(availableDatasets[0]?.dataset_id ?? null);
         setModels(modelRegistry.models);
         setDefaultModel(modelRegistry.default_model);
         if (selectionSequence.current === bootstrapSequence || !activeConversation.current) {
@@ -126,7 +137,7 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
           selectionSequence.current === bootstrapSequence
         ) {
           const latest = availableConversations[0];
-          const detail = await getConversation(latest.conversation_id, controller.signal);
+          const detail = await client.getConversation(latest.conversation_id, controller.signal);
           if (selectionSequence.current !== bootstrapSequence) return;
           activeConversation.current = latest.conversation_id;
           setActiveConversationId(latest.conversation_id);
@@ -142,7 +153,20 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
       })
       .finally(() => setIsBooting(false));
     return () => controller.abort();
-  }, []);
+  }, [client]);
+
+  useEffect(() => {
+    if (releaseTimer.current) clearTimeout(releaseTimer.current);
+    const release = () => guestClient?.dispose();
+    window.addEventListener("pagehide", release);
+    const restored = (event: PageTransitionEvent) => { if (isGuest && event.persisted) window.location.reload(); };
+    window.addEventListener("pageshow", restored);
+    return () => {
+      window.removeEventListener("pagehide", release);
+      window.removeEventListener("pageshow", restored);
+      releaseTimer.current = setTimeout(release, 0);
+    };
+  }, [guestClient, isGuest]);
 
   useEffect(() => {
     conversationEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -188,7 +212,7 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
     setIsBooting(true);
     setValidationError(null);
     try {
-      const detail = await getConversation(conversation.conversation_id);
+      const detail = await client.getConversation(conversation.conversation_id);
       if (selectionSequence.current !== sequence) return;
       activeConversation.current = detail.conversation_id;
       setActiveConversationId(detail.conversation_id);
@@ -212,6 +236,11 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
 
   async function submitQuestion(questionOverride?: string) {
     if (isLoading || isBooting || isSavingModel) return;
+    if (!hasSources && !isGuest) {
+      setValidationError("Hãy tải dữ liệu lên trước khi đặt câu hỏi.");
+      return;
+    }
+    if (isGuest && (!guestStatus?.ai_enabled || guestStatus.limited || guestStatus.expired || guestStatus.remaining <= 0)) return;
     const requestModel = selectedModel;
     const question = (questionOverride ?? draft).trim();
     if (!question) {
@@ -229,7 +258,7 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
     let conversationId = activeConversation.current;
     try {
       if (!conversationId) {
-        const created = await createConversation(selectedDatasetId, requestModel);
+        const created = await client.createConversation(selectedDataset?.dataset_id ?? null, requestModel);
         conversationId = created.conversation_id;
         activeConversation.current = conversationId;
         setActiveConversationId(conversationId);
@@ -250,7 +279,7 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
     requestController.current = controller;
 
     try {
-      const result = await sendConversationMessage(requestConversationId, question, controller.signal, requestModel);
+      const result = await client.sendConversationMessage(requestConversationId, question, controller.signal, requestModel);
       upsertConversation(result.conversation);
       if (activeConversation.current === requestConversationId) {
         setMessages((current) => [
@@ -297,7 +326,7 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
     if (!targetConversation) return;
     setIsSavingModel(true);
     try {
-      const updated = await setConversationModel(targetConversation, modelId);
+      const updated = await client.setConversationModel(targetConversation, modelId);
       upsertConversation(updated);
     } catch (error) {
       if (activeConversation.current === targetConversation) {
@@ -314,7 +343,7 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
     setIsRenaming(true);
     setRenameError(null);
     try {
-      const updated = await renameConversation(renameTarget.conversation_id, title);
+      const updated = await client.renameConversation(renameTarget.conversation_id, title);
       upsertConversation(updated);
       setRenameTarget(null);
     } catch (error) {
@@ -328,7 +357,7 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      await deleteConversation(deleteTarget.conversation_id);
+      await client.deleteConversation(deleteTarget.conversation_id);
       setConversations((current) => current.filter((item) => item.conversation_id !== deleteTarget.conversation_id));
       if (activeConversation.current === deleteTarget.conversation_id) startNewChat(selectedDatasetId);
       setDeleteTarget(null);
@@ -361,6 +390,8 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
   return (
     <div className={`app-shell ${sidebarCollapsed ? "app-shell--collapsed" : ""}`}>
       <Sidebar
+        guest={isGuest}
+        onLogin={isGuest ? () => setLoginOpen(true) : undefined}
         account={account}
         onLogout={onLogout}
         activeConversationId={activeConversationId}
@@ -378,13 +409,14 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
 
       <div className="main-panel">
         <ChatHeader
+          onLogin={isGuest ? () => setLoginOpen(true) : undefined}
           datasets={datasets}
           healthChecked={health.checked}
           isOnline={health.online}
           onOpenSidebar={() => setSidebarOpen(true)}
           onSelectDataset={chooseDataset}
           selectedDataset={selectedDataset}
-          title={currentConversation?.title ?? "Đoạn chat mới"}
+          title={currentConversation?.title ?? (isGuest ? "ShopQuery AI" : "Đoạn chat mới")}
         />
         {importNotice ? (
           <div className="import-notice" role="status">
@@ -402,9 +434,10 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
             ) : messages.length === 0 ? (
               <div className="welcome">
                 <div className="welcome-mark" aria-hidden="true"><Sparkles size={22} /></div>
-                <h1>Bạn muốn hỏi gì hôm nay?</h1>
+                <h1>{isGuest || hasSources ? "Bạn muốn hỏi gì hôm nay?" : "Không gian dữ liệu của bạn"}</h1>
                 <p>{welcomeSubtitle}</p>
-                <SuggestedQuestions disabled={isLoading} onSelect={submitQuestion} questions={suggestions} />
+                {hasSources ? <SuggestedQuestions disabled={isLoading} onSelect={submitQuestion} questions={suggestions} /> :
+                  <button className="primary-button" type="button" onClick={() => setUploadOpen(true)}>Thêm dữ liệu</button>}
               </div>
             ) : (
               <section className="conversation" aria-label="Cuộc trò chuyện" aria-live="polite">
@@ -424,7 +457,8 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
           <div className="chat-column">
             <ChatInput
               datasetName={datasetName}
-              disabled={isLoading || isBooting || isSavingModel}
+              disabled={Boolean(isLoading || isBooting || isSavingModel || (isGuest ? !guestStatus?.ai_enabled || guestStatus.limited || guestStatus.expired || guestStatus.remaining <= 0 : !hasSources))}
+              placeholder={isGuest && !hasSources ? "Nhập câu hỏi để dùng thử…" : undefined}
               models={models}
               selectedModel={selectedModel}
               onModelSelect={chooseModel}
@@ -433,12 +467,21 @@ export default function App({ account, onLogout }: { account?: string; onLogout?
               validationError={validationError}
               value={draft}
             />
+            {isGuest ? <div className="guest-status" aria-live="polite">
+              <span>Đoạn chat tạm thời · Còn {guestStatus?.remaining ?? "…"} lượt · Refresh không khôi phục dữ liệu.</span>
+              {!guestStatus?.ai_enabled ? <span>AI dùng thử chưa được bật. Bạn có thể tải và xem trước tệp tạm.</span> : null}
+              {guestStatus && (guestStatus.limited || guestStatus.remaining <= 0) ? <span>Bạn đã hết ngân sách dùng thử. <button type="button" onClick={() => setLoginOpen(true)}>Đăng nhập để tiếp tục</button></span> : null}
+              {guestStatus?.expired ? <span>Phiên tạm đã hết hạn. <button type="button" onClick={() => window.location.reload()}>Bắt đầu phiên mới</button></span> : null}
+            </div> : null}
             <p className="disclaimer">AI có thể mắc lỗi. Hãy đối chiếu dữ liệu quan trọng.</p>
           </div>
         </footer>
       </div>
 
-      {uploadOpen ? <DatasetUploadDialog datasets={datasets} deletionDisabled={isLoading || isBooting || isSavingModel} onClose={() => setUploadOpen(false)} onDeleted={datasetDeleted} onImported={datasetImported} /> : null}
+      {uploadOpen ? guestClient ? <GuestUploadDialog client={guestClient} status={guestStatus} onClose={() => setUploadOpen(false)} onImported={datasetImported} /> : <DatasetUploadDialog datasets={datasets} deletionDisabled={isLoading || isBooting || isSavingModel} onClose={() => setUploadOpen(false)} onDeleted={datasetDeleted} onImported={datasetImported} /> : null}
+      {loginOpen ? <Modal title="Đăng nhập ShopQuery AI" description="Đoạn chat và tệp dùng thử chưa được lưu. Đăng nhập sẽ mở không gian cá nhân, không tự chuyển dữ liệu tạm sang tài khoản." onClose={() => setLoginOpen(false)}>
+        <div className="dialog-actions"><button className="secondary-button" type="button" onClick={() => setLoginOpen(false)}>Tiếp tục dùng thử</button><a className="primary-button" href="/api/auth/login" onClick={() => guestClient?.dispose()}>Tiếp tục với Google</a></div>
+      </Modal> : null}
       {renameTarget ? <RenameDialog currentTitle={renameTarget.title} error={renameError} onClose={() => setRenameTarget(null)} onSave={saveRename} saving={isRenaming} /> : null}
       {deleteTarget ? <ConfirmDialog busy={isDeleting} confirmLabel="Xóa cuộc trò chuyện" danger description={`“${deleteTarget.title}” và toàn bộ tin nhắn sẽ bị xóa vĩnh viễn.`} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} title="Xóa cuộc trò chuyện?" /> : null}
       {pendingDataset ? <ConfirmDialog confirmLabel="Bắt đầu chat mới" description={`Cuộc trò chuyện hiện tại gắn với ${datasetName}. Chuyển sang ${pendingDataset.name} sẽ bắt đầu một đoạn chat mới.`} onClose={() => setPendingDataset(null)} onConfirm={() => { const dataset = pendingDataset; setPendingDataset(null); startNewChat(dataset.dataset_id); }} title="Chuyển bộ dữ liệu?" /> : null}

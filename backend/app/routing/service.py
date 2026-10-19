@@ -12,7 +12,7 @@ from app.text_to_sql.pipeline import TextToSqlPipeline
 @dataclass
 class ChatResult:
     answer: str
-    route: RouteLabel
+    route: RouteLabel | None
     sql: str | None = None
     rows: list[dict[str, Any]] = field(default_factory=list)
     sources: list[Source] = field(default_factory=list)

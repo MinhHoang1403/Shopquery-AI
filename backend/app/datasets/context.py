@@ -22,6 +22,8 @@ def build_dataset_sql_context(
     categorical_values: (
         dict[str, tuple[str, ...]] | dict[str, dict[str, tuple[str, ...]]] | None
     ) = None,
+    *,
+    schema_name: str = UPLOADED_SCHEMA,
 ) -> DatasetSqlContext:
     tables = dataset.tables or (() if dataset.table is None else (dataset.table,))
     nested_values: dict[str, dict[str, tuple[str, ...]]]
@@ -56,7 +58,7 @@ def build_dataset_sql_context(
         descriptions.append(
             f"- Display label (not an SQL identifier): {table.display_name}\n"
             f"  SQL table identifier (copy exactly): "
-            f"{UPLOADED_SCHEMA}.{table.physical_table_name}\n"
+            f"{schema_name}.{table.physical_table_name}\n"
             f"  SQL columns: {columns}\n"
             f"  Row count: {table.row_count}; source file (not an SQL identifier): "
             f"{table.original_filename}."
@@ -77,7 +79,7 @@ Rules:
 - Never JOIN tables. No relationship metadata is available, even when column names look alike.
 - If the question requires combining tables, explain that no trusted relationship is declared.
 - Use source-header mappings only to understand wording; use physical names in SQL.
-- In FROM, copy the fully qualified SQL table identifier above exactly, including uploaded_data.
+- In FROM, copy the fully qualified SQL table identifier above exactly, including {schema_name}.
 - Display labels, worksheet names and file names are never SQL table identifiers.
 - Use exact observed categorical values when applicable; never translate or invent values.
 - Never query other datasets, demo commerce tables, catalogs, or system tables.
@@ -88,7 +90,7 @@ Rules:
         table_columns={
             table.physical_table_name: {column.name for column in table.columns} for table in tables
         },
-        allowed_schemas={table.physical_table_name: UPLOADED_SCHEMA for table in tables},
+        allowed_schemas={table.physical_table_name: schema_name for table in tables},
         dataset_id=dataset.dataset_id,
         has_documents=dataset.document_count > 0,
         owner_user_id=dataset.owner_user_id,

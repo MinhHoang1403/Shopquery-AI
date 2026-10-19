@@ -10,14 +10,14 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, insert, select, text, update
 
 from app.auth.limits import ResourceControl
 from app.auth.repository import AuthRepository, csrf_token, token_hash
 from app.conversations.repository import ConversationRepository
 from app.core.config import get_settings
 from app.core.errors import ResourceConflictError, ResourceNotFoundError, SqlValidationError
-from app.database.models import OidcFlow, User, UserSession
+from app.database.models import DocumentChunk, OidcFlow, User, UserSession
 from app.database.session import get_readonly_engine, get_setup_engine
 from app.datasets.context import build_dataset_sql_context
 from app.datasets.parser import parse_tabular_file
@@ -212,10 +212,8 @@ def test_account_cannot_access_other_resources_or_start_work(accounts, monkeypat
 
 def test_lists_names_schema_retrieval_and_repository_checks(accounts):
     a, b = accounts.a, accounts.b
-    assert [item["dataset_id"] for item in a.client.get("/api/datasets").json()] == [
-        None,
-        a.dataset.dataset_id,
-    ]
+    expected = ([None] if a.datasets.has_demo_data() else []) + [a.dataset.dataset_id]
+    assert [item["dataset_id"] for item in a.client.get("/api/datasets").json()] == expected
     assert [item["conversation_id"] for item in a.client.get("/api/conversations").json()] == [
         str(a.conversation.conversation_id),
     ]
@@ -331,11 +329,28 @@ def test_shared_demo_conversations_stay_private(accounts, monkeypatch):
     a, b = accounts.a, accounts.b
     created = a.client.post("/api/conversations", json={}).json()
     path = f"/api/conversations/{created['conversation_id']}"
-    response = a.client.post(path + "/messages", json={"message": "Count demo products"})
-    assert (
-        response.status_code == 200
-        and response.json()["assistant_message"]["response"]["error"] is None
-    )
+    content_hash = uuid4().hex + uuid4().hex
+    with accounts.engine.begin() as connection:
+        connection.execute(
+            insert(DocumentChunk).values(
+                source_file="synthetic-demo.md",
+                section_title="Test",
+                content="Synthetic demo",
+                content_hash=content_hash,
+                embedding=[1.0, *([0.0] * 767)],
+            )
+        )
+    try:
+        response = a.client.post(path + "/messages", json={"message": "Count demo products"})
+        assert (
+            response.status_code == 200
+            and response.json()["assistant_message"]["response"]["error"] is None
+        )
+    finally:
+        with accounts.engine.begin() as connection:
+            connection.execute(
+                delete(DocumentChunk).where(DocumentChunk.content_hash == content_hash)
+            )
     assert b.client.get(path).status_code == 404
     assert len(a.chats.get(created["conversation_id"]).messages) == 2
 

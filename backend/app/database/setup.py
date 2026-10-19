@@ -31,7 +31,8 @@ def create_schema(engine: Engine) -> None:
         )
         connection.execute(
             text(
-                "REVOKE ALL ON users, user_sessions, oidc_flows, resource_limits, resource_leases "
+                "REVOKE ALL ON users, user_sessions, oidc_flows, resource_limits, resource_leases, "
+                "chat_conversations, chat_messages "
                 "FROM shopquery_reader"
             )
         )

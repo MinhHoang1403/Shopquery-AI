@@ -10,6 +10,7 @@ interface ChatHeaderProps {
   healthChecked: boolean;
   onOpenSidebar: () => void;
   onSelectDataset: (dataset: Dataset) => void;
+  onLogin?: () => void;
 }
 
 export function ChatHeader({
@@ -20,6 +21,7 @@ export function ChatHeader({
   healthChecked,
   onOpenSidebar,
   onSelectDataset,
+  onLogin,
 }: ChatHeaderProps) {
   const statusText = !healthChecked
     ? "Đang kiểm tra API"
@@ -28,7 +30,7 @@ export function ChatHeader({
       : "Chưa kết nối API";
 
   return (
-    <header className="chat-header">
+    <header className={`chat-header ${onLogin ? "chat-header--guest" : ""}`}>
       <button
         aria-label="Mở thanh điều hướng"
         className="icon-button mobile-menu-button"
@@ -49,6 +51,7 @@ export function ChatHeader({
         {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
         <span>{statusText}</span>
       </div>
+      {onLogin ? <button className="login-button" type="button" onClick={onLogin}>Đăng nhập</button> : null}
     </header>
   );
 }

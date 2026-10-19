@@ -1,12 +1,19 @@
 """Grounded document retrieval and citation generation."""
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import BaseModel, Field
 
 from app.ai.gemini import EmbeddingGateway, GenerationGateway
 from app.core.errors import ModelResponseError, RetrievalError
-from app.rag.repository import DocumentRepository, RetrievedChunk
+from app.rag.repository import RetrievedChunk
+
+
+class ChunkRetriever(Protocol):
+    def retrieve(
+        self, query_vector: list[float], top_k: int = 3, *, dataset_id: int | None = None
+    ) -> list[RetrievedChunk]: ...
 
 
 class RagAnswerDraft(BaseModel):
@@ -36,7 +43,7 @@ class RagPipeline:
         self,
         embedder: EmbeddingGateway,
         gateway: GenerationGateway,
-        repository: DocumentRepository,
+        repository: ChunkRetriever,
         dataset_id: int | None = None,
     ) -> None:
         self._embedder = embedder
@@ -49,9 +56,7 @@ class RagPipeline:
         if self._dataset_id is None:
             chunks = self._repository.retrieve(vector, top_k=top_k)
         else:
-            chunks = self._repository.retrieve(
-                vector, top_k=top_k, dataset_id=self._dataset_id
-            )
+            chunks = self._repository.retrieve(vector, top_k=top_k, dataset_id=self._dataset_id)
         if not chunks:
             raise RetrievalError("No policy evidence is available")
         return chunks

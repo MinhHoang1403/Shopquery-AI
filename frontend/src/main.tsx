@@ -6,8 +6,8 @@ import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <AuthBoundary>{(session, logout) =>
-      <App key={session.user.user_id} account={session.user.display_name} onLogout={logout} />
+    <AuthBoundary guest={<App key="guest-page" accessMode="guest" />}>{(session, logout) =>
+      <App key={session.user.user_id} account={session.user} onLogout={logout} />
     }</AuthBoundary>
   </StrictMode>,
 );

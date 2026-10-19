@@ -138,6 +138,9 @@ def _dataset() -> DatasetInfo:
 
 
 class FakeDatasetRepository:
+    def has_demo_data(self) -> bool:
+        return True
+
     def list(self) -> list[DatasetInfo]:
         return [_dataset()]
 

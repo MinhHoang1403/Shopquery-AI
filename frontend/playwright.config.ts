@@ -5,6 +5,8 @@ const runtimeEnv = (
     process?: { env?: Record<string, string | undefined> };
   }
 ).process?.env ?? {};
+const baseURL = runtimeEnv.SHOPQUERY_E2E_BASE_URL ?? "http://127.0.0.1:8080";
+const mockPort = new URL(baseURL).port || "5173";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -14,12 +16,12 @@ export default defineConfig({
   timeout: 120_000,
   reporter: "line",
   webServer: runtimeEnv.SHOPQUERY_E2E_START_SERVER === "1" ? {
-    command: "npm run dev -- --host 127.0.0.1 --port 5173 --strictPort",
-    url: "http://127.0.0.1:5173", reuseExistingServer: false,
+    command: `npm run dev -- --host 127.0.0.1 --port ${mockPort} --strictPort`,
+    url: baseURL, reuseExistingServer: false,
   } : undefined,
   use: {
     storageState: runtimeEnv.SHOPQUERY_LIVE_STORAGE_STATE || undefined,
-    baseURL: runtimeEnv.SHOPQUERY_E2E_BASE_URL ?? "http://127.0.0.1:8080",
+    baseURL,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },

@@ -33,6 +33,30 @@ class Settings(BaseSettings):
     beta_system_concurrency: int = Field(default=4, ge=1, le=30)
     beta_max_datasets: int = Field(default=20, ge=1, le=100)
     beta_max_user_bytes: int = Field(default=100 * 1024 * 1024, ge=1024)
+    guest_enabled: bool = True
+    guest_ai_enabled: bool = False
+    guest_session_seconds: int = Field(default=600, ge=30, le=3600)
+    guest_cleanup_seconds: int = Field(default=15, ge=1, le=60)
+    guest_max_sessions: int = Field(default=20, ge=1, le=100)
+    guest_questions_per_session: int = Field(default=5, ge=1, le=20)
+    guest_chat_per_ip_hour: int = Field(default=10, ge=1, le=100)
+    guest_sessions_per_ip_hour: int = Field(default=20, ge=1, le=100)
+    guest_uploads_per_ip_hour: int = Field(default=10, ge=1, le=100)
+    guest_system_concurrency: int = Field(default=2, ge=1, le=4)
+    guest_max_files: int = Field(default=2, ge=1, le=4)
+    guest_max_file_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=5 * 1024 * 1024)
+    guest_max_session_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
+    guest_max_total_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
+    guest_max_rows: int = Field(default=1000, ge=1, le=2000)
+    guest_max_columns: int = Field(default=20, ge=1, le=30)
+    guest_max_pages: int = Field(default=20, ge=1, le=30)
+    guest_max_characters: int = Field(default=100_000, ge=1000, le=200_000)
+    guest_max_chunks: int = Field(default=12, ge=1, le=20)
+    guest_max_prompt_characters: int = Field(default=2000, ge=100, le=2000)
+    guest_parse_timeout_seconds: int = Field(default=10, ge=1, le=20)
+    guest_request_timeout_seconds: int = Field(default=120, ge=5, le=180)
+    guest_worker_memory_mb: int = Field(default=768, ge=256, le=1024)
+    guest_worker_cpu_seconds: int = Field(default=15, ge=1, le=30)
     ai_default_model: Literal["inetcloud-knowledge", "gemini"] = "inetcloud-knowledge"
     inetcloud_base_url: str | None = None
     inetcloud_model: Literal["knowledge"] = "knowledge"

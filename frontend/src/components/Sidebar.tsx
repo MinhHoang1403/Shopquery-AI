@@ -11,10 +11,14 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ConversationSummary } from "../types";
+import type { SessionInfo } from "../api";
+import { AccountMenu } from "./AccountMenu";
 
 interface SidebarProps {
-  account?: string;
+  account?: SessionInfo["user"];
   onLogout?: () => void;
+  guest?: boolean;
+  onLogin?: () => void;
   open: boolean;
   collapsed: boolean;
   conversations: ConversationSummary[];
@@ -31,6 +35,8 @@ interface SidebarProps {
 export function Sidebar({
   account,
   onLogout,
+  guest,
+  onLogin,
   open,
   collapsed,
   conversations,
@@ -85,7 +91,7 @@ export function Sidebar({
         <div className="sidebar-scroll">
           <section className="sidebar-section conversation-section" aria-labelledby="conversations-heading">
             <div className="sidebar-section-heading">
-              <span id="conversations-heading">Các cuộc trò chuyện</span>
+              <span id="conversations-heading">{guest ? "Đoạn chat tạm thời" : "Các cuộc trò chuyện"}</span>
             </div>
             <div className="sidebar-list conversation-list">
               {conversations.length === 0 ? <p className="sidebar-empty">Chưa có cuộc trò chuyện.</p> : null}
@@ -121,11 +127,9 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-footer">
-          <button className="upload-button" onClick={onUpload} type="button"><Upload size={17} /><span>Quản lý dữ liệu</span></button>
-          {onLogout ? <div className="account-menu">
-            {!collapsed ? <span title={account}>{account}</span> : null}
-            <button type="button" onClick={onLogout} aria-label="Đăng xuất">Đăng xuất</button>
-          </div> : null}
+          <button className="upload-button" onClick={onUpload} type="button" aria-label={guest ? "Tệp tạm thời" : "Quản lý dữ liệu"}><Upload size={17} /><span>{guest ? "Tệp tạm thời" : "Quản lý dữ liệu"}</span></button>
+          {guest ? <><button className="guest-sidebar-login" type="button" onClick={onLogin}>Đăng nhập</button><p className="guest-sidebar-hint">Đăng nhập để lưu lịch sử và bộ dữ liệu.</p></> : null}
+          {onLogout && account ? <AccountMenu account={account} onLogout={onLogout} /> : null}
         </div>
       </aside>
     </>

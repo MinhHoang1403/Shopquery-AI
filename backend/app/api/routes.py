@@ -96,6 +96,8 @@ def chat(user: CurrentUser, request: ChatRequest) -> ChatResponse:
             repository = build_dataset_repository(user.user_id)
             dataset = repository.get(request.dataset_id)
         allow_provider_data()
+        if dataset is None:
+            _require_demo_data(user.user_id)
         with resource_control().work(user.user_id, "chat"):
             if dataset is None:
                 service = build_chat_service(settings)
@@ -192,6 +194,8 @@ def send_conversation_message(
         if conversation.dataset_id is not None:
             build_dataset_repository(user.user_id).get(conversation.dataset_id)
         allow_provider_data()
+        if conversation.dataset_id is None:
+            _require_demo_data(user.user_id)
         with resource_control().work(user.user_id, "chat"):
             return _persist_chat_turn(repository, conversation, request, user.user_id)
     except ResourceNotFoundError as exc:
@@ -238,8 +242,16 @@ def _persist_chat_turn(
 
 @router.get("/datasets", response_model=list[DatasetResponse])
 def list_datasets(user: CurrentUser) -> list[DatasetResponse]:
-    uploaded = [_dataset_response(item) for item in build_dataset_repository(user.user_id).list()]
-    return [_default_dataset_response(), *uploaded]
+    repository = build_dataset_repository(user.user_id)
+    uploaded = [_dataset_response(item) for item in repository.list()]
+    return ([_default_dataset_response()] if repository.has_demo_data() else []) + uploaded
+
+
+def _require_demo_data(user_id: UUID) -> None:
+    if not build_dataset_repository(user_id).has_demo_data():
+        raise HTTPException(
+            409, "Chưa có dữ liệu. Hãy tạo bộ dữ liệu và tải nguồn lên trước khi hỏi."
+        )
 
 
 @router.post(

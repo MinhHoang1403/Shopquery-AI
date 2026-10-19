@@ -2,19 +2,25 @@
 
 [![CI](https://github.com/MinhHoang1403/Shopquery-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/MinhHoang1403/Shopquery-AI/actions/workflows/ci.yml)
 
-ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời câu hỏi từ dữ liệu bán hàng và tài liệu chính sách. Dự án dùng dữ liệu giả lập để minh họa toàn bộ luồng từ giao diện React, FastAPI, iNetCloud Knowledge/Gemini đến PostgreSQL/pgvector; đây không phải hệ thống doanh nghiệp hoặc dịch vụ thương mại thật.
+ShopQuery AI là trợ lý phân tích bảng dữ liệu và tài liệu đa lĩnh vực, từ bán hàng đến học phí, nhân sự và vận hành. React, FastAPI, iNetCloud Knowledge/Gemini và PostgreSQL/pgvector hỗ trợ SQL, RAG và Hybrid; đây chưa phải dịch vụ production công khai.
 
 ## Authentication & multi-user — thay đổi cần đọc trước khi chạy
 
-Source đã bổ sung Google OIDC invite-only, opaque PostgreSQL sessions, CSRF và ownership cho dataset/conversation. Ngoài `/api/health`, API dữ liệu/model yêu cầu đăng nhập. Frontend kiểm tra session trước khi tải history/datasets; logout huỷ request và xoá state của tài khoản.
+Mở website là thấy chatbot Guest; Google login là tùy chọn để sử dụng không gian cá nhân lưu lâu dài. API dữ liệu/model cũ vẫn yêu cầu Google OIDC invite-only, PostgreSQL sessions, CSRF và ownership. Guest chỉ dùng namespace `/api/guest/*`, không được đọc history/datasets cá nhân. Logout thành công quay về Guest trống; lỗi logout không được coi là đã revoke session.
 
-**Chưa nghiệm thu Google login thật hoặc migration database chính. Không rebuild/restart ứng dụng đang dùng database cũ trước khi hoàn tất quy trình nâng cấp có xác nhận.** Container API không còn tự chạy schema setup. Không có cơ chế tự gán dữ liệu cho người đăng nhập đầu tiên.
+**Main local 8080 đã có Guest upload tạm và database authentication riêng, giữ nguyên tài khoản Google hiện có.** Người dùng đã xác nhận đăng nhập Google thành công trước đợt Guest. Không reset database hoặc tự gán dữ liệu cũ cho người đăng nhập đầu tiên. Volume cũ và backups vẫn được giữ.
+
+Xem [hướng dẫn và báo cáo Guest Mode](docs/guest_mode.md), [checkpoint nâng cấp auth trước đó](docs/main_auth_upgrade.md). Chat/embedding thật vẫn bị chặn bởi `BETA_PROVIDER_DATA_ENABLED=false`; Guest AI cần thêm `GUEST_AI_ENABLED=true` sau khi quản trị cho phép. Không tự bật hai gate hoặc Gemini fallback. Guest vẫn parse/xem trước CSV/XLSX/PDF/DOCX/TXT/MD khi AI tắt; lưu tài liệu RAG vào tài khoản cần embedding nên vẫn bị chặn. Chưa nghiệm thu live AI của bản Guest.
+
+Guest mặc định có 5 câu hỏi/phiên, 2 tệp × 2 MB, 1.000 dòng/20 cột và TTL 10 phút. Chat nằm trong memory của trang; refresh không khôi phục. Backend dọn bằng reset best-effort và TTL định kỳ, không phụ thuộc riêng unload. SQL dùng PostgreSQL TEMP trên connection riêng; RAG dùng chunks/vectors trong RAM, không ghi vào corpus/lịch sử cá nhân. TEMP có thể dùng disk nội bộ PostgreSQL; không hứa forensic zero-copy. Local chỉ chạy một API worker.
+
+Upload qua Nginx đã sửa giới hạn mặc định 1 MB: proxy nhận tối đa 11 MB để đủ multipart cho file tài khoản 10 MB; backend vẫn áp dụng cap riêng. Không vượt quota bằng cách refresh; preview/import đều tính request upload.
 
 Đọc [hướng dẫn authentication, cấu hình và migration](docs/authentication.md) trước mọi lệnh setup/seed bên dưới. Các bảng kết quả live ở phần tiếp theo là bằng chứng lịch sử trước auth, không phải kết quả live mới của bản multi-user. Không seed/ingest lại database cũ chỉ để bật auth.
 
-## Trạng thái nghiệm thu — 19/10/2026
+## Kết quả lịch sử trước authentication — 19/10/2026
 
-**Sẵn sàng sử dụng local/MVP trong phạm vi đã kiểm chứng; chưa nghiệm thu production công khai.** Đã chạy thật qua giao diện React/Nginx với dữ liệu cửa hàng mẫu, không mock và không dùng Gemini fallback để tính Knowledge pass.
+Các kết quả dưới đây được ghi nhận trước nâng cấp authentication, khi database còn chứa demo. **Không phải kết quả live của bản main sạch hiện tại.** Chưa nghiệm thu production công khai.
 
 | Chức năng | iNetCloud Knowledge | Gemini |
 | --- | --- | --- |
@@ -150,16 +156,24 @@ Chỉ áp dụng cho database mới hoàn toàn. Database hiện hữu phải th
 ```powershell
 docker compose up -d --build
 docker compose ps
-docker compose exec api python scripts/setup_database.py --confirm-database shopquery
-docker compose exec api python scripts/load_seed_data.py
-docker compose exec api python scripts/ingest_documents.py
+docker compose exec api python scripts/setup_database.py --confirm-database shopquery --fresh
 ```
 
 Chờ ba service `db`, `api`, `web` healthy rồi mở `http://127.0.0.1:8080`. API trực tiếp ở `http://127.0.0.1:8000` và PostgreSQL ở `127.0.0.1:54321`. Nếu cổng host 8000 đang bị chiếm, có thể đổi riêng ánh xạ host của service `api`; kết nối nội bộ Nginx vẫn luôn dùng `api:8000`.
 
 Đây là cổng **mặc định của repository**. Môi trường nghiệm thu dùng override local API 8001 và PostgreSQL 15432, web vẫn 8080; không cần sao chép override đó trên máy mới. Khi đổi cổng host PostgreSQL, cập nhật hai database URL cho backend native/test; URL giữa các container vẫn dùng `db:5432`.
 
-API không tự setup/migration khi khởi động hoặc nhận request. Schema expansion là lệnh quản trị có xác nhận target; backfill ownership dùng migration riêng. Với database quan trọng cần backup, restore rehearsal và xác nhận owner trước mọi thay đổi. Ví dụ expansion sau khi được phép:
+API không tự setup/migration khi khởi động hoặc nhận request. `--fresh` chỉ khởi tạo database chưa có bảng ứng dụng, thêm final ownership constraints và version marker, không tạo user giả. Cài mới thành công có thể chạy lại mà không xoá dữ liệu; schema cũ bị từ chối. Lệnh không có `--fresh` vẫn là expansion cho quy trình legacy, không thay thế migration ownership.
+
+Ở máy nghiệm thu hiện tại phải dùng cùng hai Compose files trong mọi lệnh vận hành, để giữ đúng cổng và volume sạch đã chọn:
+
+```powershell
+docker compose -p shopquery-ai -f compose.yaml -f .env.compose-ui.yaml up -d
+```
+
+File override local này không chứa secrets và không commit. Không chạy base Compose một mình trên máy này: mặc định vẫn tham chiếu volume cũ. Máy cài mới không cần sao chép override; có thể chọn volume bằng `POSTGRES_VOLUME_NAME` trước khi khởi tạo. Không đổi volume trên database đang dùng nếu chưa backup và kiểm tra target.
+
+Với database legacy quan trọng cần backup, restore rehearsal và xác nhận owner trước mọi thay đổi. Ví dụ expansion sau khi được phép:
 
 ```powershell
 cd backend
@@ -185,7 +199,9 @@ Volume `postgres_data` giữ dữ liệu. Không dùng `docker compose down -v` 
 
 ### Kiểm tra sử dụng sau khi khởi động
 
-1. Đăng nhập bằng tài khoản Google được mời, chọn **Dữ liệu cửa hàng mẫu**, tạo chat mới và chọn model trong composer.
+Database mới không có demo: đăng nhập Google được mời, chọn **Thêm dữ liệu**, tạo workspace và preview/import CSV hoặc XLSX của bạn. Upload bảng không gọi AI; upload tài liệu cần embedding và bị chặn khi gate chưa được bật riêng. Chưa được phép gửi dữ liệu tới providers thì không chạy chat live. Các bước đối chứng sau **chỉ áp dụng môi trường demo riêng đã seed trước đây**, không phải main sạch:
+
+1. Chọn **Dữ liệu cửa hàng mẫu**, tạo chat mới và chọn model trong composer.
 2. Hỏi “Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?”; mở bảng và SQL. Đối chứng mẫu: product IDs `10, 47, 120, 123, 135` với quantity `15, 14, 11, 11, 10`; hai sản phẩm quantity 11 có thể đổi thứ tự.
 3. Hỏi “Chính sách đổi trả của cửa hàng như thế nào?”; mở nguồn để đối chiếu thời hạn 14 ngày.
 4. Hỏi “Top 5 sản phẩm bán chạy nhất tháng 9/2025 có thuộc danh mục được miễn phí vận chuyển không?”; phải có cả bảng/SQL và nguồn. Trong top 5 này chỉ sản phẩm ID 10 thuộc `PHONE` được miễn phí tiêu chuẩn.
@@ -210,12 +226,10 @@ uv sync --locked --python 3.11
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Nếu đây là database mới, chạy ba script thiết lập trước lệnh Uvicorn:
+Nếu đây là database mới, khởi tạo schema sạch trước lệnh Uvicorn (không seed/ingest):
 
 ```powershell
-uv run python scripts/setup_database.py --confirm-database shopquery
-uv run python scripts/load_seed_data.py
-uv run python scripts/ingest_documents.py
+uv run python scripts/setup_database.py --confirm-database shopquery --fresh
 ```
 
 ### Terminal 2 — frontend
@@ -331,11 +345,13 @@ npm run build
 
 ### Browser E2E
 
-Mock E2E không gọi Gemini nhưng cần web Docker chạy ở cổng 8080:
+Mock E2E không gọi providers. Ưu tiên Vite riêng để không phụ thuộc session hoặc database của main:
 
 ```powershell
 Set-Location frontend
 npx playwright install chromium
+$env:SHOPQUERY_E2E_START_SERVER = '1'
+$env:SHOPQUERY_E2E_BASE_URL = 'http://127.0.0.1:5173'
 npm run test:e2e
 ```
 

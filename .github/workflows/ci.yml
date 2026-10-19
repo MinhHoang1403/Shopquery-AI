@@ -133,7 +133,7 @@ jobs:
         run: npm run build
       - name: Install Chromium for offline browser tests
         run: npx playwright install --with-deps chromium
-      - name: Run authenticated UI mock tests without external providers
+      - name: Run authenticated and guest UI mock tests without external providers
         env:
           SHOPQUERY_E2E_START_SERVER: "1"
           SHOPQUERY_E2E_BASE_URL: http://127.0.0.1:5173

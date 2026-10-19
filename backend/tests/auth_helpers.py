@@ -29,6 +29,9 @@ def TestClient(app):
 
 @pytest.fixture
 def contract_session(monkeypatch):
+    monkeypatch.setattr(
+        "app.datasets.repository.DatasetRepository.has_demo_data", lambda self: True
+    )
     settings = get_settings().model_copy(
         update={
             "auth_invited_emails": ["contract@example.invalid"],

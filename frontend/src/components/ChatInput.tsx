@@ -13,6 +13,7 @@ interface ChatInputProps {
   models: ModelOption[];
   selectedModel: ModelId;
   onModelSelect: (model: ModelId) => void;
+  placeholder?: string;
 }
 
 export function ChatInput({
@@ -25,6 +26,7 @@ export function ChatInput({
   models,
   selectedModel,
   onModelSelect,
+  placeholder,
 }: ChatInputProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const showCharacterCount = value.length > 0;
@@ -79,7 +81,7 @@ export function ChatInput({
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={`Hỏi về ${datasetName.toLocaleLowerCase("vi")}…`}
+          placeholder={placeholder ?? `Hỏi về ${datasetName.toLocaleLowerCase("vi")}…`}
           rows={1}
           value={value}
         />

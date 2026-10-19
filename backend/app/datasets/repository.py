@@ -84,6 +84,17 @@ class DatasetRepository:
         self._readonly_engine = readonly_engine
         self._owner_user_id = owner_user_id
 
+    def has_demo_data(self) -> bool:
+        with self._readonly_engine.connect() as connection:
+            return bool(
+                connection.scalar(
+                    text(
+                        "SELECT EXISTS (SELECT 1 FROM products) OR EXISTS (SELECT 1 FROM orders) "
+                        "OR EXISTS (SELECT 1 FROM document_chunks WHERE dataset_id IS NULL)"
+                    )
+                )
+            )
+
     def list(self) -> list[DatasetInfo]:
         statement = (
             select(Dataset)

@@ -65,6 +65,18 @@ const emptyWorkspace: Dataset = {
   tables: [],
 };
 
+it("shows a clean workspace without demo prompts or chat requests when there is no data", async () => {
+  const fetch = installApi({ datasets: [] });
+  render(<App />);
+  await screen.findByRole("heading", { name: "Không gian dữ liệu của bạn" });
+  expect(screen.getByText("Chưa có bộ dữ liệu")).toBeInTheDocument();
+  expect(screen.queryByText("Phân tích bán hàng")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Nhập câu hỏi cho ShopQuery AI")).toBeDisabled();
+  expect(fetch.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "Thêm dữ liệu" }));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(status === 204 ? null : JSON.stringify(body), {
     status,

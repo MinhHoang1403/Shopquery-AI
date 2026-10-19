@@ -34,6 +34,8 @@ export function DatasetSelector({ datasets, selectedDataset, onSelect }: Dataset
     onSelect(dataset);
   }
 
+  if (datasets.length === 0) return <span className="dataset-empty">Chưa có bộ dữ liệu</span>;
+
   return (
     <div className="dataset-selector" ref={root}>
       <button

@@ -2,15 +2,21 @@
 
 import argparse
 
+from app.database.fresh import initialize_fresh_database
 from app.database.session import get_setup_engine
 from app.database.setup import create_schema
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Explicit schema expansion; no ownership backfill")
     parser.add_argument("--confirm-database", required=True)
+    parser.add_argument("--fresh", action="store_true", help="Initialize an empty DB; never seed")
     args = parser.parse_args()
     engine = get_setup_engine()
     if args.confirm_database != engine.url.database:
         parser.error("Database confirmation does not match the configured target")
-    create_schema(engine)
-    print("Schema expanded. Legacy ownership requires the separate explicit migration.")
+    if args.fresh:
+        initialize_fresh_database(engine)
+        print("Fresh authentication schema initialized. No users, seed, or embeddings created.")
+    else:
+        create_schema(engine)
+        print("Schema expanded. Legacy ownership requires the separate explicit migration.")

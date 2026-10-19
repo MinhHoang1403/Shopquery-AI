@@ -53,6 +53,7 @@ export async function logoutSession(): Promise<void> {
   resetSessionRequests();
   const result = await fetch("/api/auth/logout", {
     method: "POST", credentials: "same-origin", headers: { "X-CSRF-Token": token ?? "" },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!result.ok && result.status !== 401) throw new Error("Không thể xác nhận đăng xuất phía máy chủ.");
 }
@@ -86,7 +87,7 @@ function isSource(value: unknown): value is SourceReference {
   );
 }
 
-function parseChatResponse(value: unknown): ChatResponse {
+export function parseChatResponse(value: unknown): ChatResponse {
   if (
     !isRecord(value) ||
     typeof value.answer !== "string" ||
@@ -150,6 +151,9 @@ async function requestJson(
     throw new ChatApiError("Phiên đăng nhập không còn được phép sử dụng.", "server", response.status);
   }
   if (response.status === 204) return null;
+  if (response.status === 413) {
+    throw new ChatApiError("Tệp tải lên vượt giới hạn dung lượng cho phép (tài khoản: tối đa 10 MB/tệp).", "validation", 413);
+  }
   const body = await readJson(response);
   assertCurrentEpoch(epoch);
   if (!response.ok) {

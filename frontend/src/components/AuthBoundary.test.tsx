@@ -83,3 +83,63 @@ it("attaches session-bound CSRF headers and same-origin credentials to writes", 
   expect(options.credentials).toBe("same-origin");
   expect(new Headers(options.headers).get("X-CSRF-Token")).toBe("session-bound-token");
 });
+
+it("does not claim logout succeeded on network failure and retries with revalidated CSRF", async () => {
+  let failures = 1;
+  let signedIn = true;
+  const fetch = vi.fn(async (url: RequestInfo | URL) => {
+    if (url === "/api/auth/me") return signedIn ? json(session("A")) : json({}, 401);
+    if (failures-- > 0) throw new TypeError("Offline");
+    signedIn = false;
+    return new Response(null, { status: 204 });
+  });
+  vi.stubGlobal("fetch", fetch);
+  boundary();
+  await screen.findByText("Private workspace A");
+  fireEvent.click(screen.getByRole("button", { name: "Đăng xuất" }));
+  const retry = await screen.findByRole("button", { name: "Thử đăng xuất lại" });
+  expect(screen.getByRole("alert")).toHaveTextContent("Chưa xác nhận");
+  fireEvent(window, new Event("focus"));
+  expect(screen.queryByText("Private workspace A")).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Tiếp tục với Google" })).not.toBeInTheDocument();
+  fireEvent.click(retry);
+  await screen.findByRole("link", { name: "Tiếp tục với Google" });
+  expect(fetch).toHaveBeenLastCalledWith("/api/auth/logout", expect.objectContaining({
+    headers: { "X-CSRF-Token": "csrf-A" },
+  }));
+});
+
+it("keeps private UI unmounted while logout is in progress", async () => {
+  let finish: (response: Response) => void = () => undefined;
+  vi.stubGlobal("fetch", vi.fn((url) => url === "/api/auth/me"
+    ? Promise.resolve(json(session("A")))
+    : new Promise<Response>((resolve) => { finish = resolve; })));
+  boundary();
+  await screen.findByText("Private workspace A");
+  fireEvent.click(screen.getByRole("button", { name: "Đăng xuất" }));
+  expect(screen.getByRole("status")).toHaveTextContent("Đang đăng xuất");
+  fireEvent(window, new Event("focus"));
+  expect(screen.queryByText("Private workspace A")).not.toBeInTheDocument();
+  await act(async () => finish(new Response(null, { status: 204 })));
+  await screen.findByRole("link", { name: "Tiếp tục với Google" });
+});
+
+it("renders the guest chat instead of a login wall, preserving page state on focus", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => json({}, 401)));
+  render(<AuthBoundary guest={<input aria-label="Guest draft" />}>{() => <p>Private</p>}</AuthBoundary>);
+  const input = await screen.findByLabelText("Guest draft");
+  fireEvent.change(input, { target: { value: "Not lost on focus" } });
+  fireEvent(window, new Event("focus"));
+  await waitFor(() => expect(screen.getByLabelText("Guest draft")).toHaveValue("Not lost on focus"));
+  expect(screen.queryByText("Private")).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Tiếp tục với Google" })).not.toBeInTheDocument();
+});
+
+it("returns to fresh guest content only after logout was acknowledged", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => url === "/api/auth/me" ? json(session("A")) : new Response(null, { status: 204 })));
+  render(<AuthBoundary guest={<p>Fresh guest chat</p>}>{(value, logout) => <><p>Private {value.user.display_name}</p><button onClick={logout}>Logout</button></>}</AuthBoundary>);
+  await screen.findByText("Private A");
+  fireEvent.click(screen.getByRole("button", { name: "Logout" }));
+  await screen.findByText("Fresh guest chat");
+  expect(screen.queryByText("Private A")).not.toBeInTheDocument();
+});

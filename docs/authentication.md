@@ -4,7 +4,7 @@
 
 Chặng 1 giữ React → Nginx → FastAPI → PostgreSQL/pgvector. Không triển khai VPS, không đổi model/embedding, JOIN policy hoặc SQL/RAG/Hybrid architecture.
 
-Code có Google OIDC, invite-only beta, PostgreSQL opaque sessions, CSRF, owner-scoped repositories, frontend auth boundary và quota beta. Google login thật cần OAuth Client do người dùng cấu hình; chưa được coi là đã pass chỉ vì mocked/signed-token tests pass. Database chính chưa migration; toàn bộ dữ liệu cũ được người dùng xác nhận thuộc một tài khoản, nhưng chưa xác định issuer/sub thật để backfill.
+Code có Google OIDC, invite-only beta, PostgreSQL opaque sessions, CSRF, owner-scoped repositories, frontend auth boundary và quota beta. Main local đã chuyển sang volume/database sạch, không backfill dữ liệu legacy; người dùng đã xác nhận Google login thành công trước đợt Guest. Bản mới vào thẳng Guest chat, Google login tùy chọn, logout thành công về Guest trống. Không suy ra Google callback/logout live đã pass chỉ từ browser mock. Xem [báo cáo nâng cấp main trước đó](main_auth_upgrade.md) và [Guest Mode](guest_mode.md).
 
 ## Google OIDC
 
@@ -52,7 +52,7 @@ Session token có 256 bit randomness, browser giữ opaque token HttpOnly; `user
 
 `GET /api/auth/me` trả current user và CSRF token gắn với session. Frontend giữ token trong memory, không localStorage. Mọi POST/PATCH/DELETE/upload phải có `Origin` khớp APP_ORIGIN và `X-CSRF-Token`; OAuth callback dùng state/nonce riêng. SameSite không phải lớp CSRF duy nhất. API responses đặt `Cache-Control: no-store`.
 
-Endpoints: GET `/api/auth/login`, GET `/api/auth/callback`, GET `/api/auth/me`, POST `/api/auth/logout`. Login không nhận redirect tùy ý. Models và tất cả API dữ liệu cũ yêu cầu session; health public chỉ liveness. Docs/OpenAPI mặc định tắt, chỉ bật rõ cho development. Lỗi chat nghiệp vụ vẫn HTTP 200 có error; unauthenticated 401, sai owner/missing resource 404, CSRF/policy 403, quota 429.
+Endpoints: GET `/api/auth/login`, GET `/api/auth/callback`, GET `/api/auth/me`, POST `/api/auth/logout`. Login không nhận redirect tùy ý. Models và tất cả API dữ liệu cũ yêu cầu session; health public chỉ liveness. `/api/guest/*` là public capability API riêng, không bỏ auth của API cũ. Docs/OpenAPI mặc định tắt, chỉ bật rõ cho development. Lỗi chat nghiệp vụ vẫn HTTP 200 có error; unauthenticated 401, sai owner/missing resource 404, CSRF/policy 403, quota 429.
 
 Nguồn: [OWASP Sessions](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [OWASP CSRF](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
 
@@ -87,6 +87,16 @@ Counters theo fixed hour, lease hết hạn sau 30 phút nếu process chết. Q
 `BETA_PROVIDER_DATA_ENABLED=false` mặc định chặn chat và document embeddings trước provider call. Chỉ bật sau khi quản trị xác nhận dữ liệu beta được phép gửi providers. Knowledge generation nhận câu hỏi/schema/rows/evidence; Gemini generation nhận tương tự nếu chọn hoặc fallback được phép. Query embedding và document ingestion vẫn gửi text tới Google kể cả chọn Knowledge. Không hứa xử lý hoàn toàn nội bộ. Không tự bật Gemini fallback; model preference/attribution giữ nguyên. Đây là gate vận hành, không thay thế policy pháp lý/consent theo loại dữ liệu.
 
 ## Migration an toàn — không tự áp dụng DB chính
+
+### Fresh installation (database sạch)
+
+`python scripts/setup_database.py --confirm-database <target> --fresh` chỉ dùng cho database chưa có bảng ứng dụng. Lệnh tạo pgvector, các bảng rỗng, owner NOT NULL/FKs, unique tên theo owner và composite FK `(dataset_id, owner_user_id)` giữa conversation/dataset. Ghi version `001_fresh_install` không có owner; không tạo identity/sessions/seed/chunks và không gọi providers. Re-run sau cài thành công không sửa dữ liệu. Database có bảng nhưng chưa có fresh marker bị từ chối, kể cả khi bảng rỗng; không dùng flag này như lệnh reset.
+
+Nếu cài bị gián đoạn trước marker, dừng để kiểm tra schema và target; không tự DROP hoặc seed để vượt lỗi. Schema legacy tiếp tục dùng quy trình dưới đây, không đổi thành fresh install tự động.
+
+Reader chỉ được SELECT trên nguồn SQL/RAG cho phép; không được đọc users, sessions, OIDC, quota, history hoặc migration marker. Role runtime hiện vẫn là setup superuser trong Compose local; tách runtime least-privilege còn là công việc trước public/VPS, không coi đợt này đã xử lý xong.
+
+### Legacy ownership (chỉ khi cần giữ dữ liệu)
 
 Không chạy down -v, seed, re-ingest hoặc re-embed để nâng cấp. Stop writers trong cửa sổ migration được duyệt, xác minh target và tạo backup mới trước khi áp dụng thật.
 
@@ -143,4 +153,4 @@ Mọi live browser suite yêu cầu opt-in riêng và SHOPQUERY_LIVE_STORAGE_STA
 
 Backlog Chặng 2: runtime DB least privilege thay superuser; HTTPS và proxy trust; production Compose/resource/restart/log limits; Nginx upload-size alignment; scheduled/offsite backups và restore; monitoring/alerting; whole-request deadlines, blocking parser/embedding workload và capacity tests; provider privacy policy. Chặng 1 không triển khai Nginx/TLS/VPS hoặc RLS vội vàng.
 
-Nginx access logs mặc định có thể chứa query callback OIDC; không chia sẻ logs thô. Backend bỏ query callback khỏi scope access log và hạn chế debug thư viện, nhưng proxy log redaction/rotation phải được xử lý ở Chặng 2 trước public deployment.
+Image mới tắt Uvicorn access log và Nginx access log; Nginx error output cũng bị tắt để không lưu callback query chứa code. Không bật lại log request thô khi thử OAuth. Đây là lựa chọn local; redaction có kiểm chứng, log rotation và observability production vẫn thuộc Chặng 2 trước public deployment. Không chia sẻ logs hoặc callback URL thô.
