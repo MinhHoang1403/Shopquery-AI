@@ -271,7 +271,11 @@ python -m pip install --require-hashes -r .\requirements.txt
 
 ### Tự kích hoạt trong Antigravity/VS Code
 
-Repository cấu hình `.vscode/settings.json` để chọn `backend/.venv/Scripts/python.exe`. Antigravity hiện không cung cấp các proposed terminal API mà Microsoft Python Environments cần để tự kích hoạt bằng chế độ `command`, nên workspace dùng profile `ShopQuery PowerShell` để chạy `Activate.ps1` khi tạo Terminal mới. Cấu hình này chỉ áp dụng cho repository, không sửa PowerShell `$PROFILE`, Registry hoặc ExecutionPolicy.
+Repository cấu hình `.vscode/settings.json` để chọn `backend/.venv/Scripts/python.exe`. Workspace đặt `python.useEnvironmentsExtension=false` để dùng cơ chế chọn interpreter của extension Microsoft Python chính ([cấu hình được Microsoft hỗ trợ](https://marketplace.visualstudio.com/items?itemName=ms-python.python)). Python Environments 1.20.1 trên Antigravity IDE 2.5.5 đã phát sinh lỗi thiếu `python-env-tools/bin/pet.exe` trong gói Python và bị từ chối API `terminalDataWriteEvent`; đây không phải lỗi venv của dự án. Không cần gỡ extension này khỏi các project khác hoặc tạo lại venv.
+
+Workspace dùng profile `ShopQuery PowerShell` để chạy `Activate.ps1` khi tạo Terminal mới, đồng thời tắt activation/shell integration của extension Python để tránh kích hoạt chồng nhau hoặc gọi proposed terminal API. Cấu hình này chỉ áp dụng cho repository, không sửa PowerShell `$PROFILE`, Registry hoặc ExecutionPolicy. Sau khi thay đổi cấu hình, chạy **Developer: Reload Window** để extension đọc lại thiết lập.
+
+Banner “An environment file is configured but terminal environment injection is disabled” chỉ là thông tin, không chứng minh `.env` không được backend đọc. Không cần bật nạp toàn bộ `.env` vào mọi terminal để chạy ứng dụng; backend và Docker có cơ chế nạp cấu hình riêng.
 
 Sau khi chạy `uv sync`, đóng Terminal cũ rồi mở Terminal PowerShell mới. Kiểm tra:
 
