@@ -146,6 +146,19 @@ chưa commit. Không sửa workflow hoặc loại security tests để đạt CI
 Báo cáo này commit riêng sau source CI, không trộn các docs deletion/Hybrid cũ;
 CI của documentation-only HEAD được kiểm tra và báo đúng SHA trong trả lời bàn giao,
 không dùng CI source cũ để tự nhận CI cho HEAD mới.
+
+CI `b8304ae` ([run 39302498473](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39302498473))
+có Backend/PostgreSQL PASS nhưng Frontend **94/95 UI PASS, 1 timeout** ở test
+Guest provider gate off/tablet768. Trace chứng minh helper `openUploads` gọi
+`isVisible()` trước khi auth bootstrap render header: false khiến bỏ qua mở menu;
+sau đó click nút sidebar ngoài viewport đến timeout. Đây là race trong helper,
+không phải provider gate/JOIN bị lỗi. Sửa duy nhất test helper đợi `.chat-header`
+visible, thêm regression auth response được giữ lại rồi release có kiểm soát.
+Không force click, sleep, tăng timeout, bỏ assertion hoặc sửa production code.
+Regression mới tái hiện timeout với helper cũ trên tablet; helper đã sửa đạt
+**18/18 targeted runs** (hai test × desktop/tablet/mobile × ba lần), lint/typecheck PASS.
+CI follow-up đúng SHA được kiểm tra trước trả lời bàn giao, không rerun mù để che lỗi.
+
 Hai giới hạn nghiệm thu còn lại: Google UI chưa xác minh và Gemini JOIN live chưa
 đạt. Không có bằng chứng yêu cầu nới SQL policy hoặc đổi kiến trúc/model. Không VPS,
 Langfuse, framework, repair loop hay migration mới trong đợt này.

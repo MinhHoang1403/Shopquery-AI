@@ -52,11 +52,29 @@ async function installGuest(page: Page, ai = true) {
 }
 
 async function openUploads(page: Page) {
+  await expect(page.locator(".chat-header")).toBeVisible();
   const menu = page.getByRole("button", { name: "Mở thanh điều hướng" });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole("button", { name: "Tệp tạm thời", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 }
+
+test("guest upload navigation waits for delayed authentication bootstrap", async ({ page }) => {
+  let releaseAuth!: () => void;
+  const authGate = new Promise<void>((resolve) => { releaseAuth = resolve; });
+  await installGuest(page, false);
+  await page.route("**/api/auth/me", async (route) => {
+    await authGate;
+    await route.fulfill({ status: 401, json: { detail: "Guest" } });
+  });
+  await page.goto("/");
+  const opening = openUploads(page);
+  await expect(page.locator(".chat-header")).toHaveCount(0);
+  releaseAuth();
+  await opening;
+  await expect(page.getByRole("heading", { name: "Tệp tạm của phiên khách" })).toBeVisible();
+  await expect(page.locator(".guest-file-list li")).toHaveCount(0);
+});
 
 test("guest upload SQL RAG Hybrid use common chat UI and refresh loses files/history", async ({ page }, info) => {
   const mock = await installGuest(page);
