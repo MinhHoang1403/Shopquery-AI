@@ -2,14 +2,17 @@ import { AlertCircle, FileSpreadsheet, FileText, Plus, Trash2, UploadCloud } fro
 import { useEffect, useRef, useState } from "react";
 import {
   createDataset,
+  deleteDataset,
   deleteDatasetDocument,
+  deleteDatasetTable,
+  getDataset,
   getDatasetDocuments,
   importDataset,
   importDatasetTable,
   previewDataset,
   uploadDatasetDocument,
 } from "../api";
-import type { Dataset, DatasetDocument, DatasetPreview } from "../types";
+import type { Dataset, DatasetDocument, DatasetPreview, DatasetTable } from "../types";
 import { Modal } from "./Dialogs";
 import { ResultTable } from "./ResponseEvidence";
 
@@ -17,13 +20,20 @@ interface DatasetUploadDialogProps {
   datasets: Dataset[];
   onClose: () => void;
   onImported: (dataset: Dataset) => void;
+  onDeleted: (dataset: Dataset) => void;
+  deletionDisabled?: boolean;
 }
+
+type DeleteTarget =
+  | { kind: "dataset"; name: string }
+  | { kind: "table"; name: string; id: number }
+  | { kind: "document"; name: string; id: number };
 
 function messageFromError(error: unknown): string {
   return error instanceof Error ? error.message : "Không thể xử lý dữ liệu.";
 }
 
-export function DatasetUploadDialog({ datasets, onClose, onImported }: DatasetUploadDialogProps) {
+export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, deletionDisabled }: DatasetUploadDialogProps) {
   const uploaded = datasets.filter(
     (item): item is Dataset & { dataset_id: number } => item.kind === "uploaded" && item.dataset_id !== null,
   );
@@ -38,23 +48,44 @@ export function DatasetUploadDialog({ datasets, onClose, onImported }: DatasetUp
   const [busy, setBusy] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [deleteHistory, setDeleteHistory] = useState(false);
   const previewController = useRef<AbortController | null>(null);
+  const confirmation = useRef<HTMLElement | null>(null);
 
   useEffect(() => () => previewController.current?.abort(), []);
+  useEffect(() => {
+    if (!deleteTarget) return;
+    confirmation.current?.focus();
+    confirmation.current?.scrollIntoView({ block: "nearest" });
+  }, [deleteTarget]);
 
   async function selectWorkspace(dataset: Dataset | null) {
+    previewController.current?.abort();
+    setIsPreviewing(false);
     setWorkspace(dataset);
     setFile(null);
     setPreview(null);
     setError(null);
+    setDeleteTarget(null);
+    setDeleteHistory(false);
+    setDocuments([]);
     if (!dataset?.dataset_id) {
       setDocuments([]);
       return;
     }
+    setBusy(true);
     try {
-      setDocuments(await getDatasetDocuments(dataset.dataset_id));
+      const [detail, items] = await Promise.all([
+        getDataset(dataset.dataset_id), getDatasetDocuments(dataset.dataset_id),
+      ]);
+      setWorkspace(detail);
+      setDocuments(items);
     } catch (loadError) {
       setError(messageFromError(loadError));
+      setWorkspace(null);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -164,17 +195,49 @@ export function DatasetUploadDialog({ datasets, onClose, onImported }: DatasetUp
     }
   }
 
-  async function removeDocument(document: DatasetDocument) {
-    if (!workspace?.dataset_id) return;
-    if (!window.confirm(`Xóa tài liệu “${document.original_filename}” và toàn bộ chunks?`)) return;
+  function requestTableDelete(table: DatasetTable) {
+    if (table.dataset_table_id === null || table.dataset_table_id === undefined) return;
+    setError(null);
+    setDeleteTarget({ kind: "table", id: table.dataset_table_id, name: table.display_name });
+  }
+
+  async function confirmSourceDelete() {
+    if (!workspace?.dataset_id || !deleteTarget || deletionDisabled || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await deleteDatasetDocument(workspace.dataset_id, document.document_id);
-      setDocuments((current) => current.filter((item) => item.document_id !== document.document_id));
-      const updated = { ...workspace, document_count: Math.max(0, (workspace.document_count ?? 1) - 1) };
-      setWorkspace(updated);
-      onImported(updated);
+      if (deleteTarget.kind === "dataset") {
+        await deleteDataset(workspace.dataset_id, deleteHistory);
+        onDeleted(workspace);
+        setWorkspace(null);
+        setDocuments([]);
+        setFile(null);
+        setPreview(null);
+      } else {
+        if (deleteTarget.kind === "table") {
+          await deleteDatasetTable(workspace.dataset_id, deleteTarget.id);
+        } else {
+          await deleteDatasetDocument(workspace.dataset_id, deleteTarget.id);
+        }
+        const tables = (workspace.tables ?? []).filter((item) =>
+          deleteTarget.kind !== "table" || item.dataset_table_id !== deleteTarget.id,
+        );
+        const first = tables[0];
+        const updated = deleteTarget.kind === "table" ? {
+          ...workspace, tables, table_count: tables.length,
+          original_filename: first?.original_filename ?? null,
+          file_type: first?.file_type ?? null, sheet_name: first?.sheet_name ?? null,
+          columns: first?.columns ?? [], row_count: first?.row_count ?? null,
+          column_count: first?.column_count ?? null,
+        } : { ...workspace, document_count: Math.max(0, (workspace.document_count ?? 1) - 1) };
+        setWorkspace(updated);
+        setDocuments((current) => current.filter((item) =>
+          deleteTarget.kind !== "document" || item.document_id !== deleteTarget.id,
+        ));
+        onImported(updated);
+      }
+      setDeleteTarget(null);
+      setDeleteHistory(false);
     } catch (deleteError) {
       setError(messageFromError(deleteError));
     } finally {
@@ -186,15 +249,16 @@ export function DatasetUploadDialog({ datasets, onClose, onImported }: DatasetUp
     <Modal
       title="Quản lý bộ dữ liệu"
       description="Tạo workspace và quản lý các bảng, tài liệu dùng cho SQL, RAG và Hybrid."
-      onClose={onClose}
+      onClose={() => { if (!busy) onClose(); }}
     >
       <div className="upload-flow workspace-flow">
+        <fieldset className="workspace-controls" disabled={busy || deleteTarget !== null}>
         <div className="workspace-mode" role="tablist" aria-label="Cách quản lý dữ liệu">
           <button aria-selected={mode === "new"} className={mode === "new" ? "secondary-button is-active" : "secondary-button"} onClick={() => { setMode("new"); void selectWorkspace(null); }} role="tab" type="button">
             <Plus size={16} /> Tạo bộ dữ liệu mới
           </button>
           <button aria-selected={mode === "existing"} className={mode === "existing" ? "secondary-button is-active" : "secondary-button"} onClick={() => { setMode("existing"); void selectWorkspace(uploaded[0] ?? null); }} role="tab" type="button">
-            Thêm vào bộ hiện có
+            Quản lý bộ hiện có
           </button>
         </div>
 
@@ -208,7 +272,7 @@ export function DatasetUploadDialog({ datasets, onClose, onImported }: DatasetUp
             </div>
             <label className="file-drop compact-drop" htmlFor="quick-dataset-file">
               <UploadCloud size={21} /><span><strong>Hoặc import nhanh CSV/XLSX thành bộ mới</strong><small>Giữ tương thích với luồng import cũ</small></span>
-              <input accept=".csv,.xlsx" id="quick-dataset-file" onChange={(event) => chooseTableFile(event.target.files?.[0] ?? null)} type="file" />
+              <input accept=".csv,.xlsx" id="quick-dataset-file" onChange={(event) => { chooseTableFile(event.target.files?.[0] ?? null); event.target.value = ""; }} type="file" />
             </label>
             {isPreviewing ? <div className="upload-status" role="status">Đang kiểm tra file…</div> : null}
             {preview ? (
@@ -229,30 +293,31 @@ export function DatasetUploadDialog({ datasets, onClose, onImported }: DatasetUp
         {mode === "existing" ? (
           <label className="field-label" htmlFor="workspace-select">Bộ dữ liệu
             <select id="workspace-select" onChange={(event) => { const id = Number(event.target.value); void selectWorkspace(uploaded.find((item) => item.dataset_id === id) ?? null); }} value={workspace?.dataset_id ?? ""}>
-              {uploaded.length === 0 ? <option value="">Chưa có bộ dữ liệu</option> : null}
+              <option value="">{uploaded.length === 0 ? "Chưa có bộ dữ liệu" : "Chọn bộ dữ liệu cần quản lý"}</option>
               {uploaded.map((item) => <option key={item.dataset_id} value={item.dataset_id}>{item.name}</option>)}
             </select>
           </label>
         ) : null}
 
-        {error ? <p className="form-error upload-error" role="alert"><AlertCircle size={16} /> {error}</p> : null}
+        {error && !deleteTarget ? <p className="form-error upload-error" role="alert"><AlertCircle size={16} /> {error}</p> : null}
 
         {workspace?.dataset_id ? (
           <>
-            <div className="workspace-summary"><strong>{workspace.name}</strong><span>{workspace.table_count ?? workspace.tables?.length ?? 0} bảng · {workspace.document_count ?? 0} tài liệu</span></div>
+            <div className="workspace-summary"><strong>{workspace.name}</strong><span>{workspace.table_count ?? workspace.tables?.length ?? 0} bảng · {workspace.document_count ?? 0} tài liệu</span><button className="danger-button" disabled={deletionDisabled} onClick={() => { setError(null); setDeleteHistory(false); setDeleteTarget({ kind: "dataset", name: workspace.name }); }} type="button"><Trash2 size={16} /> Xóa bộ dữ liệu</button></div>
             <section className="workspace-section">
               <h3>Bảng dữ liệu</h3>
               <div className="source-list">
                 {(workspace.tables ?? []).map((table) => (
                   <div className="source-row" key={table.dataset_table_id ?? table.display_name}>
                     <FileSpreadsheet size={17} /><span><strong>{table.display_name}</strong><small>{table.original_filename} · {table.row_count.toLocaleString("vi-VN")} dòng</small></span>
+                    <button aria-label={`Xóa bảng ${table.display_name}`} disabled={deletionDisabled || table.dataset_table_id == null} onClick={() => requestTableDelete(table)} type="button"><Trash2 size={16} /></button>
                   </div>
                 ))}
                 {(workspace.tables ?? []).length === 0 ? <p className="empty-source">Chưa có bảng dữ liệu.</p> : null}
               </div>
               <label className="file-drop compact-drop" htmlFor="dataset-file">
                 <UploadCloud size={21} /><span><strong>Thêm CSV hoặc XLSX</strong><small>Tối đa 10 MB · 5.000 dòng · 30 cột</small></span>
-                <input accept=".csv,.xlsx" id="dataset-file" onChange={(event) => chooseTableFile(event.target.files?.[0] ?? null)} type="file" />
+                <input accept=".csv,.xlsx" id="dataset-file" onChange={(event) => { chooseTableFile(event.target.files?.[0] ?? null); event.target.value = ""; }} type="file" />
               </label>
               {isPreviewing ? <div className="upload-status" role="status">Đang kiểm tra file…</div> : null}
               {preview ? (
@@ -275,18 +340,36 @@ export function DatasetUploadDialog({ datasets, onClose, onImported }: DatasetUp
                 {documents.map((document) => (
                   <div className="source-row" key={document.document_id}>
                     <FileText size={17} /><span><strong>{document.original_filename}</strong><small>{document.file_type.toUpperCase()} · {document.chunk_count} chunks</small></span>
-                    <button aria-label={`Xóa ${document.original_filename}`} disabled={busy} onClick={() => void removeDocument(document)} type="button"><Trash2 size={16} /></button>
+                    <button aria-label={`Xóa tài liệu ${document.original_filename}`} disabled={deletionDisabled} onClick={() => { setError(null); setDeleteTarget({ kind: "document", id: document.document_id, name: document.original_filename }); }} type="button"><Trash2 size={16} /></button>
                   </div>
                 ))}
                 {documents.length === 0 ? <p className="empty-source">Chưa có tài liệu.</p> : null}
               </div>
               <label className="file-drop compact-drop" htmlFor="document-file">
                 <FileText size={21} /><span><strong>Thêm PDF, DOCX, TXT hoặc MD</strong><small>PDF cần có text layer; không hỗ trợ OCR</small></span>
-                <input accept=".pdf,.docx,.txt,.md" disabled={busy} id="document-file" onChange={(event) => void addDocument(event.target.files?.[0] ?? null)} type="file" />
+                <input accept=".pdf,.docx,.txt,.md" disabled={busy} id="document-file" onChange={(event) => { void addDocument(event.target.files?.[0] ?? null); event.target.value = ""; }} type="file" />
               </label>
             </section>
           </>
         ) : null}
+
+        </fieldset>
+        {deleteTarget ? (
+          <section aria-label="Xác nhận xóa dữ liệu" className="workspace-delete-confirm" ref={confirmation} tabIndex={-1}>
+            <h3>Xóa {deleteTarget.kind === "dataset" ? "bộ dữ liệu" : deleteTarget.kind === "table" ? "bảng" : "tài liệu"} “{deleteTarget.name}”?</h3>
+            <p>{deleteTarget.kind === "dataset"
+              ? "Toàn bộ bảng, dữ liệu đã import, tài liệu và embeddings trong bộ này sẽ bị xóa vĩnh viễn. Các bộ dữ liệu khác không bị ảnh hưởng."
+              : "Nguồn này và dữ liệu/embeddings tương ứng sẽ bị xóa vĩnh viễn. Lịch sử chat vẫn giữ các kết quả và trích đoạn đã lưu; chúng có thể không còn phản ánh nguồn hiện tại."}</p>
+            {deleteTarget.kind === "dataset" ? <label className="workspace-delete-history"><input checked={deleteHistory} disabled={busy} onChange={(event) => setDeleteHistory(event.target.checked)} type="checkbox" />Xóa cả lịch sử chat gắn với bộ dữ liệu này (bắt buộc nếu đã có chat).</label> : null}
+            <p>Không thể hoàn tác từ giao diện. File gốc trên máy của bạn không bị xóa.</p>
+            {error ? <p className="form-error" role="alert">{error}</p> : null}
+            <div className="dialog-actions">
+              <button className="secondary-button" disabled={busy} onClick={() => { setDeleteTarget(null); setError(null); }} type="button">Hủy xóa</button>
+              <button className="danger-button" disabled={busy || deletionDisabled} onClick={() => void confirmSourceDelete()} type="button">{busy ? "Đang xóa…" : "Xác nhận xóa vĩnh viễn"}</button>
+            </div>
+          </section>
+        ) : null}
+        {deletionDisabled ? <p role="status">Chờ yêu cầu chat hoàn tất trước khi xóa dữ liệu.</p> : null}
 
         <div className="dialog-actions"><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Đóng</button></div>
       </div>

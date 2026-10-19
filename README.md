@@ -430,7 +430,15 @@ Tiêu đề mặc định được thay bằng phần đầu câu hỏi đầu t
 | `GET` | `/api/datasets/{id}/documents/{document_id}` | Metadata một tài liệu |
 | `DELETE` | `/api/datasets/{id}/documents/{document_id}` | Xóa đúng tài liệu và chunks của nó |
 
-Luồng giao diện: chọn **Nạp dữ liệu mới** → **Tạo bộ dữ liệu mới** hoặc **Thêm vào bộ hiện có**. Sau khi tạo workspace rỗng, có thể preview/thêm nhiều CSV/XLSX và ingest nhiều PDF/DOCX/TXT/MD. Bộ chọn trên header hiển thị gọn số bảng và tài liệu.
+Luồng giao diện: chọn **Quản lý dữ liệu** → **Tạo bộ dữ liệu mới** hoặc **Quản lý bộ hiện có**. Sau khi tạo workspace rỗng, có thể preview/thêm nhiều CSV/XLSX và ingest nhiều PDF/DOCX/TXT/MD. Bộ chọn trên header hiển thị gọn số bảng và tài liệu.
+
+Trong **Quản lý bộ hiện có**, chọn đúng bộ rồi dùng nút thùng rác để xóa từng bảng hoặc tài liệu, hoặc **Xóa bộ dữ liệu** để xóa toàn bộ nguồn trong bộ đó. Mọi thao tác đều cần xác nhận và không thể hoàn tác từ giao diện; file gốc trên máy không bị xóa. Với XLSX, mỗi bảng là một sheet đã import, không tự xóa các sheet/bảng khác cùng tên file.
+
+Xóa bảng sẽ xóa bảng vật lý và metadata; xóa tài liệu sẽ xóa cả chunks/embeddings. Lịch sử chat vẫn giữ kết quả/trích đoạn cũ khi chỉ xóa một nguồn. Nếu xóa cả bộ đã có chat, cần tích **Xóa cả lịch sử chat gắn với bộ dữ liệu này** hoặc xóa các chat đó trước; API trả `409` nếu chưa đồng ý. Không tự chuyển chat sang nguồn mặc định. Bộ cửa hàng mẫu không có thao tác xóa. Các bộ khác và lịch sử của chúng không bị ảnh hưởng. Thao tác không dùng AI/API key và không thêm schema/dependency; quyền quản lý hiện vẫn dùng chung trong môi trường local, chưa có phân quyền người dùng.
+
+API quản lý xóa: `DELETE /api/datasets/{dataset_id}/tables/{table_id}`, `DELETE /api/datasets/{dataset_id}/documents/{document_id}` và `DELETE /api/datasets/{dataset_id}?delete_conversations=false` (chỉ đặt `true` khi đồng ý xóa chat liên quan). Các endpoint thành công trả `204`, nguồn không tồn tại/không thuộc bộ trả `404`. Xóa bộ/bảng dùng một PostgreSQL transaction, chỉ DROP bảng đăng ký trong `uploaded_data`, không dùng `DROP CASCADE` ([PostgreSQL dependency tracking](https://www.postgresql.org/docs/current/ddl-depend.html), [SQLAlchemy Table.drop](https://docs.sqlalchemy.org/en/20/core/metadata.html#sqlalchemy.schema.Table.drop)).
+
+Chi tiết kiểm thử tự động, live UI và đối chiếu bảo toàn dữ liệu: [nghiệm thu chức năng xóa](docs/dataset_deletion.md).
 
 Giới hạn bảng mặc định là 10 MB, 5.000 dòng và 30 cột. CSV phải là UTF-8/UTF-8 BOM. XLSX được đọc read-only, không hỗ trợ macro và không thực thi công thức. Mỗi lần import tạo một bảng; XLSX nhiều sheet yêu cầu chọn một sheet.
 

@@ -219,6 +219,20 @@ export async function createDataset(name: string): Promise<Dataset> {
   }) as Dataset;
 }
 
+export async function getDataset(datasetId: number): Promise<Dataset> {
+  return await requestJson(`/api/datasets/${datasetId}`) as Dataset;
+}
+
+export async function deleteDataset(datasetId: number, deleteConversations = false): Promise<void> {
+  await requestJson(`/api/datasets/${datasetId}?delete_conversations=${deleteConversations}`, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteDatasetTable(datasetId: number, tableId: number): Promise<void> {
+  await requestJson(`/api/datasets/${datasetId}/tables/${tableId}`, { method: "DELETE" });
+}
+
 export async function previewDataset(
   file: File,
   sheetName?: string | null,

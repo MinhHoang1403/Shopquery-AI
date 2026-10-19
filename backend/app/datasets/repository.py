@@ -19,15 +19,17 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    delete,
     insert,
     select,
     text,
+    update,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ResourceConflictError, ResourceNotFoundError
-from app.database.models import Dataset, DatasetTable
+from app.database.models import ChatConversation, Dataset, DatasetTable
 from app.datasets.parser import ColumnSpec, ParsedTable
 from app.text_to_sql.executor import _json_safe
 
@@ -180,6 +182,67 @@ class DatasetRepository:
         return [
             {source_names[key]: _json_safe(value) for key, value in row.items()} for row in rows
         ]
+
+    def delete_table(self, dataset_id: int, table_id: int) -> None:
+        with self._setup_engine.begin() as connection:
+            self._lock_dataset(connection, dataset_id)
+            item = connection.execute(
+                select(DatasetTable.physical_table_name).where(
+                    DatasetTable.dataset_id == dataset_id,
+                    DatasetTable.dataset_table_id == table_id,
+                )
+            ).scalar_one_or_none()
+            if item is None:
+                raise ResourceNotFoundError("Không tìm thấy bảng trong bộ dữ liệu.")
+            self._table(item, ()).drop(connection)
+            connection.execute(
+                delete(DatasetTable).where(
+                    DatasetTable.dataset_id == dataset_id,
+                    DatasetTable.dataset_table_id == table_id,
+                )
+            )
+            # Legacy import metadata must not describe a file that has been removed.
+            connection.execute(
+                update(Dataset)
+                .where(Dataset.dataset_id == dataset_id)
+                .values(original_filename=None, file_type=None, row_count=None, column_count=None)
+            )
+
+    def delete(self, dataset_id: int, *, delete_conversations: bool = False) -> None:
+        """Remove only registered sources, atomically; never cascade a physical DROP."""
+
+        with self._setup_engine.begin() as connection:
+            self._lock_dataset(connection, dataset_id)
+            conversation = connection.scalar(
+                select(ChatConversation.conversation_id)
+                .where(ChatConversation.dataset_id == dataset_id)
+                .limit(1)
+            )
+            if conversation is not None and not delete_conversations:
+                raise ResourceConflictError(
+                    "Bộ dữ liệu có lịch sử chat. Hãy xác nhận xóa cả lịch sử liên quan "
+                    "hoặc xóa các cuộc trò chuyện trước."
+                )
+            names = connection.scalars(
+                select(DatasetTable.physical_table_name).where(
+                    DatasetTable.dataset_id == dataset_id
+                )
+            ).all()
+            for name in names:
+                self._table(name, ()).drop(connection)
+            if delete_conversations:
+                connection.execute(
+                    delete(ChatConversation).where(ChatConversation.dataset_id == dataset_id)
+                )
+            connection.execute(delete(Dataset).where(Dataset.dataset_id == dataset_id))
+
+    @staticmethod
+    def _lock_dataset(connection: Any, dataset_id: int) -> None:
+        exists = connection.scalar(
+            select(Dataset.dataset_id).where(Dataset.dataset_id == dataset_id).with_for_update()
+        )
+        if exists is None:
+            raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")
 
     def categorical_values(
         self,

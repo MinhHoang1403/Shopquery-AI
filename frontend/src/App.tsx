@@ -342,6 +342,16 @@ export default function App() {
     setImportNotice(`Đã cập nhật ${dataset.name} thành công.`);
   }
 
+  function datasetDeleted(dataset: Dataset) {
+    setDatasets((current) => current.filter((item) => item.dataset_id !== dataset.dataset_id));
+    setConversations((current) => current.filter((item) => item.dataset_id !== dataset.dataset_id));
+    if (selectedDatasetId === dataset.dataset_id) startNewChat(null);
+    if (pendingDataset?.dataset_id === dataset.dataset_id) setPendingDataset(null);
+    if (renameTarget?.dataset_id === dataset.dataset_id) setRenameTarget(null);
+    if (deleteTarget?.dataset_id === dataset.dataset_id) setDeleteTarget(null);
+    setImportNotice(`Đã xóa ${dataset.name}. Không thể hoàn tác từ giao diện.`);
+  }
+
   return (
     <div className={`app-shell ${sidebarCollapsed ? "app-shell--collapsed" : ""}`}>
       <Sidebar
@@ -420,7 +430,7 @@ export default function App() {
         </footer>
       </div>
 
-      {uploadOpen ? <DatasetUploadDialog datasets={datasets} onClose={() => setUploadOpen(false)} onImported={datasetImported} /> : null}
+      {uploadOpen ? <DatasetUploadDialog datasets={datasets} deletionDisabled={isLoading || isBooting || isSavingModel} onClose={() => setUploadOpen(false)} onDeleted={datasetDeleted} onImported={datasetImported} /> : null}
       {renameTarget ? <RenameDialog currentTitle={renameTarget.title} error={renameError} onClose={() => setRenameTarget(null)} onSave={saveRename} saving={isRenaming} /> : null}
       {deleteTarget ? <ConfirmDialog busy={isDeleting} confirmLabel="Xóa cuộc trò chuyện" danger description={`“${deleteTarget.title}” và toàn bộ tin nhắn sẽ bị xóa vĩnh viễn.`} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} title="Xóa cuộc trò chuyện?" /> : null}
       {pendingDataset ? <ConfirmDialog confirmLabel="Bắt đầu chat mới" description={`Cuộc trò chuyện hiện tại gắn với ${datasetName}. Chuyển sang ${pendingDataset.name} sẽ bắt đầu một đoạn chat mới.`} onClose={() => setPendingDataset(null)} onConfirm={() => { const dataset = pendingDataset; setPendingDataset(null); startNewChat(dataset.dataset_id); }} title="Chuyển bộ dữ liệu?" /> : null}

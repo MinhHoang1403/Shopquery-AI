@@ -255,6 +255,29 @@ def get_dataset_preview(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.delete("/datasets/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dataset(dataset_id: int, delete_conversations: bool = False) -> Response:
+    try:
+        build_dataset_repository().delete(dataset_id, delete_conversations=delete_conversations)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ResourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/datasets/{dataset_id}/tables/{table_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_dataset_table(dataset_id: int, table_id: int) -> Response:
+    try:
+        build_dataset_repository().delete_table(dataset_id, table_id)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/datasets/preview", response_model=DatasetPreviewResponse)
 async def preview_dataset(
     file: Annotated[UploadFile, File()],

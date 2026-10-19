@@ -117,7 +117,7 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-footer">
-          <button className="upload-button" onClick={onUpload} type="button"><Upload size={17} /><span>Nạp dữ liệu mới</span></button>
+          <button className="upload-button" onClick={onUpload} type="button"><Upload size={17} /><span>Quản lý dữ liệu</span></button>
         </div>
       </aside>
     </>

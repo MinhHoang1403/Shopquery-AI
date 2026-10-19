@@ -87,6 +87,7 @@ interface ApiState {
   documents: Array<Record<string, unknown>>;
   messageRequests: number;
   previewPaths: string[];
+  deletionPaths: string[];
   modelId: string;
   messageModels: string[];
   fallbackNext: boolean;
@@ -142,6 +143,7 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     documents: [],
     messageRequests: 0,
     previewPaths: [],
+    deletionPaths: [],
     modelId: "inetcloud-knowledge",
     messageModels: [],
     fallbackNext: false,
@@ -188,6 +190,20 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     if (url.pathname === "/api/datasets/7/documents" && method === "GET") {
       return json(route, state.documents);
     }
+    if (url.pathname === "/api/datasets/7" && method === "GET") {
+      return json(route, state.datasets.find((item) => item.dataset_id === 7));
+    }
+    if (url.pathname === "/api/datasets/7/tables/12" && method === "DELETE") {
+      state.deletionPaths.push(url.pathname);
+      state.datasets = [defaultDataset, { ...emptyWorkspace, document_count: state.documents.length }];
+      return json(route, null, 204);
+    }
+    if (url.pathname === "/api/datasets/7" && method === "DELETE") {
+      state.deletionPaths.push(`${url.pathname}${url.search}`);
+      state.datasets = [defaultDataset];
+      state.documents = [];
+      return json(route, null, 204);
+    }
     if (url.pathname === "/api/datasets/7/documents" && method === "POST") {
       const filenames = ["policy.pdf", "policy.docx", "policy.txt", "policy.md"];
       const originalFilename = filenames[state.documents.length] ?? "policy.md";
@@ -204,6 +220,7 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
       return json(route, document, 201);
     }
     if (/^\/api\/datasets\/7\/documents\/\d+$/.test(url.pathname) && method === "DELETE") {
+      state.deletionPaths.push(url.pathname);
       const documentId = Number(url.pathname.split("/").pop());
       state.documents = state.documents.filter((item) => item.document_id !== documentId);
       return json(route, null, 204);
@@ -673,7 +690,7 @@ test("previews and imports a CSV before selecting the uploaded dataset", async (
   const state = await installApi(page);
   await openApp(page);
   await openSidebar(page);
-  await page.getByRole("button", { name: "Nạp dữ liệu mới" }).click();
+  await page.getByRole("button", { name: "Quản lý dữ liệu" }).click();
   await page.getByLabel("Tên bộ dữ liệu").fill("Doanh số 2026");
   await page.getByRole("button", { name: "Tạo workspace rỗng" }).click();
   await page.getByLabel(/Thêm CSV hoặc XLSX/).setInputFiles("e2e/fixtures/sales.csv");
@@ -690,5 +707,40 @@ test("previews and imports a CSV before selecting the uploaded dataset", async (
   await expect(page.getByText("4 tài liệu")).toBeVisible();
   await page.getByRole("button", { name: "Đóng", exact: true }).last().click();
   await expect(page.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ })).toBeVisible();
+  await expectNoPageOverflow(page);
+});
+
+test("confirms deletion of individual sources and the selected workspace", async ({ page }, testInfo) => {
+  const state = await installApi(page);
+  state.datasets = [defaultDataset, { ...uploadedDataset, document_count: 1 }];
+  state.documents = [{ document_id: 4, dataset_id: 7, original_filename: "policy.md",
+    file_type: "md", title: "Policy", chunk_count: 1, created_at: "2026-10-19T00:00:00Z" }];
+  await openApp(page);
+  await openSidebar(page);
+  await page.getByRole("button", { name: "Quản lý dữ liệu", exact: true }).click();
+  await page.getByRole("tab", { name: "Quản lý bộ hiện có", exact: true }).click();
+  await page.getByRole("button", { name: "Xóa bảng sales", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Xác nhận xóa dữ liệu" })).toBeInViewport();
+  await expectNoPageOverflow(page);
+  await page.getByRole("button", { name: "Hủy xóa", exact: true }).click();
+  expect(state.deletionPaths).toEqual([]);
+  await page.getByRole("button", { name: "Xóa bảng sales", exact: true }).click();
+  await page.getByRole("button", { name: "Xác nhận xóa vĩnh viễn", exact: true }).click();
+  await expect(page.getByText("Chưa có bảng dữ liệu.")).toBeVisible();
+  await expect(page.getByText("policy.md", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Xóa tài liệu policy.md", exact: true }).click();
+  await page.getByRole("button", { name: "Xác nhận xóa vĩnh viễn", exact: true }).click();
+  await expect(page.getByText("Chưa có tài liệu.")).toBeVisible();
+  await page.getByRole("button", { name: "Xóa bộ dữ liệu", exact: true }).click();
+  await page.getByRole("checkbox", { name: /Xóa cả lịch sử chat/ }).check();
+  await expectNoPageOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath("workspace-delete-confirm.png"), fullPage: true });
+  await page.getByRole("button", { name: "Xác nhận xóa vĩnh viễn", exact: true }).click();
+  await expect(page.getByText(/Đã xóa Doanh số 2026/)).toBeVisible();
+  expect(state.deletionPaths).toEqual([
+    "/api/datasets/7/tables/12", "/api/datasets/7/documents/4",
+    "/api/datasets/7?delete_conversations=true",
+  ]);
+  await expect(page.getByRole("combobox", { name: "Bộ dữ liệu", exact: true })).toHaveValue("");
   await expectNoPageOverflow(page);
 });

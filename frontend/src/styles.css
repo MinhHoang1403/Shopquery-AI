@@ -297,7 +297,13 @@ tr:last-child td { border-bottom: 0; }
 .workspace-mode button { display: flex; align-items: center; justify-content: center; gap: 7px; }
 .workspace-mode .is-active { border-color: var(--accent); color: var(--accent); background: #f2f8f5; }
 .workspace-create { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; }
-.workspace-summary { padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); }
+.workspace-controls { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 16px; }
+.workspace-delete-confirm { padding: 16px; border: 1px solid var(--danger); border-radius: 11px; background: var(--danger-soft); }
+.workspace-delete-confirm h3 { margin: 0 0 10px; font-size: 14px; overflow-wrap: anywhere; }
+.workspace-delete-confirm p, .workspace-delete-history { font-size: 12px; line-height: 1.6; }
+.workspace-delete-history { display: flex; align-items: flex-start; gap: 8px; }
+.workspace-delete-history input { flex: 0 0 auto; margin-top: 4px; }
+.workspace-summary { padding: 12px 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); }
 .workspace-summary span { color: var(--muted); font-size: 11px; }
 .workspace-section { display: flex; flex-direction: column; gap: 10px; padding-top: 3px; }
 .workspace-section h3 { margin: 0; font-size: 13px; }

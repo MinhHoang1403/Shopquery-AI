@@ -177,6 +177,12 @@ function installApi(options: MockOptions = {}) {
     if (url.pathname === "/api/datasets/7/documents" && method === "GET") {
       return jsonResponse([]);
     }
+    if (url.pathname === "/api/datasets/7" && method === "GET") {
+      return jsonResponse(datasets.find((item) => item.dataset_id === 7) ?? uploadedDataset);
+    }
+    if (url.pathname === "/api/datasets/7" && method === "DELETE") {
+      return jsonResponse(null, 204);
+    }
     if (url.pathname === "/api/datasets/7/tables/import" && method === "POST") {
       return jsonResponse(uploadedDataset, 201);
     }
@@ -194,6 +200,34 @@ afterEach(() => {
 });
 
 describe("ShopQuery workspace", () => {
+  it("xóa workspace đang mở sẽ bỏ chat liên quan và trở về dữ liệu mẫu", async () => {
+    const existing = summary(conversationId, {
+      title: "Chat học phí cần xóa", dataset_id: 7, dataset_name: uploadedDataset.name,
+    });
+    const unrelated = summary(secondConversationId, { title: "Chat cửa hàng cần giữ" });
+    const fetchMock = installApi({
+      datasets: [defaultDataset, uploadedDataset], conversations: [existing, unrelated],
+      details: { [conversationId]: { ...existing, messages: [{
+        message_id: 1, role: "user", content: "Nội dung của workspace bị xóa",
+        response: null, created_at: "2026-10-19T00:00:00Z",
+      }] } },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Nội dung của workspace bị xóa");
+    await user.click(screen.getByRole("button", { name: "Quản lý dữ liệu" }));
+    await user.click(screen.getByRole("tab", { name: "Quản lý bộ hiện có" }));
+    await user.click(await screen.findByRole("button", { name: "Xóa bộ dữ liệu" }));
+    await user.click(screen.getByRole("checkbox", { name: /Xóa cả lịch sử chat/ }));
+    await user.click(screen.getByRole("button", { name: "Xác nhận xóa vĩnh viễn" }));
+    await screen.findByText(/Đã xóa Doanh số 2026/);
+    expect(fetchMock).toHaveBeenCalledWith("/api/datasets/7?delete_conversations=true", { method: "DELETE" });
+    expect(screen.queryByText("Nội dung của workspace bị xóa")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chat học phí cần xóa" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chat cửa hàng cần giữ" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Chọn bộ dữ liệu.*Dữ liệu cửa hàng mẫu/ })).toBeInTheDocument();
+  });
+
   it("hiển thị lý do provider thất bại và không gán model cho đáp án không tồn tại", async () => {
     installApi({ response: chatResponse({
       answer: "Không thể hoàn tất câu hỏi bằng dữ liệu hiện có.", route: null,
@@ -417,7 +451,7 @@ describe("ShopQuery workspace", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByText("API sẵn sàng");
-    await user.click(screen.getByRole("button", { name: "Nạp dữ liệu mới" }));
+    await user.click(screen.getByRole("button", { name: "Quản lý dữ liệu" }));
 
     await user.type(screen.getByLabelText("Tên bộ dữ liệu"), "Doanh số 2026");
     await user.click(screen.getByRole("button", { name: "Tạo workspace rỗng" }));
@@ -428,6 +462,9 @@ describe("ShopQuery workspace", () => {
     expect(await screen.findByText("120000")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Thêm bảng" }));
     expect(await screen.findByText("Đã cập nhật Doanh số 2026 thành công.")).toBeInTheDocument();
+    await user.upload(screen.getByLabelText(/Thêm CSV hoặc XLSX/), file);
+    expect(await screen.findByText("120000")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Thêm CSV hoặc XLSX/)).toHaveValue("");
     await user.click(screen.getAllByRole("button", { name: "Đóng" })[1]);
     await user.click(screen.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ }));
     expect(screen.getByText("1 bảng · 0 tài liệu")).toBeInTheDocument();
@@ -438,7 +475,7 @@ describe("ShopQuery workspace", () => {
     installApi({ previewError: "File vượt quá giới hạn 10 MB." });
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Nạp dữ liệu mới" }));
+    await user.click(await screen.findByRole("button", { name: "Quản lý dữ liệu" }));
 
     await user.type(screen.getByLabelText("Tên bộ dữ liệu"), "Doanh số 2026");
     await user.click(screen.getByRole("button", { name: "Tạo workspace rỗng" }));
@@ -455,7 +492,7 @@ describe("ShopQuery workspace", () => {
     installApi({ importError: "Tên bộ dữ liệu đã tồn tại." });
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Nạp dữ liệu mới" }));
+    await user.click(await screen.findByRole("button", { name: "Quản lý dữ liệu" }));
 
     await user.type(screen.getByLabelText("Tên bộ dữ liệu"), "Doanh số 2026");
     await user.click(screen.getByRole("button", { name: "Tạo workspace rỗng" }));
