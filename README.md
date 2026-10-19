@@ -4,9 +4,25 @@
 
 ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời câu hỏi từ dữ liệu bán hàng và tài liệu chính sách. Dự án dùng dữ liệu giả lập để minh họa toàn bộ luồng từ giao diện React, FastAPI, iNetCloud Knowledge/Gemini đến PostgreSQL/pgvector; đây không phải hệ thống doanh nghiệp hoặc dịch vụ thương mại thật.
 
+## Trạng thái nghiệm thu — 19/10/2026
+
+**Sẵn sàng sử dụng local/MVP trong phạm vi đã kiểm chứng; chưa nghiệm thu production công khai.** Đã chạy thật qua giao diện React/Nginx với dữ liệu cửa hàng mẫu, không mock và không dùng Gemini fallback để tính Knowledge pass.
+
+| Chức năng | iNetCloud Knowledge | Gemini |
+| --- | --- | --- |
+| SQL top 5 tháng 9/2025 | Pass: 5 dòng khớp PostgreSQL, đúng giờ Việt Nam | Pass: cùng kết quả đối chứng |
+| RAG chính sách đổi trả | Pass: 3 nguồn thật, thời hạn 14 ngày | Pass: 3 nguồn thật, thời hạn 14 ngày |
+| Hybrid top 5 + vận chuyển | Pass: 5 SQL rows + 3 nguồn | Pass: 5 SQL rows + 3 nguồn |
+| Lưu và khôi phục lịch sử | Pass: 6 tin nhắn, đúng model và evidence | Pass: 6 tin nhắn, đúng model và evidence |
+
+Không ghi nhận lỗi API/console hoặc nguồn giả trong 6 lượt này. [CI baseline đã xác minh](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39189762428): Ruff pass, 147 backend unit tests, 57 PostgreSQL integration tests (không skip), 24 frontend tests; ESLint/typecheck/build pass. Live AI không chạy trong CI.
+
+Xem [báo cáo nghiệm thu cuối](docs/final_audit_report.md) để biết câu hỏi, số liệu đối chứng, thời gian, cách kiểm tra lịch sử và giới hạn. Đây là smoke trên dữ liệu mẫu, không bảo đảm mọi câu hỏi/dataset đều đúng hoặc upstream luôn khả dụng.
+
 ## Chức năng
 
 - **Text-to-SQL (`SQL`)**: tạo câu `SELECT`, kiểm tra AST bằng SQLGlot và thực thi bằng PostgreSQL role chỉ đọc. Ví dụ: “Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?”
+- **Múi giờ bán hàng**: SQL dùng `Asia/Ho_Chi_Minh` trong transaction cho cả Knowledge, Gemini và Hybrid; lọc tháng theo biên `[đầu tháng, đầu tháng kế tiếp)` giờ Việt Nam, không đổi timezone toàn database.
 - **RAG (`RAG`)**: tạo embedding cho câu hỏi, truy hồi các đoạn tài liệu gần nhất bằng pgvector rồi trả lời kèm nguồn. Ví dụ: “Chính sách đổi trả của cửa hàng như thế nào?”
 - **Kết hợp (`HYBRID`)**: dùng cả kết quả SQL và bằng chứng tài liệu. Ví dụ: “Top 5 sản phẩm bán chạy nhất có thuộc danh mục được miễn phí vận chuyển không?”
 - **Ngoài phạm vi (`UNSUPPORTED`)**: từ chối câu hỏi không thuộc dữ liệu và tài liệu của cửa hàng. Ví dụ: “Thời tiết Hà Nội hôm nay thế nào?”
@@ -51,7 +67,7 @@ Nginx phục vụ React SPA và chuyển tiếp nguyên đường dẫn `/api` �
 
 - Git.
 - Docker Desktop có Docker Compose.
-- Gemini API key.
+- Địa chỉ HTTPS Knowledge do công ty cung cấp nếu dùng Knowledge; Gemini API key cho Gemini generation, embedding và ingestion. Muốn kiểm tra đủ cả hai model cùng SQL/RAG/Hybrid cần cấu hình cả hai.
 
 Python, Node.js, PostgreSQL và Nginx được cung cấp trong container nên không cần cài riêng trên Windows.
 
@@ -132,6 +148,8 @@ docker compose exec api python scripts/ingest_documents.py
 
 Chờ ba service `db`, `api`, `web` healthy rồi mở `http://127.0.0.1:8080`. API trực tiếp ở `http://127.0.0.1:8000` và PostgreSQL ở `127.0.0.1:54321`. Nếu cổng host 8000 đang bị chiếm, có thể đổi riêng ánh xạ host của service `api`; kết nối nội bộ Nginx vẫn luôn dùng `api:8000`.
 
+Đây là cổng **mặc định của repository**. Môi trường nghiệm thu dùng override local API 8001 và PostgreSQL 15432, web vẫn 8080; không cần sao chép override đó trên máy mới. Khi đổi cổng host PostgreSQL, cập nhật hai database URL cho backend native/test; URL giữa các container vẫn dùng `db:5432`.
+
 API tự chạy `setup_database.py` khi container khởi động. Migration idempotent thêm metadata workspace, `dataset_documents` và scope cho `document_chunks`; nó không drop bảng/cột hoặc xóa seed, conversation, dataset hay chunks cũ. Với database quan trọng, tạo `pg_dump -Fc` trước, thử restore/migration trên database riêng rồi mới chạy script trên database chính:
 
 ```powershell
@@ -155,6 +173,16 @@ docker compose down
 ```
 
 Volume `postgres_data` giữ dữ liệu. Không dùng `docker compose down -v` nếu muốn bảo toàn database.
+
+### Kiểm tra sử dụng sau khi khởi động
+
+1. Chọn **Dữ liệu cửa hàng mẫu**, tạo chat mới và chọn model trong composer.
+2. Hỏi “Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?”; mở bảng và SQL. Đối chứng mẫu: product IDs `10, 47, 120, 123, 135` với quantity `15, 14, 11, 11, 10`; hai sản phẩm quantity 11 có thể đổi thứ tự.
+3. Hỏi “Chính sách đổi trả của cửa hàng như thế nào?”; mở nguồn để đối chiếu thời hạn 14 ngày.
+4. Hỏi “Top 5 sản phẩm bán chạy nhất tháng 9/2025 có thuộc danh mục được miễn phí vận chuyển không?”; phải có cả bảng/SQL và nguồn. Trong top 5 này chỉ sản phẩm ID 10 thuộc `PHONE` được miễn phí tiêu chuẩn.
+5. Đổi tên chat, tải lại trang và mở lại từ lịch sử; kiểm tra model, câu trả lời và bằng chứng vẫn còn. Lặp lại với model còn lại.
+
+Các lượt này gọi dịch vụ AI thật và tiêu thụ quota. Kết quả đối chứng chỉ áp dụng seed/corpus mẫu chưa bị thay đổi, không áp dụng cho workspace upload. Kiểm tra `/api/health` chỉ chứng minh API sống; `/api/models` chỉ báo có cấu hình, không chứng minh provider đang hoạt động.
 
 ## Phát triển trên Windows
 
@@ -270,7 +298,7 @@ Set-Location backend
 $env:DATABASE_SETUP_URL = "postgresql+psycopg://shopquery_setup:setup_password@127.0.0.1:54321/shopquery_test"
 $env:DATABASE_READONLY_URL = "postgresql+psycopg://shopquery_reader:readonly_password@127.0.0.1:54321/shopquery_test"
 $env:RUN_DATABASE_TESTS = "1"
-uv run pytest -m integration
+uv run pytest -m "integration and not live"
 Remove-Item Env:DATABASE_SETUP_URL, Env:DATABASE_READONLY_URL, Env:RUN_DATABASE_TESTS
 Set-Location ..
 docker compose exec db psql -U shopquery_setup -d postgres -c "DROP DATABASE shopquery_test;"
@@ -316,7 +344,7 @@ $env:SHOPQUERY_E2E_BASE_URL = "http://127.0.0.1:5174"
 npm run test:e2e:workspace-live
 ```
 
-Hai live suite đều dùng quota Gemini. Chỉ chạy khi API/database tương ứng healthy. GitHub Actions chỉ chạy Ruff/unit tests và frontend quality gates, không nhận Gemini key và không gọi live tests.
+Các live suite dùng quota của provider được chọn và Gemini Embedding khi có RAG/ingestion. Chỉ chạy khi API/database test tương ứng healthy. GitHub Actions có ba jobs: Ruff/backend unit, PostgreSQL integration trên database riêng và frontend quality; không nhận API key và không gọi live tests. Xem [workflow CI](.github/workflows/ci.yml).
 
 ### Docker Compose
 
@@ -340,7 +368,10 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health
 ### `POST /api/chat`
 
 ```powershell
-$body = @{ message = "Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?" } | ConvertTo-Json
+$body = @{
+  message = "Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?"
+  model_id = "gemini"
+} | ConvertTo-Json
 $utf8Body = [System.Text.Encoding]::UTF8.GetBytes($body)
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/chat `
   -ContentType "application/json; charset=utf-8" -Body $utf8Body
@@ -355,24 +386,28 @@ Response ổn định có dạng:
   "sql": "SELECT ...",
   "rows": [],
   "sources": [],
-  "error": null
+  "error": null,
+  "requested_model": "gemini",
+  "used_model": "gemini",
+  "fallback_used": false,
+  "fallback_reason": null
 }
 ```
 
 `route` là `SQL`, `RAG`, `HYBRID` hoặc `UNSUPPORTED`. `sql`/`rows` chỉ có dữ liệu cho SQL và Hybrid; `sources` chỉ có dữ liệu cho RAG và Hybrid. Với lỗi nghiệp vụ đã dự kiến, API hiện có thể trả HTTP 200 cùng `route: null` và nội dung trong trường `error`; client phải kiểm tra trường này.
 
-`POST /api/chat` vẫn tương thích với client cũ. Có thể truyền thêm `dataset_id`; router sẽ giới hạn route theo số bảng/tài liệu của workspace và không tự ghép corpus demo.
+`POST /api/chat` là API stateless, **không lưu lịch sử**. Bỏ `model_id` để dùng default hoặc chọn `inetcloud-knowledge`/`gemini`. Có thể truyền thêm `dataset_id`; router sẽ giới hạn route theo số bảng/tài liệu của workspace và không tự ghép corpus demo. Muốn lưu hỏi–đáp như giao diện, dùng Conversations API bên dưới.
 
 ### Conversations
 
 | Method | Endpoint | Chức năng |
 | --- | --- | --- |
 | `GET` | `/api/conversations?limit=50&offset=0` | Danh sách mới cập nhật trước |
-| `POST` | `/api/conversations` | Tạo chat với JSON `{"dataset_id": null}` |
+| `POST` | `/api/conversations` | Tạo chat với JSON `{"dataset_id": null, "model_id": "gemini"}`; các field tùy chọn |
 | `GET` | `/api/conversations/{id}` | Metadata và toàn bộ messages |
-| `PATCH` | `/api/conversations/{id}` | Đổi tên với JSON `{"title": "..."}` |
+| `PATCH` | `/api/conversations/{id}` | Đổi tên và/hoặc model với JSON `{"title": "...", "model_id": "gemini"}` |
 | `DELETE` | `/api/conversations/{id}` | Xóa conversation và messages liên quan |
-| `POST` | `/api/conversations/{id}/messages` | Gửi JSON `{"message": "..."}` và lưu cả câu hỏi/câu trả lời |
+| `POST` | `/api/conversations/{id}/messages` | Gửi JSON `{"message": "...", "model_id": "gemini"}` và lưu cả câu hỏi/câu trả lời; model tùy chọn |
 
 Tiêu đề mặc định được thay bằng phần đầu câu hỏi đầu tiên, trừ khi người dùng đã đặt tên. Mỗi conversation gắn với đúng một dataset; muốn chuyển dataset, giao diện yêu cầu xác nhận và bắt đầu chat mới. Request đang chạy bị hủy khi người dùng đổi chat, nên response cũ không bị đưa vào chat mới.
 
@@ -410,7 +445,7 @@ Dữ liệu bảng nằm trong `uploaded_data` với tên vật lý ngẫu nhiê
 ├── .vscode/                       # Interpreter và auto-activation portable
 ├── backend/
 │   ├── app/
-│   │   ├── ai/                    # Google GenAI adapter
+│   │   ├── ai/                    # Knowledge/Gemini adapters và fallback
 │   │   ├── api/                   # FastAPI routes và contracts
 │   │   ├── core/                  # Cấu hình, logging, errors
 │   │   ├── conversations/         # Persistence lịch sử chat
@@ -456,14 +491,14 @@ Dữ liệu bảng nằm trong `uploaded_data` với tên vật lý ngẫu nhiê
 
 - Dữ liệu bán hàng và tài liệu đều là dữ liệu giả lập.
 - Không có authentication hoặc rate limiting dành cho production.
-- Chỉ hỗ trợ tập con SQL và bốn bảng nghiệp vụ; CTE, subquery và câu lệnh ghi bị từ chối.
+- Chỉ hỗ trợ tập con SQL trên bốn bảng nghiệp vụ mẫu hoặc bảng upload đúng workspace; CTE, subquery và câu lệnh ghi bị từ chối.
 - Mỗi lần upload bảng chỉ chọn một sheet; workspace có thể chứa nhiều bảng nhưng chưa khai báo quan hệ nên không hỗ trợ JOIN.
 - PDF scan cần OCR không được hỗ trợ; binary tài liệu gốc không được lưu.
-- Chưa có endpoint xóa dataset; chỉ conversation có đầy đủ CRUD ở thời điểm hiện tại.
+- Chưa có endpoint xóa dataset; có thể xóa từng tài liệu/chunks trong workspace hoặc xóa conversation qua API tương ứng.
 - File upload có validation và giới hạn tài nguyên nhưng demo chưa có authentication, phân quyền theo người dùng, antivirus hoặc object storage; không đưa dữ liệu nhạy cảm lên bản local dùng chung.
 - Corpus chỉ có sáu tài liệu và chưa có benchmark chứng minh cấu hình retrieval là tối ưu.
 - Chưa triển khai VPS hoặc website public.
-- Chất lượng và khả dụng live phụ thuộc model, API key và quota Gemini.
+- Chất lượng và khả dụng live phụ thuộc Knowledge/Gemini, mạng, cấu hình và quota; chưa kiểm thử tải hoặc bảo đảm uptime.
 - Không đưa demo chứa API key lên Internet công khai khi chưa bổ sung xác thực, giới hạn lưu lượng và quản lý secret phù hợp.
 
-Repository: [github.com/MinhHoang1403/Shopquery-AI](https://github.com/MinhHoang1403/Shopquery-AI). Cơ sở kỹ thuật và nguồn tham khảo nằm tại [docs/technical_references.md](docs/technical_references.md); kết quả kiểm thử AI gần nhất nằm tại [docs/evaluation_report.md](docs/evaluation_report.md).
+Repository: [github.com/MinhHoang1403/Shopquery-AI](https://github.com/MinhHoang1403/Shopquery-AI). Xem [nghiệm thu mới nhất](docs/final_audit_report.md), [cơ sở kỹ thuật](docs/technical_references.md) và [đánh giá lịch sử](docs/evaluation_report.md).

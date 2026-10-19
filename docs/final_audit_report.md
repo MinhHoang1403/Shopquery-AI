@@ -1,105 +1,123 @@
-# Báo cáo nghiệm thu cuối cùng ShopQuery AI
+# Báo cáo nghiệm thu cuối — ShopQuery AI
 
-Ngày kiểm tra: 2026-10-14 (Asia/Saigon)
-Phạm vi source được nghiệm thu: commit `5f5d8e35085b3f3d0adecd40b15281e59aa8f23a` trên `main`.
+Ngày kiểm tra: **19/10/2026 (giờ Việt Nam)**.
+Source baseline: commit [`fa4e7ad`](https://github.com/MinhHoang1403/Shopquery-AI/commit/fa4e7adc0314ce79d4a78aa2598a2d8bd5a7d8e6), sau bản sửa múi giờ SQL `ba977de`.
 
-Kết luận: **FINAL AUDIT — PASSED**. Không phát hiện lỗi blocking, regression, secret bị commit hoặc sai lệch dữ liệu. Source code và giao diện không cần sửa; thay đổi duy nhất của đợt audit là hiệu chỉnh ba mô tả trong README và bổ sung báo cáo này.
+## Kết luận và phạm vi
 
-## A. Repository
+**Đạt nghiệm thu sử dụng local/MVP trong phạm vi đã kiểm chứng.** Không phát hiện lỗi chặn trong 6 lượt live SQL/RAG/Hybrid với Knowledge và Gemini, cùng việc lưu/khôi phục lịch sử. Đây không phải chứng nhận sẵn sàng production công khai, kiểm thử tải hoặc bảo đảm mọi câu hỏi/dataset đều đúng.
 
-- Workspace đúng: `C:\Work\ShopQuery AI`; remote đúng: `https://github.com/MinhHoang1403/Shopquery-AI.git`.
-- Branch `main`; local và `origin/main` cùng SHA `5f5d8e35085b3f3d0adecd40b15281e59aa8f23a` khi bắt đầu audit; working tree ban đầu sạch.
-- `.gitignore` loại trừ `.env`, venv, cache, logs, database dumps, build/test artifacts và Playwright screenshots. `.env.example` được giữ lại có chủ đích và không chứa API key.
-- Không force-push, không tạo branch/tag/release và không thao tác repository khác.
+Đợt live này không sửa mã, model, cấu hình hoặc dữ liệu nghiệp vụ. Chỉ tạo và giữ hai hội thoại kiểm thử. Bản cập nhật tài liệu sau đó ghi lại kết quả này; SHA và CI của commit tài liệu được bàn giao riêng, không tự ghi SHA của chính nó vào file.
 
-## B. Architecture
+## Môi trường thực tế
 
-- Frontend React 19/TypeScript/Vite gọi API tương đối `/api`; Nginx phục vụ SPA và proxy đến `api:8000` trong mạng Compose.
-- Backend FastAPI tách routes/contracts, Gemini gateway, router, Text-to-SQL, RAG, Hybrid, conversations và datasets theo trách nhiệm.
-- Generation/router dùng `gemini-3.5-flash-lite`; embedding dùng `gemini-embedding-2`, 768 chiều. Structured output vẫn được kiểm tra ở tầng ứng dụng.
-- PostgreSQL 17/pgvector lưu dữ liệu demo, chunks, lịch sử chat và metadata dataset; dữ liệu import nằm trong schema `uploaded_data`.
-- Docker images ghim Python 3.11.9, uv 0.12.15, Node 24.21.0 và Nginx 1.31.6. Services chỉ bind vào `127.0.0.1`.
+- Giao diện `http://127.0.0.1:8080/`: React → Nginx → FastAPI → PostgreSQL 17/pgvector; không mock.
+- Model generation/router: iNetCloud `knowledge` và Gemini `gemini-3.5-flash-lite`; embedding Gemini `gemini-embedding-2`, 768 chiều cho RAG của cả hai model.
+- Dữ liệu chọn trên UI: **Dữ liệu cửa hàng mẫu**, không phải workspace upload.
+- API `/models` xác nhận cả hai model đã cấu hình; `gemini_fallback_enabled=false`. Kết quả live, không phải riêng cờ `configured`, chứng minh khả dụng tại thời điểm thử.
+- Container `db`, `api`, `web` đều healthy; `/api/health` trả `ok`.
+- Cổng host trong lần nghiệm thu: web 8080, API 8001, PostgreSQL 15432 do override local. Mặc định repository vẫn là 8080/8000/54321; nội bộ Nginx vẫn dùng `api:8000`.
 
-## C. Functional Tests
+## Ma trận live qua giao diện
 
-- Conversations: integration và Playwright mock bao phủ tạo, lưu user/assistant messages, refresh/khôi phục, tạo chat thứ hai, chuyển chat, rename, delete và gắn dataset; không trộn messages.
-- Dataset: CSV/XLSX preview/import, sheet selection, duplicate name 409, validation 422, rollback, metadata, role read-only và isolation đều được kiểm thử. Live query dataset 1 (fixture 5 dòng) trả tổng doanh thu `1.600.000`.
-- SQL live: route `SQL`, không lỗi, có SQL và 5 rows; kết quả top 5 tháng 9/2025 khớp truy vấn PostgreSQL độc lập.
-- RAG live: route `RAG`, không lỗi, không SQL/rows giả, trả 3 nguồn có thật (`304`, `310`, `312`) hỗ trợ thời hạn 14 ngày và các điều kiện đổi trả.
-- Hybrid live: route `HYBRID`, không lỗi, có 5 SQL rows và 3 chunks có thật (`303`, `315`, `316`); kết luận chỉ `LAPTOP` được miễn phí vận chuyển dựa trên `category_code` và policy.
-- Unsupported: không chạy lại live để tránh tiêu tốn quota khi code AI không đổi; bộ đánh giá đã lưu, unit/API và Playwright mock hiện tại đều xác nhận không tạo SQL, rows hoặc citations giả.
-- Error handling: tests bao phủ network error, HTTP 422/500, HTTP 200 có `error`, Gemini transient/non-retryable/exhausted retry và không tự tạo response khi generation thất bại.
+Mỗi câu chạy một lần/model, khoảng 09:25–09:30 ngày 19/10/2026:
 
-## D. Data Integrity & Security
+1. SQL: “Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?”
+2. RAG: “Chính sách đổi trả của cửa hàng như thế nào?”
+3. Hybrid: “Top 5 sản phẩm bán chạy nhất tháng 9/2025 có thuộc danh mục được miễn phí vận chuyển không?”
 
-- Database chính chỉ được đọc trong audit. Số liệu: 8 categories, 150 products, 2.000 orders, 4.019 order items, 25 document chunks, 9 conversations, 50 messages, 1 dataset và 1 dataset table.
-- Không có orphan product/category, order item/order, order item/product, message/conversation hoặc dataset table/dataset. Bảng vật lý uploaded dataset tồn tại, tên ngẫu nhiên hợp lệ và row/column metadata khớp.
-- `shopquery_reader` chỉ có quyền `SELECT`, không phải superuser/createdb/createrole. `shopquery_setup` là role bootstrap đặc quyền của môi trường Docker; SQL do model sinh không dùng role này.
-- SQLGlot chỉ cho phép một root `SELECT`, áp dụng allowlist bảng/cột/hàm và từ chối DDL, DML, CTE/subquery ngoài phạm vi, catalog và cross-dataset access. Read-only transaction, statement timeout và row limit vẫn được áp dụng.
-- Parser giới hạn loại file/kích thước/dòng/cột, kiểm tra header và row shape, không thực thi công thức, chặn XLSX bất thường và tạo identifier vật lý từ UUID thay vì tên file/người dùng.
-- Không phát hiện Gemini key/private key trong file tracked hoặc frontend bundle; không có `.env`, user uploads, dump, log, screenshot hay test artifact bị commit. Seed CSV và test fixtures là dữ liệu giả lập có chủ đích.
-- Hệ thống chưa có authentication, tenant isolation, antivirus, production secret manager hoặc rate limiting; **không phù hợp để mở công khai trên Internet** trước khi bổ sung các kiểm soát này.
+| Model | Route thực tế | SQL rows | Nguồn | Thời gian server | Kết quả |
+| --- | --- | ---: | ---: | ---: | --- |
+| Knowledge | SQL | 5 | 0 | 7,909 giây | Pass |
+| Knowledge | RAG | 0 | 3 | 5,112 giây | Pass |
+| Knowledge | HYBRID | 5 | 3 | 8,566 giây | Pass |
+| Gemini | SQL | 5 | 0 | 3,382 giây | Pass |
+| Gemini | RAG | 0 | 3 | 2,777 giây | Pass |
+| Gemini | HYBRID | 5 | 3 | 5,195 giây | Pass |
 
-## E. Testing Results
+Thời gian lấy chênh lệch `created_at` của user message và assistant message; không phải thời gian đo toàn bộ render trình duyệt hoặc benchmark tải. Cả 6 response có `error=null`, `requested_model=used_model`, `fallback_used=false`. Không lấy Gemini fallback để tính Knowledge pass.
 
-| Test group | Passed | Failed | Skipped | Notes |
-| --- | ---: | ---: | ---: | --- |
-| Ruff | 1 gate | 0 | 0 | `app`, `scripts`, `tests` |
-| Pytest unit/API/security/parser | 65 | 0 | 0 | 13 integration tests được tách sang database tạm |
-| PostgreSQL integration | 13 | 0 | 0 | Database tạm đã xóa; database chính không bị ghi |
-| ESLint | 1 gate | 0 | 0 | Toàn bộ frontend |
-| TypeScript | 1 gate | 0 | 0 | `tsc -b --pretty false` |
-| Vitest | 13 | 0 | 0 | Component/interaction tests |
-| Production build | 1 gate | 0 | 0 | Vite build thành công |
-| Playwright mock | 20 | 0 | 0 | 5 viewport, 4 luồng mỗi viewport |
-| Playwright live UI | 1 | 0 | 0 | SQL/RAG/Hybrid; database/API audit tạm đã xóa |
-| Live stateless `/api/chat` | 4 | 0 | 0 | SQL, RAG, Hybrid, uploaded dataset qua Nginx |
-| Docker build | 2 images | 0 | 0 | API và web |
-| Infrastructure | 5 checks | 0 | 0 | Compose config, db/api/web health, Nginx config, `/api/health` |
+### SQL: đối chứng dữ liệu và múi giờ
 
-Pytest chỉ phát một `StarletteDeprecationWarning` từ thư viện `TestClient`; đây là cảnh báo non-blocking. `uv.lock` hợp lệ; toàn bộ dependency lines trong root `requirements.txt` khớp export runtime từ lockfile (khác duy nhất dòng header ghi chính lệnh export). `npm ls --depth=0` không thiếu dependency.
+Đối chứng độc lập qua role `shopquery_reader`:
 
-## F. AI Evaluation
+```sql
+SELECT p.product_id, p.product_name, c.category_code,
+       SUM(oi.quantity) AS total_quantity
+FROM orders AS o
+JOIN order_items AS oi USING (order_id)
+JOIN products AS p USING (product_id)
+JOIN categories AS c USING (category_id)
+WHERE o.status = 'completed'
+  AND o.order_date >= TIMESTAMPTZ '2025-09-01 00:00:00+07'
+  AND o.order_date < TIMESTAMPTZ '2025-10-01 00:00:00+07'
+GROUP BY p.product_id, p.product_name, c.category_code
+ORDER BY total_quantity DESC, p.product_id
+LIMIT 5;
+```
 
-| Ca live mới | Route | Ground truth/evidence | Kết quả |
-| --- | --- | --- | --- |
-| Top 5 tháng 9/2025 | SQL | `15, 14, 11, 11, 10`; đúng 5 product IDs theo PostgreSQL độc lập | Pass |
-| Chính sách đổi trả | RAG | 14 ngày; chunks `304`, `310`, `312` tồn tại trong `faq.md`/`return_policy.md` | Pass |
-| Top 5 và miễn phí vận chuyển | HYBRID | 5 rows khớp PostgreSQL; chunks `303`, `315`, `316`; chỉ category `LAPTOP` miễn phí | Pass |
-| Tổng doanh thu dataset fixture | SQL | `1.600.000`, đúng file 5 dòng; không có demo rows/citations | Pass |
+| Product ID | Sản phẩm | Danh mục | Tổng quantity |
+| --- | --- | --- | ---: |
+| 10 | Điện thoại SQ 010 | PHONE | 15 |
+| 47 | Thiết bị âm thanh SQ 009 | AUDIO | 14 |
+| 120 | Thiết bị gia dụng SQ 006 | HOME | 11 |
+| 123 | Thiết bị gia dụng SQ 009 | HOME | 11 |
+| 135 | Thiết bị văn phòng SQ 003 | OFFICE | 10 |
 
-Ground truth SQL được tính bằng truy vấn PostgreSQL độc lập, RAG chunks được đối chiếu với metadata tài liệu gốc và dataset được đối chiếu với fixture. Không có quota/503/429 trong smoke mới. Báo cáo đánh giá 15 ca trước đó vẫn nhất quán với source/corpus hiện tại; các lần 429 lịch sử được ghi là sự cố quota tạm thời, không được đổi expected result để tạo pass.
+Cả 4 response có SQL (SQL và Hybrid của mỗi model) khớp tập sản phẩm/quantity này. Hai sản phẩm đồng hạng 11 có thể đổi thứ tự. SQL sinh ra dùng local `TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh'`, đúng biên tháng Việt Nam. Đã mở SQL và bảng bằng chứng trên UI, không chỉ kiểm tra nhãn route.
 
-## G. UI & Browser
+Executor dùng timezone transaction-local cho cả hai provider và SQL trong Hybrid; không thay timezone toàn database. Bộ integration hiện có gồm 40 test biên tháng, năm mới, năm nhuận, grouping và không rò timezone khi transaction lỗi. Đợt live này không thay thế hoặc mở rộng kết quả của bộ test đó.
 
-- Playwright Chromium đạt ở 1440×900, 1280×800, 768×1024, 390×844 và 320×700.
-- Sidebar/drawer, header dataset selector, welcome screen, composer, history, upload dialog, message bubbles và loading/error states hoạt động đúng; Enter gửi, Shift+Enter xuống dòng, textarea tự mở rộng và giới hạn 2.000 ký tự.
-- Evidence mặc định đóng; toolbar có **Bảng dữ liệu**, **SQL**, **Nguồn tham khảo**; desktop gọn một hàng, mobile wrap không tràn; mỗi message giữ state riêng và chỉ một panel mở tại một thời điểm. SQL copy, rows và citations vẫn còn đầy đủ.
-- Không có JavaScript runtime error, page error, request failure hoặc HTTP error ngoài các ca mock chủ đích.
-- Screenshots thật đã xem tại `frontend/test-results/**/` gồm `sql-result-expanded.png`, `hybrid-sources-expanded.png`, `mobile-evidence-toolbar.png`, `mobile-sql-table-expanded.png` và `live-conversation.png`. Đây là artifact local bị Git ignore, không commit vào repository.
+### RAG: nguồn thật và nội dung được hỗ trợ
 
-## H. GitHub
+Cả hai response RAG truy hồi 3 chunks: `faq.md`/304, `return_policy.md`/310 và 312. Câu trả lời nêu đúng thời hạn gửi yêu cầu 14 ngày, xử lý hàng lỗi/giao sai, chi phí đổi trả và hoàn tiền khi hết hàng. Đây là câu trả lời theo 3 đoạn truy hồi, không phải khẳng định đã trình bày toàn bộ mọi điều khoản của tài liệu.
 
-- Source baseline `5f5d8e35085b3f3d0adecd40b15281e59aa8f23a` đã có trên `origin/main`.
-- GitHub Actions workflow `CI`, run `38544607455`, trạng thái `completed/success` cho baseline.
-- Commit tài liệu cuối của audit được push và xác minh CI sau khi tạo báo cáo; SHA cuối cùng và run tương ứng được ghi trong kết quả bàn giao vì file không thể tự chứa SHA của chính commit tạo ra nó.
+Đã mở nguồn/trích đoạn trên UI và so sánh `chunk_id`, `source_file`, `section_title`, `content` với `document_chunks`: không có sai lệch. Chunk IDs là snapshot của database tại ngày kiểm tra, không phải ID bất biến cho mọi lần ingest.
 
-## I. Remaining Issues
+### Hybrid: kết hợp SQL và tài liệu
 
-### Blocking issues
+Mỗi response Hybrid có 5 SQL rows khớp đối chứng và 3 nguồn thật: `faq.md`/303, `shipping_policy.md`/315 và 316; toàn bộ metadata/nội dung nguồn khớp database.
 
-- Không có.
+Chính sách miễn phí tiêu chuẩn áp dụng `PHONE` và `LAPTOP`. Trong top 5 tháng 9/2025 chỉ **Điện thoại SQ 010 (`PHONE`)** đủ điều kiện. Cả hai model kết luận đúng: Knowledge trả lời ngắn gọn 1/5; Gemini liệt kê từng sản phẩm. Không phát hiện số liệu hoặc nguồn giả trong các lượt đã thử.
 
-### Non-blocking warnings
+## Lịch sử hội thoại
 
-- Starlette `TestClient` deprecation warning từ dependency.
-- Gemini free-tier có thể trả 429; SDK retry hữu hạn cho lỗi tạm thời và API trả lỗi rõ ràng khi hết retry.
-- Host port 8000 có thể bị process local chiếm; lần audit này API container ánh xạ tạm sang 8001, còn Nginx nội bộ vẫn kết nối `api:8000` và hoạt động bình thường.
+Hai chat được tạo và giữ lại trên máy nghiệm thu:
 
-### Known MVP limitations
+- `Nghiệm thu cuối · Knowledge · 19-10`.
+- `Nghiệm thu cuối · Gemini · 19-10`.
 
-- Chưa có authentication/tenant isolation/rate limiting/antivirus và chưa sẵn sàng public Internet.
-- Mỗi upload chỉ hỗ trợ một bảng hoặc một sheet, không join nhiều datasets và không dùng RAG/Hybrid của corpus demo.
-- Không có endpoint xóa dataset; live LLM vẫn phụ thuộc API key, quota và khả dụng upstream.
+Đã đổi tên trên UI, tải lại trang riêng cho mỗi chat và chuyển giữa hai hội thoại. Mỗi chat khôi phục đúng model và đủ 6 tin nhắn (3 user + 3 assistant), đúng thứ tự/nội dung, kèm SQL, bảng và nguồn. Kiểm tra bằng UI, `GET /api/conversations/{id}` và `SELECT` trong PostgreSQL; không chỉ dựa vào trạng thái React còn trong bộ nhớ. Lịch sử cũ không bị sửa hoặc xóa.
 
-**PROJECT COMPLETE — SHOPQUERY AI.**
+## Health và an toàn dữ liệu trong đợt kiểm tra
+
+- Console trình duyệt không ghi nhận warn/error trong phiên kiểm tra.
+- API logs từ `2026-10-19T02:25:40Z` đến lần lấy log: 50 access requests, không có HTTP 4xx/5xx hoặc dòng ERROR/Traceback. Đây là cửa sổ quan sát, không phải cam kết uptime.
+- Số bản ghi nghiệp vụ ở lần đo giữa và cuối không đổi: 150 products / 2.000 orders / 4.019 order items / 25 chunks / 2 datasets / 2 dataset tables / 0 dataset documents.
+- Chỉ đọc dữ liệu đối chứng; không chạy integration fixture ghi/xóa vào database ứng dụng.
+- Không đưa API key, endpoint công ty, `.env`, log, dump hoặc screenshot local vào Git. Ảnh bằng chứng được giữ local; kết quả có thể mở lại trong hai chat nêu trên.
+
+## Kiểm thử tự động và GitHub CI
+
+Run đã xác minh trước đợt live: [CI 39189762428](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39189762428), đúng baseline `fa4e7ad`, cả 3 jobs thành công.
+
+| Nhóm | Kết quả đã xác minh |
+| --- | --- |
+| Ruff | Pass |
+| Backend unit/API/parser/security | 147 passed, 65 deselected |
+| PostgreSQL integration | 57 passed, 155 deselected, không skip |
+| Frontend Vitest | 24 passed |
+| ESLint / TypeScript / production build | Pass |
+
+Integration job có service PostgreSQL 17/pgvector riêng, database `shopquery_ci`, role đọc riêng và `RUN_DATABASE_TESTS=1`; không cần API key, không gọi provider thật. Service bị hủy sau job. Hai marker `integration`/`live` được tách khỏi unit job; live tests không chạy trong CI. Không cộng các test deselected vào số test pass.
+
+Không chạy lại Playwright mock, live upload, Unsupported, failure injection hoặc build Docker trong đợt live 19/10 này. Những kết quả lịch sử vẫn giữ đúng ngày/phạm vi tại [đánh giá trước đây](evaluation_report.md), [multi-model](multi_model_integration.md) và [audit 14/10](archive/final_audit_2026-10-14.md); không tính chúng là test mới vừa chạy.
+
+## Những việc chưa được nghiệm thu
+
+- Chưa kiểm thử tải, độ bền dài hạn, mọi câu hỏi tự nhiên hoặc mọi dataset upload trong đợt cuối này.
+- Chưa có authentication, phân quyền người dùng/tenant, rate limiting hoặc quản lý secrets đạt yêu cầu production công khai; không mở nguyên bản local ra Internet hoặc đưa dữ liệu nhạy cảm vào bản dùng chung.
+- Upstream Knowledge/Gemini, mạng và quota vẫn có thể gây timeout/429/503; smoke thành công không bảo đảm lỗi sẽ không tái diễn.
+- Các giới hạn MVP vẫn giữ nguyên: uploaded workspace chưa hỗ trợ JOIN, chưa OCR PDF scan, chưa có endpoint xóa dataset.
+
+Kết luận bàn giao: **sẵn sàng dùng local/MVP cho các luồng đã kiểm chứng; chưa nghiệm thu public production**.

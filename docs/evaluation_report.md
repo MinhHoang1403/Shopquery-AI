@@ -1,5 +1,7 @@
 # Báo cáo đánh giá hệ thống ShopQuery AI
 
+> Báo cáo lịch sử ngày 14/10 và bổ sung ngày 16/10/2026. Các con số bên dưới thuộc từng đợt kiểm tra, không phải trạng thái hiện tại. Kết quả nghiệm thu mới nhất ngày 19/10 cho cả Knowledge và Gemini nằm tại [báo cáo nghiệm thu cuối](final_audit_report.md).
+
 Ngày chạy: 2026-10-14 (Asia/Saigon)
 
 ## Phạm vi và môi trường
