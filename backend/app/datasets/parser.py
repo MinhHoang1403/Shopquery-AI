@@ -292,7 +292,11 @@ def _build_columns(
             suffix += 1
         used_names.add(name)
         values = [row[index] for row in rows if row[index] not in (None, "")]
-        columns.append(ColumnSpec(header, name, _infer_type(values)))
+        try:
+            data_type = _infer_type(values)
+        except (ValueError, UploadValidationError) as exc:
+            raise UploadValidationError(f'Cột "{header}": {exc}') from exc
+        columns.append(ColumnSpec(header, name, data_type))
     return tuple(columns)
 
 
@@ -318,9 +322,23 @@ def _infer_type(values: list[Any]) -> str:
         return "BIGINT"
     if all(_is_decimal(value) for value in values):
         return "NUMERIC"
-    if all(_is_datetime(value) for value in values):
-        return "TIMESTAMP"
-    if all(_is_date(value) for value in values):
+    datetimes = [_parse_datetime(value) for value in values if _is_datetime(value)]
+    dates = [value for value in values if _is_date(value)]
+    awareness = {value.utcoffset() is not None for value in datetimes}
+    if len(awareness) > 1:
+        raise UploadValidationError(
+            "Không được trộn datetime có offset và không có offset. Hãy thống nhất kiểu thời gian."
+        )
+    if datetimes and dates:
+        raise UploadValidationError(
+            "Không được trộn DATE và datetime. Hãy thống nhất kiểu thời gian."
+        )
+    if len(datetimes) == len(values):
+        return "TIMESTAMPTZ" if True in awareness else "TIMESTAMP"
+    if len(dates) == len(values):
+        for value in dates:
+            if isinstance(value, str):
+                date.fromisoformat(value.strip())
         return "DATE"
     return "TEXT"
 
@@ -360,6 +378,12 @@ def _is_date(value: Any) -> bool:
     )
 
 
+def _parse_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+
+
 def _convert_value(value: Any, data_type: str) -> Any:
     if value is None or value == "":
         return None
@@ -378,16 +402,17 @@ def _convert_value(value: Any, data_type: str) -> Any:
         return str(value).strip().casefold() in TRUE_VALUES
     if data_type == "DATE":
         return value if isinstance(value, date) else date.fromisoformat(str(value).strip())
-    if data_type == "TIMESTAMP":
-        if isinstance(value, datetime):
-            return value
-        return datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    if data_type in {"TIMESTAMP", "TIMESTAMPTZ"}:
+        converted = _parse_datetime(value)
+        if (converted.utcoffset() is not None) != (data_type == "TIMESTAMPTZ"):
+            raise UploadValidationError("Datetime không khớp kiểu timezone đã xác nhận.")
+        return converted
     raise UploadValidationError(f"Kiểu dữ liệu không được hỗ trợ: {data_type}")
 
 
 def _json_value(value: Any) -> Any:
     if isinstance(value, Decimal):
-        return float(value)
+        return format(value, "f")
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     return value

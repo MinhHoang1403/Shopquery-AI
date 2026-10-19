@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from app.ai.providers import ModelId
 from app.routing.router import RouteLabel
@@ -37,7 +37,13 @@ class ChatResponse(BaseModel):
     answer: str
     route: RouteLabel | None
     sql: str | None = None
-    rows: list[dict[str, Any]] = Field(default_factory=list)
+    rows: list[dict[str, JsonValue]] = Field(
+        default_factory=list,
+        description=(
+            "NUMERIC values are lossless decimal strings; "
+            "INTEGER/COUNT remain integers; NULL remains null."
+        ),
+    )
     sources: list[SourceResponse] = Field(default_factory=list)
     error: str | None = None
     requested_model: ModelId | None = None
@@ -129,7 +135,9 @@ class DatasetPreviewResponse(BaseModel):
     row_count: int
     column_count: int
     columns: list[DatasetColumnResponse]
-    rows: list[dict[str, Any]]
+    rows: list[dict[str, JsonValue]] = Field(
+        description="Decimal values are lossless strings, never converted to binary floats."
+    )
     warnings: list[str]
 
 

@@ -52,7 +52,7 @@ class SqlExecutor:
 
 def _json_safe(value: Any) -> Any:
     if isinstance(value, Decimal):
-        return int(value) if value == value.to_integral_value() else float(value)
+        return format(value, "f")
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     return value

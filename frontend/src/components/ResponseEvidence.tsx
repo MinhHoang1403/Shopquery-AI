@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ChevronUp, Copy, Database, FileText, Table2 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
-import type { ChatResponse, SourceReference } from "../types";
+import type { ChatResponse, ResultRow, SourceReference } from "../types";
 
 type EvidencePanel = "rows" | "sql" | "sources";
 
@@ -63,7 +63,7 @@ function SqlPanel({ sql }: { sql: string }) {
   );
 }
 
-export function ResultTable({ rows }: { rows: Record<string, unknown>[] }) {
+export function ResultTable({ rows }: { rows: ResultRow[] }) {
   const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
   return (
     <div className="table-shell" aria-label="Kết quả truy vấn" role="region" tabIndex={0}>

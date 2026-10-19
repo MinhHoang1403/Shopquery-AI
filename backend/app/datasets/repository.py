@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from pathlib import PurePosixPath
 from typing import Any
 from uuid import UUID, uuid4
@@ -42,6 +43,7 @@ SQL_TYPES = {
     "BOOLEAN": BOOLEAN,
     "DATE": DATE,
     "TIMESTAMP": TIMESTAMP,
+    "TIMESTAMPTZ": partial(TIMESTAMP, timezone=True),
 }
 
 

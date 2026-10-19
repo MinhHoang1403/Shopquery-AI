@@ -1,6 +1,9 @@
 export type RouteLabel = "SQL" | "RAG" | "HYBRID" | "UNSUPPORTED";
 export type ModelId = "inetcloud-knowledge" | "gemini";
 
+// NUMERIC cells are exact decimal strings. Render unchanged, without Number()/parseFloat().
+export type ResultRow = Record<string, unknown>;
+
 export interface ModelOption {
   id: ModelId;
   label: string;
@@ -26,7 +29,7 @@ export interface ChatResponse {
   answer: string;
   route: RouteLabel | null;
   sql: string | null;
-  rows: Record<string, unknown>[];
+  rows: ResultRow[];
   sources: SourceReference[];
   error: string | null;
   requested_model?: ModelId | null;
@@ -91,7 +94,7 @@ export interface DatasetPreview {
   row_count: number;
   column_count: number;
   columns: DatasetColumn[];
-  rows: Record<string, unknown>[];
+  rows: ResultRow[];
   warnings: string[];
 }
 

@@ -40,6 +40,7 @@ PROHIBITED_NODES = (
     exp.Subquery,
     exp.Update,
     exp.With,
+    exp.Window,
 )
 
 
@@ -86,7 +87,7 @@ class SqlValidator:
 
         tables, aliases = self._validate_tables(root)
         self._validate_functions(root)
-        self._validate_columns(root, tables, aliases)
+        self._validate_columns(root, aliases)
         return ValidatedSql(statement=root.sql(dialect="postgres"), tables=frozenset(tables))
 
     def _validate_tables(self, root: exp.Select) -> tuple[set[str], dict[str, str]]:
@@ -103,8 +104,10 @@ class SqlValidator:
             ):
                 raise SqlValidationError(f"Table is not allowed: {table.sql()}")
             tables.add(table_name)
-            aliases[table.alias_or_name.lower()] = table_name
-            aliases[table_name] = table_name
+            visible_name = table.alias_or_name.lower()
+            if visible_name in aliases:
+                raise SqlValidationError(f"Duplicate table alias: {visible_name}")
+            aliases[visible_name] = table_name
         if not tables:
             raise SqlValidationError("A business table is required")
         if self._max_tables is not None and len(tables) > self._max_tables:
@@ -120,25 +123,43 @@ class SqlValidator:
             if function_name not in ALLOWED_FUNCTIONS:
                 raise SqlValidationError(f"Function is not allowed: {function_name}")
 
-    def _validate_columns(
-        self, root: exp.Select, tables: set[str], aliases: dict[str, str]
-    ) -> None:
-        projection_aliases = {
-            expression.alias.lower() for expression in root.expressions if expression.alias
-        }
+    def _validate_columns(self, root: exp.Select, aliases: dict[str, str]) -> None:
+        projection_aliases: dict[str, list[exp.Expression]] = {}
+        for expression in root.expressions:
+            if isinstance(expression, exp.Alias):
+                projection_aliases.setdefault(expression.alias.lower(), []).append(expression.this)
         for column in root.find_all(exp.Column):
             column_name = column.name.lower()
             qualifier = column.table.lower()
-            if column_name in projection_aliases and not qualifier:
-                continue
             if qualifier:
                 table_name = aliases.get(qualifier)
                 if not table_name or column_name not in self._table_columns[table_name]:
                     raise SqlValidationError(f"Column is not allowed: {column.sql()}")
+                if column.catalog or (
+                    column.db
+                    and (
+                        qualifier != table_name
+                        or column.db.lower() != self._allowed_schemas.get(table_name)
+                    )
+                ):
+                    raise SqlValidationError(f"Column schema is not allowed: {column.sql()}")
                 continue
             matching_tables = [
-                table for table in tables if column_name in self._table_columns[table]
+                table for table in aliases.values() if column_name in self._table_columns[table]
             ]
+            parent = column.parent
+            order_alias = (
+                isinstance(parent, exp.Ordered) and parent.parent is root.args.get("order")
+            )
+            group_alias = isinstance(parent, exp.Group) and parent is root.args.get("group")
+            # PostgreSQL ORDER BY prefers output names; GROUP BY prefers input names.
+            if (order_alias or group_alias and not matching_tables) and (
+                column_name in projection_aliases
+            ):
+                expressions = projection_aliases[column_name]
+                if any(expression != expressions[0] for expression in expressions[1:]):
+                    raise SqlValidationError(f"Ambiguous output alias: {column_name}")
+                continue
             if len(matching_tables) != 1:
                 raise SqlValidationError(
                     f"Unqualified column is unknown or ambiguous: {column_name}"

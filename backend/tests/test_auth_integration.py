@@ -440,7 +440,7 @@ def test_owned_pipelines_execute_real_sql_retrieval_with_offline_providers(
     assert result["fallback_used"] is False and requested == [model]
     assert len(embeddings) == (0 if route == "SQL" else 1)
     if route != "RAG":
-        assert result["rows"] == [{"total": 100, "matched_row_count": 1}]
+        assert result["rows"] == [{"total": "100", "matched_row_count": 1}]
     if route != "SQL":
         assert result["sources"] and all(
             "account 0" in source["content"] for source in result["sources"]

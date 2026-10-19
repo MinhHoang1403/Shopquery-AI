@@ -149,8 +149,8 @@ def test_dataset_import_query_isolation_permissions_and_rollback(
     rows = SqlExecutor(get_readonly_engine(), timeout_ms=5_000, max_rows=20).execute(validated)
 
     assert rows == [
-        {"san_pham": "Áo dài", "total_revenue": 150000},
-        {"san_pham": "Cà phê", "total_revenue": 80000},
+        {"san_pham": "Áo dài", "total_revenue": "150000"},
+        {"san_pham": "Cà phê", "total_revenue": "80000"},
     ]
     assert repository.preview_rows(first.dataset_id, limit=1) == [
         {"Sản phẩm": "Áo dài", "Doanh thu": 120000}
@@ -247,7 +247,7 @@ def test_dataset_aggregates_distinguish_matches_null_and_zero(
         return executor.execute(validated)[0]
 
     assert aggregate("Có dữ liệu") == {
-        "total": 30,
+        "total": "30",
         "matched_row_count": 2,
         "nonnull_value_count": 2,
     }
@@ -262,7 +262,7 @@ def test_dataset_aggregates_distinguish_matches_null_and_zero(
         "nonnull_value_count": 0,
     }
     assert aggregate("Zero") == {
-        "total": 0,
+        "total": "0",
         "matched_row_count": 1,
         "nonnull_value_count": 1,
     }
@@ -292,7 +292,7 @@ def test_xlsx_dataset_is_persisted_with_sheet_metadata(
     rows = SqlExecutor(get_readonly_engine(), timeout_ms=5_000, max_rows=20).execute(validated)
 
     assert categorical_values["sku"] == ("A01", "B02")
-    assert rows == [{"total_quantity": 6, "matched_row_count": 2}]
+    assert rows == [{"total_quantity": "6", "matched_row_count": 2}]
 
 
 @pytest.mark.integration

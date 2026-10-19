@@ -84,7 +84,7 @@ def test_guest_pipelines_use_real_temp_rows_and_ram_citations_without_persistenc
     )
     assert result.route == route
     if route in {RouteLabel.SQL, RouteLabel.HYBRID}:
-        assert result.rows == [{"total": 300}]
+        assert result.rows == [{"total": "300"}]
         assert "pg_temp.table_1" in result.sql
     if route in {RouteLabel.RAG, RouteLabel.HYBRID}:
         assert result.sources[0].source_file == "rules.md"
