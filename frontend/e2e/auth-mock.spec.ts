@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { guestStatus } from "./guest-fixture";
 
-test("guest sees chat and optional login without private workspace requests", async ({ page }) => {
+test("guest sees chat and optional login without private workspace requests", async ({ page }, testInfo) => {
   const paths: string[] = [];
   await page.route("**/api/**", async (route) => {
     paths.push(new URL(route.request().url()).pathname);
@@ -12,6 +12,21 @@ test("guest sees chat and optional login without private workspace requests", as
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Bạn muốn hỏi gì hôm nay?" })).toBeVisible();
   await expect(page.getByLabel("Nhập câu hỏi cho ShopQuery AI")).toBeEditable();
+  await expect(page.getByRole("button", { name: "Đăng nhập", exact: true })).toHaveCount(1);
+  await expect(page.locator(".sidebar-footer").getByRole("button", { name: "Đăng nhập", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Đăng nhập để lưu lịch sử và bộ dữ liệu.", { exact: true })).toHaveCount(0);
+  const mobileMenu = page.getByRole("button", { name: "Mở thanh điều hướng", exact: true });
+  if (await mobileMenu.isVisible()) {
+    await mobileMenu.click();
+    await expect(page.getByRole("button", { name: "Tệp tạm thời", exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("guest-sidebar-single-login.png") });
+    await page.getByRole("button", { name: "Đóng thanh điều hướng", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Thu gọn sidebar", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Tệp tạm thời", exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("guest-sidebar-single-login.png") });
+  }
+  await expect(page.locator(".chat-header").getByRole("button", { name: "Đăng nhập", exact: true })).toBeVisible();
   await page.locator(".chat-header").getByRole("button", { name: "Đăng nhập", exact: true }).click();
   await expect(page.getByRole("link", { name: "Tiếp tục với Google" })).toHaveAttribute("href", "/api/auth/login");
   const google = page.getByRole("link", { name: "Tiếp tục với Google" });

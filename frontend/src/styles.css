@@ -387,10 +387,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-v
 .login-button:hover { background: #444; }
 .guest-status { display: grid; gap: 3px; margin: 8px 8px 0; text-align: center; font-size: 11px; color: var(--muted); line-height: 1.5; }
 .guest-status button { padding: 0; border: 0; background: transparent; color: var(--text); text-decoration: underline; cursor: pointer; }
-.guest-sidebar-login { min-height: 36px; border: 0; border-radius: 9px; background: transparent; color: var(--text); cursor: pointer; text-align: left; padding: 8px 10px; font-size: 13px; }
-.guest-sidebar-login:hover { background: var(--surface-hover); }
-.guest-sidebar-hint, .guest-privacy { color: var(--muted); font-size: 12px; line-height: 1.6; }
-.guest-sidebar-hint { margin: 4px 10px; }
+.guest-privacy { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .guest-file-list { padding-left: 20px; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .modal.login-modal { width: min(440px, 100%); }
 .login-modal .dialog-actions { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 22px; }
@@ -406,7 +403,6 @@ button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-v
 .guest-upload-modal .guest-privacy p { margin: 8px 0 0; }
 .send-button[aria-disabled="true"] { opacity: .55; }
 .auth-notice { position: fixed; z-index: 90; top: 8px; left: 50%; transform: translateX(-50%); width: min(500px, calc(100vw - 24px)); margin: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 3px 12px #0001; font-size: 12px; }
-@media (min-width: 861px) { .app-shell--collapsed .guest-sidebar-hint { display: none; } .app-shell--collapsed .guest-sidebar-login { padding: 6px 0; text-align: center; font-size: 10px; } }
 @media (max-width: 520px) { .chat-header--guest .health-status { display: none; } .chat-header--guest { gap: 7px; } .login-button { padding: 8px 11px; } .guest-status { font-size: 10px; } }
 .auth-screen { height: 100dvh; overflow-y: auto; display: grid; place-items: center; padding: clamp(16px, 4vw, 32px); background: var(--sidebar); }
 .auth-card { width: min(100%, 440px); margin: auto; padding: clamp(24px, 5vw, 40px); background: white; border: 1px solid var(--line); border-radius: 20px; text-align: center; box-shadow: 0 12px 45px #15243b08; }

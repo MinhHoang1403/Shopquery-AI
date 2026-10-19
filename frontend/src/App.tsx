@@ -400,7 +400,6 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
     <div className={`app-shell ${sidebarCollapsed ? "app-shell--collapsed" : ""}`}>
       <Sidebar
         guest={isGuest}
-        onLogin={isGuest ? () => setLoginOpen(true) : undefined}
         account={account}
         onLogout={onLogout}
         activeConversationId={activeConversationId}

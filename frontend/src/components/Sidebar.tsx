@@ -18,7 +18,6 @@ interface SidebarProps {
   account?: SessionInfo["user"];
   onLogout?: () => void;
   guest?: boolean;
-  onLogin?: () => void;
   open: boolean;
   collapsed: boolean;
   conversations: ConversationSummary[];
@@ -36,7 +35,6 @@ export function Sidebar({
   account,
   onLogout,
   guest,
-  onLogin,
   open,
   collapsed,
   conversations,
@@ -128,7 +126,6 @@ export function Sidebar({
 
         <div className="sidebar-footer">
           <button className="upload-button" onClick={onUpload} type="button" aria-label={guest ? "Tệp tạm thời" : "Quản lý dữ liệu"}><Upload size={17} /><span>{guest ? "Tệp tạm thời" : "Quản lý dữ liệu"}</span></button>
-          {guest ? <><button className="guest-sidebar-login" type="button" onClick={onLogin}>Đăng nhập</button><p className="guest-sidebar-hint">Đăng nhập để lưu lịch sử và bộ dữ liệu.</p></> : null}
           {onLogout && account ? <AccountMenu account={account} onLogout={onLogout} /> : null}
         </div>
       </aside>
