@@ -68,6 +68,9 @@ def build_dataset_sql_context(
     context = f"""
 PostgreSQL dataset workspace:
 - Dataset name: {dataset.name}
+- Uploaded document count in this workspace: {dataset.document_count}
+- Document contents are retrieved separately by RAG. Do not infer that documents are
+  absent or lack a policy merely because this SQL schema describes only table columns.
 - Allowed tables:
 {chr(10).join(descriptions)}
 

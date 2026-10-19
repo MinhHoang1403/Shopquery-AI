@@ -14,6 +14,7 @@ interface ChatInputProps {
   selectedModel: ModelId;
   onModelSelect: (model: ModelId) => void;
   placeholder?: string;
+  submitUnavailableReason?: string | null;
 }
 
 export function ChatInput({
@@ -27,6 +28,7 @@ export function ChatInput({
   selectedModel,
   onModelSelect,
   placeholder,
+  submitUnavailableReason,
 }: ChatInputProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const showCharacterCount = value.length > 0;
@@ -91,6 +93,8 @@ export function ChatInput({
             aria-label="Gửi câu hỏi"
             className="send-button"
             disabled={disabled || value.trim().length === 0}
+            aria-disabled={Boolean(disabled || !value.trim() || submitUnavailableReason)}
+            title={submitUnavailableReason ?? "Gửi câu hỏi"}
             type="submit"
           >
             <ArrowUp size={19} strokeWidth={2.4} aria-hidden="true" />

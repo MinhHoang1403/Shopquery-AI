@@ -94,6 +94,7 @@ interface ApiState {
 }
 
 const runtimeErrors = new WeakMap<Page, { console: string[]; page: string[]; requests: string[]; responses: string[] }>();
+const expectedDocumentDenials = new WeakMap<Page, number>();
 
 test.beforeEach(async ({ page }, testInfo) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
@@ -113,10 +114,11 @@ test.beforeEach(async ({ page }, testInfo) => {
 
 test.afterEach(async ({ page }) => {
   const errors = runtimeErrors.get(page);
-  expect(errors?.console ?? []).toEqual([]);
+  const denied = expectedDocumentDenials.get(page) ?? 0;
+  expect(errors?.console ?? []).toEqual(Array.from({ length: denied }, () => "Failed to load resource: the server responded with a status of 403 (Forbidden)"));
   expect(errors?.page ?? []).toEqual([]);
   expect(errors?.requests ?? []).toEqual([]);
-  expect(errors?.responses ?? []).toEqual([]);
+  expect(errors?.responses ?? []).toEqual(Array.from({ length: denied }, () => expect.stringMatching(/^403 http:\/\/127\.0\.0\.1:\d+\/api\/datasets\/7\/documents$/)));
 });
 
 function json(route: Route, body: unknown, status = 200) {
@@ -177,6 +179,7 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
         { id: "gemini", label: "Gemini", provider: "gemini", configured: true },
       ],
     });
+    if (url.pathname === "/api/uploads/limits") return json(route, { max_file_bytes: 10485760, max_rows: 5000, max_columns: 30, max_pdf_pages: 100, provider_data_enabled: false, preview_per_hour: 180, upload_per_hour: 60 });
     if (url.pathname === "/api/health") return json(route, health);
     if (url.pathname === "/api/datasets" && method === "GET") return json(route, state.datasets);
     if (url.pathname === "/api/datasets" && method === "POST") {
@@ -715,6 +718,39 @@ test("previews and imports a CSV before selecting the uploaded dataset", async (
   await expect(page.getByText("4 tài liệu")).toBeVisible();
   await page.getByRole("button", { name: "Đóng", exact: true }).last().click();
   await expect(page.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ })).toBeVisible();
+  await expectNoPageOverflow(page);
+});
+
+test("authenticated file selection survives same-session focus and provider gate explains document refusal", async ({ page }, info) => {
+  expectedDocumentDenials.set(page, 2);
+  const state = await installApi(page);
+  let documentCalls = 0;
+  await page.route("**/api/datasets/7/documents", async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: [] });
+    documentCalls++;
+    return route.fulfill({ status: 403, json: { detail: "Quản trị viên chưa cho phép gửi dữ liệu tới AI providers." } });
+  });
+  await openApp(page);
+  await openSidebar(page);
+  await page.getByRole("button", { name: "Quản lý dữ liệu" }).click();
+  await page.getByLabel("Tên bộ dữ liệu").fill("Giả lập kiểm tra focus");
+  await page.getByRole("button", { name: "Tạo workspace rỗng" }).click();
+  await page.getByLabel(/Thêm CSV hoặc XLSX/).setInputFiles("e2e/fixtures/sales.csv");
+  await expect(page.getByText("120000")).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByText("120000")).toBeVisible();
+  await page.getByRole("button", { name: "Thêm bảng", exact: true }).click();
+  await expect(page.getByText("Đã cập nhật Doanh số 2026 thành công.")).toBeVisible();
+  expect(state.previewPaths).toHaveLength(1);
+  await expect(page.getByText(/Lưu tài liệu cần Gemini Embedding/)).toBeVisible();
+  for (const filename of ["policy.pdf", "policy.docx"]) {
+    await page.getByLabel(/Thêm PDF, DOCX, TXT hoặc MD/).setInputFiles(`e2e/fixtures/${filename}`);
+    await expect(page.getByRole("alert")).toContainText("chưa cho phép");
+  }
+  expect(documentCalls).toBe(2);
+  expect(state.documents).toHaveLength(0);
+  await page.screenshot({ path: info.outputPath("authenticated-upload-gate.png") });
   await expectNoPageOverflow(page);
 });
 

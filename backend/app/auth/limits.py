@@ -1,6 +1,7 @@
 """Small beta limits shared by API workers through PostgreSQL."""
 
 import hashlib
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -39,7 +40,7 @@ class ResourceControl:
             raise HTTPException(
                 429,
                 "Đã vượt giới hạn yêu cầu beta. Vui lòng thử lại sau.",
-                headers={"Retry-After": "3600"},
+                headers={"Retry-After": str(math.ceil(3600 - now.timestamp() % 3600))},
             )
 
     def login(self, ip: str) -> None:
@@ -53,6 +54,8 @@ class ResourceControl:
         limit = (
             settings.beta_chat_per_user_hour
             if kind == "chat"
+            else settings.beta_preview_per_user_hour
+            if kind == "preview"
             else settings.beta_upload_per_user_hour
         )
         self.rate(f"{kind}:{user_id}", limit)

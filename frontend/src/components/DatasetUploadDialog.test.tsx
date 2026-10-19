@@ -10,6 +10,7 @@ vi.mock("../api", () => ({
   deleteDatasetDocument: vi.fn(), getDataset: vi.fn(), getDatasetDocuments: vi.fn(),
   importDataset: vi.fn(), importDatasetTable: vi.fn(), previewDataset: vi.fn(),
   uploadDatasetDocument: vi.fn(),
+  getUploadLimits: vi.fn(),
 }));
 
 const workspace: Dataset = {
@@ -22,6 +23,7 @@ const workspace: Dataset = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(api.getUploadLimits).mockResolvedValue({ max_file_bytes: 10485760, max_rows: 5000, max_columns: 30, max_pdf_pages: 100, provider_data_enabled: false, preview_per_hour: 180, upload_per_hour: 60 });
   vi.mocked(api.getDataset).mockResolvedValue(workspace);
   vi.mocked(api.getDatasetDocuments).mockResolvedValue([{
     document_id: 4, dataset_id: 7, original_filename: "policy.md", file_type: "md",

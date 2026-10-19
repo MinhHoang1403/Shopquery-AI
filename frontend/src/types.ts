@@ -9,6 +9,7 @@ export interface ModelOption {
 }
 
 export interface ModelsResponse {
+  ai_enabled?: boolean;
   default_model: ModelId;
   models: ModelOption[];
   gemini_fallback_enabled: boolean;

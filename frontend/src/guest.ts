@@ -9,6 +9,7 @@ export interface GuestFileInfo {
 export interface GuestStatus extends ModelsResponse {
   remaining: number; ai_enabled: boolean; ttl_seconds: number;
   max_files: number; max_file_bytes: number; max_rows: number; max_columns: number;
+  max_pages?: number; max_session_bytes?: number; max_chunks?: number;
   files: GuestFileInfo[]; limited?: boolean; expired?: boolean;
 }
 
@@ -60,7 +61,9 @@ export function createGuestClient(onStatus: (value: GuestStatus) => void) {
       if (current && ((response.status === 429 && response.headers.get("X-Guest-Limit") === "chat") || response.status === 410)) {
         update({ ...current, limited: response.status === 429, expired: response.status === 410 });
       }
-      throw new ChatApiError(typeof body?.detail === "string" ? body.detail : "Không thể xử lý yêu cầu khách.", "server", response.status);
+      const retry = Number(response.headers.get("Retry-After"));
+      const hint = response.status === 429 && retry > 0 ? ` Thử lại sau khoảng ${Math.ceil(retry / 60)} phút.` : "";
+      throw new ChatApiError((typeof body?.detail === "string" ? body.detail : "Không thể xử lý yêu cầu khách.") + hint, "server", response.status);
     }
     return body;
   }
@@ -72,7 +75,7 @@ export function createGuestClient(onStatus: (value: GuestStatus) => void) {
       try {
         const body = await read(await fetch("/api/guest/session", {
           method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: "{}", signal: controller.signal,
+          body: "{}", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
         }));
         if (typeof body?.token !== "string" || typeof body?.csrf_token !== "string" ||
             typeof body.remaining !== "number" || typeof body.ai_enabled !== "boolean" ||
@@ -93,7 +96,7 @@ export function createGuestClient(onStatus: (value: GuestStatus) => void) {
     const auth = await initialize();
     ensureOpen();
     const controller = new AbortController(); requests.add(controller);
-    const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(240_000), ...(options.signal ? [options.signal] : [])]);
     try {
       const headers = new Headers(options.headers);
       headers.set("X-Guest-Token", auth.token); headers.set("X-Guest-CSRF", auth.csrf_token);

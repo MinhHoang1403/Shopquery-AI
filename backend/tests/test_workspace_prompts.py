@@ -38,7 +38,7 @@ class RecordingGateway:
         raise AssertionError(response_model)
 
 
-def tuition_context() -> DatasetSqlContext:
+def tuition_context(document_count: int = 0) -> DatasetSqlContext:
     table = DatasetTableInfo(
         display_name="Học phí",
         sheet_name=None,
@@ -60,8 +60,18 @@ def tuition_context() -> DatasetSqlContext:
         column_count=None,
         created_at=datetime(2026, 10, 19, tzinfo=UTC),
         table=table,
+        document_count=document_count,
     )
     return build_dataset_sql_context(dataset)
+
+
+@pytest.mark.parametrize("count", [0, 1])
+def test_router_context_reports_actual_uploaded_document_availability(count):
+    context = tuition_context(count)
+    gateway = RecordingGateway()
+    QueryRouter(gateway, context.schema_context).route("Tra cứu tài liệu")
+    assert f"Uploaded document count in this workspace: {count}" in gateway.prompt
+    assert context.has_documents is bool(count)
 
 
 @pytest.mark.parametrize(

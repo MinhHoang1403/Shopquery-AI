@@ -42,11 +42,11 @@ export function GuestUploadDialog({ client, status, onClose, onImported }: {
     finally { setBusy(false); }
   }
 
-  return <Modal title="Tệp tạm của phiên khách" description="Không lưu vào tài khoản. Refresh xoá trạng thái ở đây; phía máy chủ dọn theo reset/TTL." onClose={() => { if (!busy) onClose(); }}>
+  return <Modal className="guest-upload-modal" title="Tệp tạm của phiên khách" description="Tệp chỉ dùng trong phiên này, không lưu vào tài khoản. Refresh sẽ làm mới không gian dùng thử." onClose={() => { if (!busy) onClose(); }}>
     <div className="upload-flow">
-      <p className="guest-privacy">Không tải PII, mật khẩu hoặc dữ liệu chưa được phép chia sẻ. Nếu AI được bật, câu hỏi, dữ liệu kết quả và nội dung tài liệu có thể gửi tới Knowledge/Gemini; RAG dùng Google Embedding.</p>
-      <p>Tối đa {status?.max_files ?? 2} tệp · {Math.round((status?.max_file_bytes ?? 2097152) / 1048576)} MB/tệp · {status?.max_rows ?? 1000} dòng · {status?.max_columns ?? 20} cột.</p>
-      <ul className="guest-file-list">{status?.files.map((item) => <li key={item.file_id}>{item.filename} · {item.kind === "table" ? `${item.row_count} dòng` : `${item.chunk_count} đoạn tài liệu`} · tạm thời</li>)}</ul>
+      <p className="guest-limits">{status ? `${status.files.length}/${status.max_files} tệp · ${status.max_file_bytes / 1048576} MB/tệp · ${status.max_rows.toLocaleString("vi")} dòng · ${status.max_columns} cột` : "Đang đọc giới hạn từ máy chủ…"}</p>
+      {status?.files.length ? <ul className="guest-file-list">{status.files.map((item) => <li key={item.file_id}>{item.filename} · {item.kind === "table" ? `${item.row_count} dòng` : `${item.chunk_count} đoạn tài liệu`}</li>)}</ul> : null}
+      {status && status.files.length >= status.max_files ? <p role="status">Đã đạt giới hạn tệp của phiên. Đăng nhập để quản lý bộ dữ liệu lâu dài.</p> : null}
       <label className="file-drop compact-drop" htmlFor="guest-file"><UploadCloud size={22} /><span><strong>Thêm CSV, XLSX, PDF, DOCX, TXT hoặc MD</strong><small>PDF cần text layer; không OCR. Chỉ xem trước, chưa gọi AI.</small></span>
         <input id="guest-file" type="file" accept=".csv,.xlsx,.pdf,.docx,.txt,.md" disabled={busy || !status || status.files.length >= status.max_files} onChange={(event) => {
           const value = event.target.files?.[0]; event.target.value = "";
@@ -62,6 +62,7 @@ export function GuestUploadDialog({ client, status, onClose, onImported }: {
         {preview.warnings.map((warning) => <p key={warning}>{warning}</p>)}
         <button className="primary-button" disabled={busy} onClick={() => void upload()} type="button">Dùng tệp trong phiên này</button>
       </div> : null}
+      <details className="guest-privacy"><summary>Quyền riêng tư và thời gian lưu</summary><p>Không tải thông tin cá nhân, mật khẩu hoặc dữ liệu chưa được phép chia sẻ. {status ? `Máy chủ dọn tệp sau tối đa ${Math.ceil(status.ttl_seconds / 60)} phút kể từ khi tạo phiên.` : "Tệp được dọn khi hết hạn phiên."} Nếu bật AI, dữ liệu liên quan có thể gửi tới Knowledge/Gemini; RAG dùng Google Embedding. Xem trước không gọi AI.</p></details>
       <div className="dialog-actions"><button className="secondary-button" disabled={busy} type="button" onClick={onClose}>Đóng</button></div>
     </div>
   </Modal>;

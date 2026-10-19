@@ -91,7 +91,7 @@ test("guest upload SQL RAG Hybrid use common chat UI and refresh loses files/his
   expect(mock.calls.every((path) => path === "/api/auth/me" || path === "/api/health" || path.startsWith("/api/guest/"))).toBe(true);
 });
 
-test("guest quota disables composer but preserves visible chats and optional login", async ({ page }, info) => {
+test("guest quota blocks sending but preserves editing, visible chats and optional login", async ({ page }, info) => {
   await installGuest(page);
   await page.goto("/");
   const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
@@ -99,7 +99,12 @@ test("guest quota disables composer but preserves visible chats and optional log
     await input.fill(`Giải thích ${i}`); await input.press("Enter");
     await expect(page.getByText(`Giải thích mock ${i}`, { exact: true })).toBeVisible();
   }
-  await expect(input).toBeDisabled();
+  await expect(input).toBeEditable();
+  await input.fill("Câu hỏi giữ lại sau quota");
+  await expect(page.getByRole("button", { name: "Gửi câu hỏi" })).toHaveAttribute("aria-disabled", "true");
+  await input.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("Đã hết lượt hỏi");
+  await expect(input).toHaveValue("Câu hỏi giữ lại sau quota");
   await expect(page.getByText("Giải thích mock 1", { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("guest-limit.png") });
   await page.getByRole("button", { name: "Đăng nhập để tiếp tục", exact: true }).click();
@@ -109,9 +114,15 @@ test("guest quota disables composer but preserves visible chats and optional log
 });
 
 test("provider gate off permits guest upload but no generation and a new tab is independent", async ({ page, context }) => {
-  await installGuest(page, false);
+  const mock = await installGuest(page, false);
   await page.goto("/");
-  await expect(page.getByLabel("Nhập câu hỏi cho ShopQuery AI")).toBeDisabled();
+  const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+  await expect(input).toBeEditable();
+  await input.fill("Câu hỏi chưa gửi");
+  await input.press("Shift+Enter");
+  await input.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("AI đang tạm chưa được bật");
+  expect(mock.calls).not.toContain("/api/guest/chat");
   await expect(page.getByText("AI dùng thử chưa được bật.", { exact: false })).toBeVisible();
   await openUploads(page);
   await page.locator("#guest-file").setInputFiles("e2e/fixtures/fees.csv");

@@ -17,6 +17,17 @@ const ROUTES = new Set<RouteLabel>(["SQL", "RAG", "HYBRID", "UNSUPPORTED"]);
 let sessionEpoch = 0;
 let csrfToken: string | null = null;
 const pendingRequests = new Set<AbortController>();
+let sessionCheck: Promise<void> | null = null;
+
+export function pauseSessionRequests(): () => void {
+  let resolve: () => void = () => undefined;
+  const check = new Promise<void>((done) => { resolve = done; });
+  sessionCheck = check;
+  return () => {
+    if (sessionCheck === check) sessionCheck = null;
+    resolve();
+  };
+}
 
 export function resetSessionRequests() {
   sessionEpoch += 1;
@@ -31,6 +42,11 @@ export function setSessionCsrf(token: string) {
 
 function assertCurrentEpoch(epoch: number) {
   if (epoch !== sessionEpoch) throw new DOMException("Session changed", "AbortError");
+}
+
+async function awaitVerifiedSession(epoch: number) {
+  while (sessionCheck) await sessionCheck;
+  assertCurrentEpoch(epoch);
 }
 
 export interface SessionInfo {
@@ -123,6 +139,11 @@ async function requestJson(
 ): Promise<unknown> {
   let response: Response;
   const epoch = sessionEpoch;
+  if (url !== "/api/auth/me" && url !== "/api/health") {
+    if (sessionCheck) await awaitVerifiedSession(epoch);
+    assertCurrentEpoch(epoch);
+    options.signal?.throwIfAborted();
+  }
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (options.signal?.aborted) controller.abort();
@@ -134,7 +155,8 @@ async function requestJson(
       headers.set("X-CSRF-Token", csrfToken);
     }
     response = await fetch(url, { ...options, credentials: "same-origin", headers,
-      signal: controller.signal });
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(240_000)]) });
+    if (url !== "/api/auth/me" && url !== "/api/health") await awaitVerifiedSession(epoch);
     assertCurrentEpoch(epoch);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -152,9 +174,10 @@ async function requestJson(
   }
   if (response.status === 204) return null;
   if (response.status === 413) {
-    throw new ChatApiError("Tệp tải lên vượt giới hạn dung lượng cho phép (tài khoản: tối đa 10 MB/tệp).", "validation", 413);
+    throw new ChatApiError("Tệp vượt giới hạn dung lượng cho phép. Xem hạn mức từ máy chủ trong hộp tải tệp.", "validation", 413);
   }
   const body = await readJson(response);
+  if (url !== "/api/auth/me" && url !== "/api/health") await awaitVerifiedSession(epoch);
   assertCurrentEpoch(epoch);
   if (!response.ok) {
     const detail = isRecord(body) && typeof body.detail === "string" ? body.detail : null;
@@ -168,7 +191,9 @@ async function requestJson(
       throw new ChatApiError(detail ?? validationMessage, "validation", response.status);
     }
     if (response.status === 403 || response.status === 429) {
-      throw new ChatApiError(detail ?? "Yêu cầu không được phép hoặc đã vượt giới hạn.", "validation", response.status);
+      const retry = Number(response.headers.get("Retry-After"));
+      const hint = response.status === 429 && retry > 0 ? ` Thử lại sau khoảng ${Math.ceil(retry / 60)} phút.` : "";
+      throw new ChatApiError((detail ?? "Yêu cầu không được phép hoặc đã vượt giới hạn.") + hint, "validation", response.status);
     }
     throw new ChatApiError("Máy chủ gặp sự cố. Vui lòng thử lại sau.", "server", response.status);
   }
@@ -212,6 +237,19 @@ export async function getModels(signal?: AbortSignal): Promise<ModelsResponse> {
     throw new ChatApiError("Danh sách mô hình không hợp lệ.", "invalid_response");
   }
   return body as unknown as ModelsResponse;
+}
+
+export interface UploadLimits {
+  max_file_bytes: number; max_rows: number; max_columns: number; max_pdf_pages: number;
+  provider_data_enabled: boolean; preview_per_hour: number; upload_per_hour: number;
+}
+
+export async function getUploadLimits(signal?: AbortSignal): Promise<UploadLimits> {
+  const body = await requestJson("/api/uploads/limits", { signal });
+  if (!isRecord(body) || ![body.max_file_bytes, body.max_rows, body.max_columns, body.max_pdf_pages].every((value) => typeof value === "number" && value > 0) || typeof body.provider_data_enabled !== "boolean") {
+    throw new ChatApiError("Không thể đọc giới hạn tải tệp từ máy chủ.", "invalid_response");
+  }
+  return body as unknown as UploadLimits;
 }
 
 export async function setConversationModel(conversationId: string, modelId: ModelId) {

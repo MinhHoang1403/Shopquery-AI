@@ -71,10 +71,27 @@ it("shows a clean workspace without demo prompts or chat requests when there is 
   await screen.findByRole("heading", { name: "Không gian dữ liệu của bạn" });
   expect(screen.getByText("Chưa có bộ dữ liệu")).toBeInTheDocument();
   expect(screen.queryByText("Phân tích bán hàng")).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Nhập câu hỏi cho ShopQuery AI")).toBeDisabled();
+  const input = screen.getByLabelText("Nhập câu hỏi cho ShopQuery AI");
+  expect(input).toBeEnabled();
+  fireEvent.change(input, { target: { value: "Tổng học phí?" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(await screen.findByRole("alert")).toHaveTextContent("Hãy tải dữ liệu lên");
+  expect(input).toHaveValue("Tổng học phí?");
   expect(fetch.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", { name: "Thêm dữ liệu" }));
   expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
+it("keeps the composer editable and explains provider denial without creating a chat", async () => {
+  const fetch = installApi({ aiEnabled: false });
+  render(<App />);
+  const input = await screen.findByLabelText("Nhập câu hỏi cho ShopQuery AI");
+  await waitFor(() => expect(input).toBeEnabled());
+  fireEvent.change(input, { target: { value: "Tổng học phí?" } });
+  fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("chưa cho phép");
+  expect(input).toHaveValue("Tổng học phí?");
+  expect(fetch.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(0);
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -109,6 +126,7 @@ function summary(id = conversationId, overrides: Partial<ConversationSummary> = 
 }
 
 interface MockOptions {
+  aiEnabled?: boolean;
   response?: ChatResponse;
   conversations?: ConversationSummary[];
   details?: Record<string, ConversationDetail>;
@@ -131,7 +149,9 @@ function installApi(options: MockOptions = {}) {
         : input?.url ?? "http://localhost/__aborted_request__";
     const url = new URL(rawUrl, "http://localhost");
     const method = init?.method ?? "GET";
+    if (url.pathname === "/api/uploads/limits") return jsonResponse({ max_file_bytes: 10485760, max_rows: 5000, max_columns: 30, max_pdf_pages: 100, provider_data_enabled: false, preview_per_hour: 180, upload_per_hour: 60 });
     if (url.pathname === "/api/models") return jsonResponse({
+      ai_enabled: options.aiEnabled ?? true,
       default_model: "inetcloud-knowledge",
       gemini_fallback_enabled: false,
       models: [

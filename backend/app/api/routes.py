@@ -51,7 +51,7 @@ from app.dependencies import (
     build_document_repository,
 )
 from app.rag.repository import DatasetDocumentInfo
-from app.rag.upload_parser import parse_document_file
+from app.rag.upload_parser import MAX_PDF_PAGES, parse_document_file
 from app.routing.service import ChatResult
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,7 @@ router = APIRouter(prefix="/api")
 def list_models(user: CurrentUser) -> ModelsResponse:
     settings = get_settings()
     return ModelsResponse(
+        ai_enabled=settings.beta_provider_data_enabled,
         default_model=settings.ai_default_model,
         models=[
             ModelOption(
@@ -83,6 +84,20 @@ def health() -> HealthResponse:
     """Report API liveness without invoking Gemini or the full pipeline."""
 
     return HealthResponse(status="ok", service=get_settings().app_name)
+
+
+@router.get("/uploads/limits")
+def upload_limits(user: CurrentUser) -> dict:
+    settings = get_settings()
+    return {
+        "max_file_bytes": settings.upload_max_bytes,
+        "max_rows": settings.upload_max_rows,
+        "max_columns": settings.upload_max_columns,
+        "max_pdf_pages": MAX_PDF_PAGES,
+        "provider_data_enabled": settings.beta_provider_data_enabled,
+        "preview_per_hour": settings.beta_preview_per_user_hour,
+        "upload_per_hour": settings.beta_upload_per_user_hour,
+    }
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -328,7 +343,7 @@ async def preview_dataset(
     file: Annotated[UploadFile, File()],
     sheet_name: Annotated[str | None, Form()] = None,
 ) -> DatasetPreviewResponse:
-    with resource_control().work(user.user_id, "upload"):
+    with resource_control().work(user.user_id, "preview"):
         parsed = await _parse_upload(file, sheet_name)
     return _dataset_preview_response(parsed)
 
@@ -378,7 +393,7 @@ async def preview_dataset_table(
         build_dataset_repository(user.user_id).get(dataset_id)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    with resource_control().work(user.user_id, "upload"):
+    with resource_control().work(user.user_id, "preview"):
         return _dataset_preview_response(await _parse_upload(file, sheet_name))
 
 

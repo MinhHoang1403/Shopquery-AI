@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from app.auth.dependencies import CurrentUser, auth_repository
 from app.auth.limits import resource_control
 from app.auth.oidc import google_client, verified_identity
+from app.core.client_ip import client_ip
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/auth")
@@ -35,7 +36,7 @@ async def login(request: Request) -> Response:
     if request.query_params:
         raise HTTPException(400, "Login redirect không được phép.")
     client = google_client(settings)
-    resource_control().login(request.client.host if request.client else "unknown")
+    resource_control().login(client_ip(request, settings))
     raw, state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(4))
     result = await client.create_authorization_url(
         redirect_uri=settings.oidc_callback_url,
@@ -60,7 +61,7 @@ async def callback(request: Request) -> Response:
     if not raw or not state or not code or request.query_params.get("error"):
         raise HTTPException(400, "Google Sign-In không hoàn tất.")
     repository = auth_repository()
-    resource_control().login(request.client.host if request.client else "unknown")
+    resource_control().login(client_ip(request, settings))
     nonce, verifier = repository.consume_flow(raw, state)
     try:
         identity = await verified_identity(google_client(settings), code, nonce, verifier, settings)

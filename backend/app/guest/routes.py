@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from app.ai.providers import MODEL_LABELS, ModelId
 from app.api.models import ChatResponse
 from app.auth.repository import csrf_token
+from app.core.client_ip import client_ip
 from app.core.config import get_settings
 from app.database.session import get_setup_engine
 from app.guest.limits import GuestControl
@@ -48,7 +49,7 @@ def guest_control() -> GuestControl:
 
 
 def peer_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    return client_ip(request, get_settings())
 
 
 def status(context: GuestContext) -> dict:
@@ -61,6 +62,9 @@ def status(context: GuestContext) -> dict:
         "max_file_bytes": settings.guest_max_file_bytes,
         "max_rows": settings.guest_max_rows,
         "max_columns": settings.guest_max_columns,
+        "max_pages": settings.guest_max_pages,
+        "max_session_bytes": settings.guest_max_session_bytes,
+        "max_chunks": settings.guest_max_chunks,
         "files": [file_metadata(file) for file in context.files],
         "default_model": settings.ai_default_model,
         "models": [
@@ -130,8 +134,15 @@ async def process_file(
 ) -> dict:
     settings = get_settings()
     control, store = guest_control(), guest_store()
-    control.ip_rate(peer_ip(request), "upload", settings.guest_uploads_per_ip_hour)
+    control.ip_rate(peer_ip(request), "preview", settings.guest_previews_per_ip_hour)
     with store.operation(guest), control.lease(guest.key, settings):
+        if guest.parse_count >= settings.guest_previews_per_session:
+            raise HTTPException(
+                429,
+                "Đã hết lượt xử lý tệp của phiên khách. Hãy bắt đầu phiên mới.",
+                headers={"X-Guest-Limit": "preview"},
+            )
+        guest.parse_count += 1
         if guest.uploaded_count >= settings.guest_max_files:
             raise HTTPException(429, "Đã đạt giới hạn số tệp của phiên khách.")
         chunks, size = [], 0
@@ -153,6 +164,7 @@ async def process_file(
         )
         store.ensure_active(guest)
         if commit:
+            control.ip_rate(peer_ip(request), "upload", settings.guest_uploads_per_ip_hour)
             store.add_file(guest, parsed)
         preview = {
             **file_metadata(parsed),

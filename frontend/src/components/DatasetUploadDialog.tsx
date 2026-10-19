@@ -7,6 +7,8 @@ import {
   deleteDatasetTable,
   getDataset,
   getDatasetDocuments,
+  getUploadLimits,
+  type UploadLimits,
   importDataset,
   importDatasetTable,
   previewDataset,
@@ -52,6 +54,16 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
   const [deleteHistory, setDeleteHistory] = useState(false);
   const previewController = useRef<AbortController | null>(null);
   const confirmation = useRef<HTMLElement | null>(null);
+  const [limits, setLimits] = useState<UploadLimits | null>(null);
+  const [limitsError, setLimitsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getUploadLimits(controller.signal).then(setLimits).catch((reason: unknown) => {
+      if (!controller.signal.aborted) setLimitsError(messageFromError(reason));
+    });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => () => previewController.current?.abort(), []);
   useEffect(() => {
@@ -316,7 +328,7 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
                 {(workspace.tables ?? []).length === 0 ? <p className="empty-source">Chưa có bảng dữ liệu.</p> : null}
               </div>
               <label className="file-drop compact-drop" htmlFor="dataset-file">
-                <UploadCloud size={21} /><span><strong>Thêm CSV hoặc XLSX</strong><small>Tối đa 10 MB · 5.000 dòng · 30 cột</small></span>
+                <UploadCloud size={21} /><span><strong>Thêm CSV hoặc XLSX</strong><small>{limits ? `Tối đa ${limits.max_file_bytes / 1048576} MB · ${limits.max_rows.toLocaleString("vi")} dòng · ${limits.max_columns} cột` : limitsError ?? "Đang đọc giới hạn từ máy chủ…"}</small></span>
                 <input accept=".csv,.xlsx" id="dataset-file" onChange={(event) => { chooseTableFile(event.target.files?.[0] ?? null); event.target.value = ""; }} type="file" />
               </label>
               {isPreviewing ? <div className="upload-status" role="status">Đang kiểm tra file…</div> : null}
@@ -346,7 +358,7 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
                 {documents.length === 0 ? <p className="empty-source">Chưa có tài liệu.</p> : null}
               </div>
               <label className="file-drop compact-drop" htmlFor="document-file">
-                <FileText size={21} /><span><strong>Thêm PDF, DOCX, TXT hoặc MD</strong><small>PDF cần có text layer; không hỗ trợ OCR</small></span>
+                <FileText size={21} /><span><strong>Thêm PDF, DOCX, TXT hoặc MD</strong><small>{limits ? `Tối đa ${limits.max_file_bytes / 1048576} MB · PDF ${limits.max_pdf_pages} trang có text layer; không OCR.` : "Đang đọc giới hạn tài liệu…"}</small>{limits && !limits.provider_data_enabled ? <small>Lưu tài liệu cần Gemini Embedding, hiện chưa được quản trị viên cho phép. CSV/XLSX vẫn nhập được bình thường.</small> : null}</span>
                 <input accept=".pdf,.docx,.txt,.md" disabled={busy} id="document-file" onChange={(event) => { void addDocument(event.target.files?.[0] ?? null); event.target.value = ""; }} type="file" />
               </label>
             </section>

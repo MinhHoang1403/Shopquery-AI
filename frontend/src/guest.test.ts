@@ -62,6 +62,16 @@ it("reports an HTML proxy 413 clearly and never exposes guest tokens in React st
   }
 });
 
+it("reports upload rate Retry-After without locking the chat quota", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => url === "/api/guest/session" ? json(state) : new Response(JSON.stringify({ detail: "Hết lượt xem trước" }), {
+    status: 429, headers: { "X-Guest-Limit": "preview", "Retry-After": "120" },
+  })));
+  const status = vi.fn();
+  const client = createGuestClient(status);
+  await expect(client.previewFile(new File(["A\n1"], "x.csv"))).rejects.toThrow("2 phút");
+  expect(status).not.toHaveBeenCalledWith(expect.objectContaining({ limited: true }));
+});
+
 it("updates consumed quota on a failed provider call without creating messages", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url) => url === "/api/guest/session" ? json(state) : new Response(JSON.stringify({ detail: "Unavailable" }), {
     status: 502, headers: { "X-Guest-Remaining": "4" },

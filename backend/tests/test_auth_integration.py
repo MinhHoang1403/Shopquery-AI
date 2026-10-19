@@ -447,6 +447,62 @@ def test_owned_pipelines_execute_real_sql_retrieval_with_offline_providers(
         )
 
 
+def test_authenticated_preview_budget_is_separate_and_limits_require_login(accounts):
+    accounts.settings.beta_preview_per_user_hour = 2
+    accounts.settings.beta_upload_per_user_hour = 1
+    client = accounts.a.client
+    caps = client.get("/api/uploads/limits")
+    assert caps.status_code == 200
+    assert caps.json()["max_rows"] == accounts.settings.upload_max_rows
+    assert caps.json()["preview_per_hour"] == 2
+    with TestClient(app) as anonymous:
+        assert anonymous.get("/api/uploads/limits").status_code == 401
+    path = f"/api/datasets/{accounts.a.dataset.dataset_id}/tables"
+    for _ in range(2):
+        assert (
+            client.post(path + "/preview", files={"file": ("extra.csv", b"Fee\n100\n")}).status_code
+            == 200
+        )
+    denied = client.post(path + "/preview", files={"file": ("extra.csv", b"Fee\n100\n")})
+    assert denied.status_code == 429
+    assert 1 <= int(denied.headers["Retry-After"]) <= 3600
+    added = client.post(path + "/import", files={"file": ("extra.csv", b"Fee\n100\n")})
+    assert added.status_code == 201
+    assert added.json()["table_count"] == 2
+    assert (
+        client.post(path + "/import", files={"file": ("more.csv", b"Fee\n100\n")}).status_code
+        == 429
+    )
+
+
+@pytest.mark.parametrize("extension", ["pdf", "docx", "txt", "md"])
+def test_document_provider_gate_is_explicit_and_does_not_persist(accounts, monkeypatch, extension):
+    from unittest.mock import Mock
+
+    from tests.test_document_upload_parser import _docx_bytes, _pdf_bytes
+
+    accounts.settings.beta_provider_data_enabled = False
+    provider = Mock(side_effect=AssertionError("Provider must not be initialized"))
+    monkeypatch.setattr("app.api.routes.GeminiGateway", provider)
+    content = {
+        "pdf": _pdf_bytes("Synthetic rules"),
+        "docx": _docx_bytes("Synthetic rules"),
+        "txt": b"Synthetic rules",
+        "md": b"# Rules\n\nSynthetic rules",
+    }[extension]
+    before = len(accounts.a.documents.list_documents(accounts.a.dataset.dataset_id))
+    response = accounts.a.client.post(
+        f"/api/datasets/{accounts.a.dataset.dataset_id}/documents",
+        files={"file": (f"blocked.{extension}", content)},
+    )
+    assert response.status_code == 403
+    assert "chưa cho phép" in response.json()["detail"]
+    assert len(accounts.a.documents.list_documents(accounts.a.dataset.dataset_id)) == before
+    assert accounts.a.client.get("/api/uploads/limits").json()["provider_data_enabled"] is False
+    assert accounts.a.client.get("/api/models").json()["ai_enabled"] is False
+    provider.assert_not_called()
+
+
 def test_storage_limit_rolls_back_new_table_and_metadata(accounts, monkeypatch):
     from app.core.config import Settings
     from app.database.integrity import legacy_fingerprints

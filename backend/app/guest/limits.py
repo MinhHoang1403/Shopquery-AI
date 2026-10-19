@@ -22,7 +22,13 @@ class GuestControl(ResourceControl):
             if exc.status_code == 429:
                 raise HTTPException(
                     429,
-                    "Đã hết ngân sách dùng thử theo IP. Đăng nhập hoặc thử lại sau.",
+                    {
+                        "preview": "Đã hết lượt xử lý/xem trước tệp theo IP.",
+                        "upload": "Đã hết lượt thêm tệp theo IP.",
+                        "session": "Đã hết lượt tạo phiên khách theo IP.",
+                        "chat": "Đã hết lượt hỏi AI dùng thử theo IP.",
+                    }.get(action, "Đã hết ngân sách dùng thử theo IP.")
+                    + " Đăng nhập hoặc thử lại sau.",
                     headers={**(exc.headers or {}), "X-Guest-Limit": action},
                 ) from exc
             raise

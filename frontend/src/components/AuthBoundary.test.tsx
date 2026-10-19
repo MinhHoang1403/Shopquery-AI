@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { AuthBoundary } from "./AuthBoundary";
-import { getDatasets, resetSessionRequests, setSessionCsrf, createDataset } from "../api";
+import { getDatasets, resetSessionRequests, setSessionCsrf, createDataset, pauseSessionRequests } from "../api";
 
 const session = (name: string) => ({
   user: { user_id: name, display_name: name, email: `${name}@example.invalid` }, csrf_token: `csrf-${name}`,
@@ -48,8 +48,9 @@ it("unmounts account A and loads B after focus session validation", async () => 
   await screen.findByText("Private workspace A");
   account = "B";
   fireEvent(window, new Event("focus"));
-  expect(screen.queryByText("Private workspace A")).not.toBeInTheDocument();
+  expect(screen.getByText("Private workspace A")).not.toBeVisible();
   await screen.findByText("Private workspace B");
+  expect(screen.queryByText("Private workspace A")).not.toBeInTheDocument();
 });
 
 it("discards late private responses from a previous session even if fetch ignores abort", async () => {
@@ -61,6 +62,92 @@ it("discards late private responses from a previous session even if fetch ignore
   setSessionCsrf("csrf-B");
   finish(json([{ name: "private A" }]));
   await rejected;
+});
+
+it("preserves the selected file and draft after validating the same session on focus", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => json(session("A"))));
+  render(<AuthBoundary>{() => <><input aria-label="Private draft" /><input aria-label="Selected file" type="file" /></>}</AuthBoundary>);
+  const input = await screen.findByLabelText("Private draft");
+  const picker = screen.getByLabelText("Selected file") as HTMLInputElement;
+  const file = new File(["Name,Fee\nA,100"], "fees.csv");
+  fireEvent.change(input, { target: { value: "Keep draft" } });
+  fireEvent.change(picker, { target: { files: [file] } });
+  fireEvent(window, new Event("focus"));
+  await waitFor(() => expect(screen.getByLabelText("Private draft")).toBeVisible());
+  expect(screen.getByLabelText("Private draft")).toHaveValue("Keep draft");
+  expect((screen.getByLabelText("Selected file") as HTMLInputElement).files?.[0]).toBe(file);
+});
+
+it("queues writes during validation and drops them if identity changes", async () => {
+  const fetch = vi.fn(async () => json({ dataset_id: 1 }));
+  vi.stubGlobal("fetch", fetch);
+  const resume = pauseSessionRequests();
+  const write = createDataset("Unsent private workspace");
+  const rejected = expect(write).rejects.toMatchObject({ name: "AbortError" });
+  await Promise.resolve();
+  expect(fetch).not.toHaveBeenCalled();
+  resetSessionRequests();
+  resume();
+  await rejected;
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("does not cancel an already authorized upload when focus confirms the same session", async () => {
+  let finish: (response: Response) => void = () => undefined;
+  vi.stubGlobal("fetch", vi.fn((url: RequestInfo | URL) => url === "/api/auth/me"
+    ? Promise.resolve(json(session("A")))
+    : new Promise<Response>((resolve) => { finish = resolve; })));
+  boundary();
+  await screen.findByText("Private workspace A");
+  const upload = createDataset("In-flight authorized upload");
+  const result = upload.then((value) => ({ value, error: null }), (error: unknown) => ({ value: null, error }));
+  fireEvent(window, new Event("focus"));
+  await waitFor(() => expect(screen.getByText("Private workspace A")).toBeVisible());
+  finish(json({ dataset_id: 99 }));
+  expect(await result).toEqual({ value: { dataset_id: 99 }, error: null });
+});
+
+it("resumes queued writes with revalidated CSRF for the same session", async () => {
+  const fetch = vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => { void url; void options; return json({ dataset_id: 1 }); });
+  vi.stubGlobal("fetch", fetch);
+  const resume = pauseSessionRequests();
+  const write = createDataset("Kept workspace");
+  expect(fetch).not.toHaveBeenCalled();
+  setSessionCsrf("revalidated-csrf");
+  resume();
+  await write;
+  expect(new Headers(fetch.mock.calls[0][1]?.headers).get("X-CSRF-Token")).toBe("revalidated-csrf");
+});
+
+it("holds in-flight private responses until focus verification, then rejects a changed session", async () => {
+  let finish: (value: Response) => void = () => undefined;
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; })));
+  const request = getDatasets();
+  let settled = false;
+  const outcome = request.then(() => { settled = true; return "unsafe"; }, (error: unknown) => { settled = true; return (error as Error).name; });
+  await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
+  const resume = pauseSessionRequests();
+  finish(json([{ name: "private A" }]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(settled).toBe(false);
+  resetSessionRequests();
+  resume();
+  expect(await outcome).toBe("AbortError");
+});
+
+it("fails closed and removes private state when focus verification fails", async () => {
+  let fail = false;
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    if (fail) throw new TypeError("Offline");
+    return json(session("A"));
+  }));
+  boundary();
+  await screen.findByText("Private workspace A");
+  fail = true;
+  fireEvent(window, new Event("focus"));
+  expect(screen.getByText("Private workspace A")).not.toBeVisible();
+  await screen.findByRole("link", { name: "Tiếp tục với Google" });
+  expect(screen.queryByText("Private workspace A")).not.toBeInTheDocument();
 });
 
 it("clears private UI when a private API returns 401", async () => {

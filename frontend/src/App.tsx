@@ -59,6 +59,7 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
+  const [providerEnabled, setProviderEnabled] = useState(true);
   const [defaultModel, setDefaultModel] = useState<ModelId>("inetcloud-knowledge");
   const [selectedModel, setSelectedModel] = useState<ModelId>("inetcloud-knowledge");
   const [isSavingModel, setIsSavingModel] = useState(false);
@@ -92,6 +93,14 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   const datasetName = selectedDataset?.name ?? "bộ dữ liệu của bạn";
   const hasSources = Boolean(selectedDataset && (selectedDataset.kind === "default" ||
     (selectedDataset.table_count ?? 0) > 0 || (selectedDataset.document_count ?? 0) > 0));
+  const submitUnavailableReason = !isGuest && !hasSources
+    ? "Hãy tải dữ liệu lên trước khi đặt câu hỏi."
+    : isGuest && guestStatus?.expired ? "Phiên dùng thử đã hết hạn. Hãy bắt đầu phiên mới."
+    : isGuest && (guestStatus?.limited || (guestStatus?.remaining ?? 1) <= 0) ? "Đã hết lượt hỏi dùng thử. Đăng nhập hoặc bắt đầu lại sau."
+    : isGuest && !guestStatus?.ai_enabled ? "AI đang tạm chưa được bật cho chế độ dùng thử. Bạn vẫn có thể tải và xem trước tệp."
+    : !isGuest && !providerEnabled ? "Quản trị viên chưa cho phép gửi dữ liệu tới AI providers."
+    : models.length > 0 && !models.find((model) => model.id === selectedModel)?.configured ? "Mô hình đã chọn chưa được cấu hình. Hãy chọn mô hình khả dụng."
+    : null;
   const welcomeSubtitle = isGuest && !hasSources
     ? "Trò chuyện với AI hoặc tải bảng dữ liệu và tài liệu lên để phân tích."
     : !hasSources
@@ -127,6 +136,7 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
         setDatasets(availableDatasets);
         if (!availableConversations.length) setSelectedDatasetId(availableDatasets[0]?.dataset_id ?? null);
         setModels(modelRegistry.models);
+        setProviderEnabled(modelRegistry.ai_enabled ?? true);
         setDefaultModel(modelRegistry.default_model);
         if (selectionSequence.current === bootstrapSequence || !activeConversation.current) {
           setSelectedModel(modelRegistry.default_model);
@@ -236,11 +246,10 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
 
   async function submitQuestion(questionOverride?: string) {
     if (isLoading || isBooting || isSavingModel) return;
-    if (!hasSources && !isGuest) {
-      setValidationError("Hãy tải dữ liệu lên trước khi đặt câu hỏi.");
+    if (submitUnavailableReason) {
+      setValidationError(submitUnavailableReason);
       return;
     }
-    if (isGuest && (!guestStatus?.ai_enabled || guestStatus.limited || guestStatus.expired || guestStatus.remaining <= 0)) return;
     const requestModel = selectedModel;
     const question = (questionOverride ?? draft).trim();
     if (!question) {
@@ -457,7 +466,8 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
           <div className="chat-column">
             <ChatInput
               datasetName={datasetName}
-              disabled={Boolean(isLoading || isBooting || isSavingModel || (isGuest ? !guestStatus?.ai_enabled || guestStatus.limited || guestStatus.expired || guestStatus.remaining <= 0 : !hasSources))}
+              disabled={Boolean(isLoading || isBooting || isSavingModel)}
+              submitUnavailableReason={submitUnavailableReason}
               placeholder={isGuest && !hasSources ? "Nhập câu hỏi để dùng thử…" : undefined}
               models={models}
               selectedModel={selectedModel}
@@ -479,8 +489,8 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
       </div>
 
       {uploadOpen ? guestClient ? <GuestUploadDialog client={guestClient} status={guestStatus} onClose={() => setUploadOpen(false)} onImported={datasetImported} /> : <DatasetUploadDialog datasets={datasets} deletionDisabled={isLoading || isBooting || isSavingModel} onClose={() => setUploadOpen(false)} onDeleted={datasetDeleted} onImported={datasetImported} /> : null}
-      {loginOpen ? <Modal title="Đăng nhập ShopQuery AI" description="Đoạn chat và tệp dùng thử chưa được lưu. Đăng nhập sẽ mở không gian cá nhân, không tự chuyển dữ liệu tạm sang tài khoản." onClose={() => setLoginOpen(false)}>
-        <div className="dialog-actions"><button className="secondary-button" type="button" onClick={() => setLoginOpen(false)}>Tiếp tục dùng thử</button><a className="primary-button" href="/api/auth/login" onClick={() => guestClient?.dispose()}>Tiếp tục với Google</a></div>
+      {loginOpen ? <Modal className="login-modal" title="Đăng nhập ShopQuery AI" description="Mở không gian dữ liệu riêng và lưu lịch sử chat. Tệp dùng thử không tự chuyển vào tài khoản." onClose={() => setLoginOpen(false)}>
+        <div className="dialog-actions"><a className="primary-button" href="/api/auth/login" onClick={() => guestClient?.dispose()}>Tiếp tục với Google</a><button className="secondary-button" type="button" onClick={() => setLoginOpen(false)}>Tiếp tục dùng thử</button></div>
       </Modal> : null}
       {renameTarget ? <RenameDialog currentTitle={renameTarget.title} error={renameError} onClose={() => setRenameTarget(null)} onSave={saveRename} saving={isRenaming} /> : null}
       {deleteTarget ? <ConfirmDialog busy={isDeleting} confirmLabel="Xóa cuộc trò chuyện" danger description={`“${deleteTarget.title}” và toàn bộ tin nhắn sẽ bị xóa vĩnh viễn.`} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} title="Xóa cuộc trò chuyện?" /> : null}

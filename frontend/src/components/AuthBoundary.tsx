@@ -1,6 +1,6 @@
 import { Database, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChatApiError, getCurrentSession, logoutSession, resetSessionRequests, setSessionCsrf,
+import { ChatApiError, getCurrentSession, logoutSession, pauseSessionRequests, resetSessionRequests, setSessionCsrf,
   type SessionInfo } from "../api";
 
 type AuthenticatedRenderer = (session: SessionInfo, logout: () => void) => ReactNode;
@@ -26,14 +26,19 @@ export function AuthBoundary({ children, guest }: {
   const [attempt, setAttempt] = useState(0);
   const logoutState = useRef<"idle" | "pending" | "failed">("idle");
   const wasAuthenticated = useRef(false);
+  const verifiedSession = useRef<SessionInfo | null>(null);
 
   useEffect(() => {
     let controller = new AbortController();
     let active = true;
+    let resumeRequests = () => undefined as void;
     const expired = () => {
+      controller.abort();
       resetSessionRequests();
       setSession(null);
       wasAuthenticated.current = false;
+      verifiedSession.current = null;
+      resumeRequests();
       setLoading(false);
       setError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
     };
@@ -41,23 +46,31 @@ export function AuthBoundary({ children, guest }: {
     const checkSession = () => {
       if (logoutState.current !== "idle") return;
       controller.abort();
-      if (wasAuthenticated.current) resetSessionRequests();
+      resumeRequests();
+      resumeRequests = pauseSessionRequests();
+      const resume = resumeRequests;
       controller = new AbortController();
       const current = controller;
-      if (wasAuthenticated.current) { setSession(null); setLoading(true); }
-      getCurrentSession(current.signal).then((result) => {
-        if (!active || current !== controller) return;
+      if (wasAuthenticated.current) setLoading(true);
+      getCurrentSession(AbortSignal.any([current.signal, AbortSignal.timeout(15_000)])).then((result) => {
+        if (!active || current !== controller || current.signal.aborted || logoutState.current !== "idle") return;
+        const previous = verifiedSession.current;
+        if (previous && (previous.user.user_id !== result.user.user_id || previous.csrf_token !== result.csrf_token)) resetSessionRequests();
         setSessionCsrf(result.csrf_token);
+        verifiedSession.current = result;
         wasAuthenticated.current = true;
         setSession(result);
         setError(null);
       }).catch((reason: unknown) => {
-        if (!active || current !== controller || (reason instanceof DOMException && reason.name === "AbortError")) return;
+        if (!active || current !== controller || current.signal.aborted || logoutState.current !== "idle") return;
+        if (wasAuthenticated.current) resetSessionRequests();
+        setSession(null);
+        verifiedSession.current = null;
         wasAuthenticated.current = false;
         if (!(reason instanceof ChatApiError && reason.status === 401)) {
           setError(reason instanceof Error ? reason.message : "Không thể kiểm tra phiên đăng nhập.");
         }
-      }).finally(() => { if (active && current === controller) setLoading(false); });
+      }).finally(() => { resume(); if (active && current === controller) setLoading(false); });
     };
     checkSession();
     window.addEventListener("focus", checkSession);
@@ -65,6 +78,7 @@ export function AuthBoundary({ children, guest }: {
       active = false;
       controller.abort();
       resetSessionRequests();
+      resumeRequests();
       window.removeEventListener("shopquery:session-expired", expired);
       window.removeEventListener("focus", checkSession);
     };
@@ -77,6 +91,7 @@ export function AuthBoundary({ children, guest }: {
     setLogoutFailed(false);
     setSession(null);
     wasAuthenticated.current = false;
+    verifiedSession.current = null;
     setError(null);
     try {
       if (refreshSession) {
@@ -99,10 +114,13 @@ export function AuthBoundary({ children, guest }: {
     }
   }
 
-  if (loading) return <main className="auth-screen"><div className="auth-loading" role="status">
+  const loadingScreen = <main className="auth-screen"><div className="auth-loading" role="status">
     <LoaderCircle aria-hidden="true" size={22} />Đang kiểm tra phiên đăng nhập…
   </div></main>;
-  if (session) return <AuthenticatedView render={children} session={session} onLogout={() => { void logout(); }} />;
+  if (session) return <>{loading ? loadingScreen : null}<div hidden={loading} inert={loading}>
+    <AuthenticatedView key={`${session.user.user_id}:${session.csrf_token}`} render={children} session={session} onLogout={() => { void logout(); }} />
+  </div></>;
+  if (loading) return loadingScreen;
   if (guest && !logoutPending && !logoutFailed) return <>{error ? <p className="auth-notice" role="alert">{error}</p> : null}{guest}</>;
   return <main className="auth-screen"><section className="auth-card">
     <div className="auth-symbol" aria-hidden="true"><Database size={24} /></div>

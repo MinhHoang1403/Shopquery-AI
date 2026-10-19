@@ -33,6 +33,7 @@ class GuestContext:
     remaining: int
     files: list[GuestFile] = field(default_factory=list)
     uploaded_count: int = 0
+    parse_count: int = 0
     cancelled: threading.Event = field(default_factory=threading.Event)
     busy: threading.Lock = field(default_factory=threading.Lock)
 

@@ -54,6 +54,7 @@ class ModelOption(BaseModel):
 
 
 class ModelsResponse(BaseModel):
+    ai_enabled: bool = False
     default_model: ModelId
     models: list[ModelOption]
     gemini_fallback_enabled: bool

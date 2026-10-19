@@ -164,6 +164,58 @@ def test_uploads_are_ram_scoped_and_reset_or_new_page_cannot_restore_them(guest_
     assert api.client.get("/api/guest/limits", headers=b).status_code == 200
 
 
+def test_previews_do_not_spend_the_commit_budget(guest_api):
+    api = guest_api
+    api.settings.guest_uploads_per_ip_hour = 1
+    headers = new_guest(api)
+    for _ in range(3):
+        response = api.client.post(
+            "/api/guest/files/preview?filename=fees.csv",
+            headers=headers,
+            content=b"Name,Fee\nA,100\n",
+        )
+        assert response.status_code == 200
+    response = api.client.post(
+        "/api/guest/files?filename=fees.csv", headers=headers, content=b"Name,Fee\nA,100\n"
+    )
+    assert response.status_code == 200
+    assert len(response.json()["status"]["files"]) == 1
+    assert (
+        api.client.post(
+            "/api/guest/files?filename=next.csv", headers=headers, content=b"Name,Fee\nB,200\n"
+        ).status_code
+        == 429
+    )
+
+
+def test_guest_parse_budget_is_session_scoped_and_bounds_invalid_attempts(guest_api):
+    api = guest_api
+    api.settings.guest_previews_per_session = 2
+    first, second = new_guest(api), new_guest(api)
+    parse = api.worker.side_effect
+    api.worker.side_effect = HTTPException(422, "Unsupported file")
+    for _ in range(2):
+        assert (
+            api.client.post(
+                "/api/guest/files/preview?filename=bad.exe", headers=first, content=b"bad"
+            ).status_code
+            == 422
+        )
+    blocked = api.client.post(
+        "/api/guest/files/preview?filename=x.csv", headers=first, content=b"A\n1\n"
+    )
+    assert blocked.status_code == 429
+    assert blocked.headers["X-Guest-Limit"] == "preview"
+    assert api.client.get("/api/guest/limits", headers=first).json()["remaining"] == 5
+    api.worker.side_effect = parse
+    assert (
+        api.client.post(
+            "/api/guest/files?filename=x.csv", headers=second, content=b"A\n1\n"
+        ).status_code
+        == 200
+    )
+
+
 def test_file_and_json_caps_fail_before_processing(guest_api):
     api = guest_api
     headers = new_guest(api)

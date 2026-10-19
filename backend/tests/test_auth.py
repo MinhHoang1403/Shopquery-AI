@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from joserfc import jwt
 from joserfc.errors import JoseError
 from joserfc.jwk import RSAKey
+from starlette.requests import Request
 
 from app.auth.oidc import google_client, verified_identity
 from app.core.config import Settings
@@ -30,6 +31,33 @@ def oidc_settings():
         google_client_secret="fixture-secret",
         auth_invited_emails=["a@example.invalid"],
     )
+
+
+@pytest.mark.parametrize("endpoint", ["login", "callback"])
+def test_login_budget_uses_verified_proxy_client_ip(monkeypatch, endpoint):
+    from app.auth import routes
+
+    settings = oidc_settings()
+    settings.trusted_proxy_hosts = ["web"]
+    monkeypatch.setattr(routes, "get_settings", lambda: settings)
+    monkeypatch.setattr(routes, "google_client", lambda config: Mock())
+    monkeypatch.setattr("socket.getaddrinfo", lambda *args: [(2, 1, 6, "", ("172.20.0.4", 0))])
+    control = Mock()
+    control.login.side_effect = HTTPException(429, "Synthetic rate check")
+    monkeypatch.setattr(routes, "resource_control", lambda: control)
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/auth/" + endpoint,
+            "client": ("172.20.0.4", 1234),
+            "query_string": b"state=test&code=test" if endpoint == "callback" else b"",
+            "headers": [(b"x-forwarded-for", b"198.51.100.7"), (b"cookie", b"shopquery_oidc=test")],
+        }
+    )
+    with pytest.raises(HTTPException):
+        asyncio.run(getattr(routes, endpoint)(request))
+    control.login.assert_called_once_with("198.51.100.7")
 
 
 @pytest.mark.parametrize(
