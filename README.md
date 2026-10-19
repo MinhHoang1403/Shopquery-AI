@@ -278,6 +278,8 @@ docker compose exec db psql -U shopquery_setup -d postgres -c "DROP DATABASE sho
 
 Không chạy integration tests với `shopquery` nếu cần giữ nguyên database chính. Test integration dùng embedding giả lập có tính quyết định, không phải kết quả Gemini thật.
 
+GitHub CI tự chạy job `PostgreSQL integration` với PostgreSQL 17/pgvector và database `shopquery_ci` riêng cho mỗi job. Job bật `RUN_DATABASE_TESTS=1`, chạy đủ 57 integration tests (gồm 40 test múi giờ), dùng role đọc riêng và không cần API key Knowledge/Gemini. Live tests không chạy trong CI; service database được hủy sau job, không kết nối database đang sử dụng của ứng dụng.
+
 ### Frontend
 
 ```powershell

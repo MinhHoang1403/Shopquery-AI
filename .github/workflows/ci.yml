@@ -35,6 +35,76 @@ jobs:
       - name: Run backend unit tests
         run: uv run pytest -m "not integration and not live"
 
+  postgres-integration:
+    name: PostgreSQL integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      RUN_DATABASE_TESTS: "1"
+      DATABASE_SETUP_URL: postgresql+psycopg://shopquery_setup:ci_setup_password@127.0.0.1:5432/shopquery_ci
+      DATABASE_READONLY_URL: postgresql+psycopg://shopquery_reader:ci_readonly_password@127.0.0.1:5432/shopquery_ci
+      GEMINI_API_KEY: ""
+      INETCLOUD_BASE_URL: ""
+      AI_GEMINI_FALLBACK_ENABLED: "false"
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg17-trixie
+        env:
+          POSTGRES_DB: shopquery_ci
+          POSTGRES_USER: shopquery_setup
+          # Disposable credentials for this job's isolated service only.
+          POSTGRES_PASSWORD: ci_setup_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shopquery_setup -d shopquery_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install backend dependencies
+        run: uv sync --locked
+      - name: Prepare isolated database role
+        run: |
+          uv run python - <<'PY'
+          from sqlalchemy import create_engine, text
+
+          from app.core.config import Settings
+
+          settings = Settings(_env_file=None)
+          engine = create_engine(settings.database_setup_url)
+          assert engine.url.database == "shopquery_ci"
+          assert not settings.gemini_api_key
+          assert not settings.inetcloud_base_url
+          with engine.begin() as connection:
+              connection.execute(text(
+                  "CREATE ROLE shopquery_reader LOGIN PASSWORD 'ci_readonly_password'"
+              ))
+              connection.execute(text(
+                  "ALTER ROLE shopquery_reader SET default_transaction_read_only = on"
+              ))
+              connection.execute(text(
+                  "GRANT CONNECT ON DATABASE shopquery_ci TO shopquery_reader"
+              ))
+          engine.dispose()
+          PY
+      - name: Run PostgreSQL integration tests without live AI calls
+        run: uv run pytest -m "integration and not live" -v
+
   frontend:
     name: Frontend quality
     runs-on: ubuntu-latest

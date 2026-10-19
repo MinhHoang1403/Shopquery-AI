@@ -50,7 +50,7 @@ Tài liệu này ghi lại cơ sở cho các quyết định AI và dữ liệu 
 
 - Nguồn: [React versions](https://react.dev/versions), [Vite guide](https://vite.dev/guide/), [Playwright installation](https://playwright.dev/docs/intro), [Playwright browsers](https://playwright.dev/docs/browsers), [Playwright emulation](https://playwright.dev/docs/emulation), [Nginx proxy module](https://nginx.org/en/docs/http/ngx_http_proxy_module.html), [Docker Official Images](https://hub.docker.com/search?image_filter=official) và [GitHub Actions Node.js guide](https://docs.github.com/en/actions/tutorials/build-and-test-code/nodejs).
 - Áp dụng: React/TypeScript render UI theo API contract, Vite proxy `/api` khi phát triển, Nginx phục vụ SPA và `proxy_pass` không kèm URI để giữ nguyên tiền tố `/api`, multi-stage build dùng Node và Nginx official images đã ghim phiên bản.
-- CI: backend chạy Ruff và unit tests; frontend chạy ESLint, typecheck, Vitest và production build. Workflow không dùng Gemini key và không chạy live tests.
+- CI: backend chạy Ruff và unit tests; job PostgreSQL integration chạy 57 tests trong service PostgreSQL 17/pgvector với database riêng và role đọc riêng theo [GitHub Actions PostgreSQL service containers](https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers). Frontend chạy ESLint, typecheck, Vitest và production build. Workflow không cần API key Knowledge/Gemini và không chạy live tests.
 - Browser QA: Playwright-managed Chromium kiểm tra mock states trên desktop/mobile và chạy live smoke riêng qua Nginx; screenshots, traces và reports là artifact local bị Git ignore.
 - Giới hạn: Nginx chỉ bind qua Compose vào `127.0.0.1:8080`; đây là cấu hình local readiness, chưa phải public production deployment.
 
