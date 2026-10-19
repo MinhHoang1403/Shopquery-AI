@@ -100,6 +100,7 @@ def test_representative_sql_executes_and_matches_reference(database: Engine, sql
     validated = SqlValidator().validate(sql)
     actual = SqlExecutor(get_readonly_engine(), timeout_ms=5_000, max_rows=200).execute(validated)
     with database.connect() as connection:
+        connection.execute(text("SET LOCAL TIME ZONE 'Asia/Ho_Chi_Minh'"))
         expected = [dict(row) for row in connection.execute(text(validated.statement)).mappings()]
     normalized_expected = [
         {key: _json_safe(value) for key, value in row.items()} for row in expected

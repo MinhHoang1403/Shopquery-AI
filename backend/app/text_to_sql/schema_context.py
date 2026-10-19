@@ -1,6 +1,8 @@
 """The compact schema and business context supplied to SQL generation."""
 
-SCHEMA_CONTEXT = """
+BUSINESS_TIME_ZONE = "Asia/Ho_Chi_Minh"
+
+SCHEMA_CONTEXT = f"""
 PostgreSQL schema:
 - categories(category_id INTEGER PK, category_code VARCHAR UNIQUE NOT NULL,
   category_name VARCHAR NOT NULL)
@@ -20,7 +22,7 @@ Business rules:
 - Best-selling means SUM(order_items.quantity) from completed orders unless the question
   explicitly asks for another definition.
 - Distinguish top products by quantity from top products by revenue.
-- Interpret calendar dates in Asia/Ho_Chi_Minh and use half-open [start, end) filters.
+- Interpret calendar dates in {BUSINESS_TIME_ZONE} and use half-open [start, end) filters.
 """.strip()
 
 TABLE_COLUMNS: dict[str, set[str]] = {

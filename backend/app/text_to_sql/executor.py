@@ -8,6 +8,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.errors import SqlExecutionError
+from app.text_to_sql.schema_context import BUSINESS_TIME_ZONE
 from app.text_to_sql.validator import ValidatedSql
 
 
@@ -26,6 +27,10 @@ class SqlExecutor:
                     connection.execute(
                         text("SELECT set_config('statement_timeout', :timeout, true)"),
                         {"timeout": str(self._timeout_ms)},
+                    )
+                    connection.execute(
+                        text("SELECT set_config('TimeZone', :timezone, true)"),
+                        {"timezone": BUSINESS_TIME_ZONE},
                     )
                     result = connection.execute(text(validated.statement))
                     raw_rows = result.mappings().fetchmany(self._max_rows + 1)

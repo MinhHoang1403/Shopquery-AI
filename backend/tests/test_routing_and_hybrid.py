@@ -106,6 +106,19 @@ def test_sql_prompt_requires_category_evidence_for_policy_comparison() -> None:
     assert "Never label a SUM, AVG" in gateway.prompt
 
 
+def test_sql_prompt_requires_explicit_vietnamese_calendar_boundaries() -> None:
+    gateway = SqlPromptGateway()
+
+    SqlGenerator(gateway, "2026-10-01").generate("Top sản phẩm tháng 9/2025?")
+
+    assert "Asia/Ho_Chi_Minh, not UTC" in gateway.prompt
+    assert "TIMESTAMPTZ literals with an" in gateway.prompt
+    assert "explicit +07:00 offset" in gateway.prompt
+    assert "TIMESTAMP literals AT TIME ZONE 'Asia/Ho_Chi_Minh'" in gateway.prompt
+    assert "that discards its offset" in gateway.prompt
+    assert ">= start AND < end" in gateway.prompt
+
+
 @pytest.mark.parametrize(
     "question",
     [

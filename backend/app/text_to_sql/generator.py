@@ -1,9 +1,9 @@
-"""Structured Gemini SQL generation."""
+"""Structured SQL generation using the selected provider."""
 
 from pydantic import BaseModel, Field
 
 from app.ai.gemini import GenerationGateway
-from app.text_to_sql.schema_context import SCHEMA_CONTEXT
+from app.text_to_sql.schema_context import BUSINESS_TIME_ZONE, SCHEMA_CONTEXT
 
 
 class SqlDraft(BaseModel):
@@ -41,6 +41,14 @@ The orders table has only order_id, order_date and status; it has no category co
 For default-store shipping or warranty questions, always select BOTH categories.category_code
 and categories.category_name along with each product. Include both in GROUP BY when aggregating.
 Policy documents use the codes; the category name alone is insufficient evidence for that policy.
+
+The executor evaluates calendar dates in {BUSINESS_TIME_ZONE}, not UTC.
+For TIMESTAMPTZ columns, express local calendar boundaries as TIMESTAMPTZ literals with an
+explicit +07:00 offset, or TIMESTAMP literals AT TIME ZONE '{BUSINESS_TIME_ZONE}'.
+Keep the date column unchanged in range filters and use >= start AND < end.
+Never cast an offset-bearing literal to TIMESTAMP without time zone: that discards its offset.
+Do not apply AT TIME ZONE to a TIMESTAMPTZ boundary literal to construct a local month boundary.
+Use the actual date range requested; these rules do not introduce a default date filter.
 
 {self._schema_context}
 
