@@ -116,11 +116,13 @@ test("provider gate off permits guest upload but no generation and a new tab is 
   await openUploads(page);
   await page.locator("#guest-file").setInputFiles("e2e/fixtures/fees.csv");
   await page.getByRole("button", { name: "Dùng tệp trong phiên này" }).click();
+  await expect(page.locator(".guest-file-list li")).toHaveCount(1);
   await page.getByRole("button", { name: "Đóng", exact: true }).last().click();
-  const second = await context.newPage();
-  await installGuest(second, false); await second.goto("/");
-  await openUploads(second);
-  await expect(second.locator(".guest-file-list li")).toHaveCount(0);
-  await second.close();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await test.step("a second tab starts without the first tab's temporary files", async () => {
+    const second = await context.newPage();
+    await installGuest(second, false); await second.goto("/");
+    await openUploads(second);
+    await expect(second.locator(".guest-file-list li")).toHaveCount(0);
+  });
 });

@@ -8,6 +8,8 @@ Baseline `f48aa32e49f252e01cb49f890440ebb1f4d0ece2`, branch `main`. Working tree
 
 SHA và link GitHub Actions đúng commit được trả ở phần bàn giao sau push; không ghi SHA tự tham chiếu vào chính commit. CI vẫn chạy backend, PostgreSQL cô lập và frontend/browser mock, không cần API key và không gọi AI/Google login thật.
 
+CI đầu của `c3ac630` pass backend/PostgreSQL nhưng browser đạt 78/80: hai case mobile Linux timeout trong đoạn test tab thứ hai/đọc lại trang cũ. Bộ test được sửa để kiểm tra DOM trang đầu trước khi mở tab thứ hai và giao việc đóng tabs cho test runner; vẫn giữ đầy đủ kiểm tra upload, gate-off và tab mới trống, không skip/retry để che lỗi. Vite trong chế độ mock cũng tắt proxy API để unload keepalive không rơi sang backend thật khi interceptor đang teardown. Lần CI sau phải được xác minh riêng trước khi kết luận xanh.
+
 ## B. UX
 
 - `/api/auth/me` được kiểm tra trước khi mount private App. 401 vào ngay chatbot Guest, không redirect Google, không đọc private datasets/conversations/models.

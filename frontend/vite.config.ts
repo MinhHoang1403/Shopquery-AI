@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "127.0.0.1",
       port: 5173,
-      proxy: {
+      proxy: env.SHOPQUERY_E2E_START_SERVER === "1" ? undefined : {
         "/api": {
           target: env.SHOPQUERY_API_PROXY_TARGET ?? "http://127.0.0.1:8000",
           changeOrigin: true,
