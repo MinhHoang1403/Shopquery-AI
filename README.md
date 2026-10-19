@@ -28,6 +28,7 @@ Xem [báo cáo nghiệm thu cuối](docs/final_audit_report.md) để biết câ
 - **Ngoài phạm vi (`UNSUPPORTED`)**: từ chối câu hỏi không thuộc dữ liệu và tài liệu của cửa hàng. Ví dụ: “Thời tiết Hà Nội hôm nay thế nào?”
 - **Lịch sử hội thoại**: lưu conversation và từng message trong PostgreSQL; hỗ trợ tạo mới, chuyển, đổi tên, xóa và khôi phục sau khi tải lại trang.
 - **Dataset workspace**: tạo bộ dữ liệu rỗng, thêm nhiều bảng CSV/XLSX và nhiều tài liệu PDF/DOCX/TXT/MD, sau đó dùng SQL, RAG hoặc Hybrid trong đúng workspace đã chọn.
+- **Workspace đa lĩnh vực**: prompt dựa trên schema/tài liệu được chọn, không ép bảng upload theo mô hình bán hàng. Đã kiểm tra dữ liệu giả lập về doanh thu, học phí, giờ làm, vận tải và điện năng với cả Knowledge/Gemini; xem [báo cáo đa lĩnh vực](docs/multidomain_evaluation.md). Mỗi truy vấn upload vẫn chỉ dùng một bảng, chưa JOIN hoặc phân quyền theo người dùng.
 - **Giao diện responsive**: light theme, sidebar thu gọn/off-canvas, composer đa dòng và evidence toolbar gọn với các nút **Bảng dữ liệu**, **SQL** và **Nguồn tham khảo**; mỗi lần chỉ mở một panel.
 
 ## Công nghệ

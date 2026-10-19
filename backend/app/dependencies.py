@@ -104,7 +104,12 @@ def _build_dataset_chat_service(
         if sql_pipeline is not None and rag_pipeline is not None
         else None
     )
-    return DatasetChatService(QueryRouter(gateway), sql_pipeline, rag_pipeline, hybrid_pipeline)
+    return DatasetChatService(
+        QueryRouter(gateway, source_context=context.schema_context),
+        sql_pipeline,
+        rag_pipeline,
+        hybrid_pipeline,
+    )
 
 
 def build_document_repository() -> DocumentRepository:

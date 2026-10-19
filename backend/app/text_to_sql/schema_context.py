@@ -23,6 +23,16 @@ Business rules:
   explicitly asks for another definition.
 - Distinguish top products by quantity from top products by revenue.
 - Interpret calendar dates in {BUSINESS_TIME_ZONE} and use half-open [start, end) filters.
+
+Default-store SQL rules (apply only to this schema):
+- Use explicit joins along the declared relationships.
+- For category-based policy comparisons, join categories;
+  include category_code and category_name. Never infer a category from product_name.
+- category_code belongs only to categories, joined through products.category_id.
+  The orders table has only order_id, order_date and status; it has no category columns.
+- For shipping or warranty questions, always select BOTH categories.category_code and
+  categories.category_name along with each product; include both in GROUP BY when aggregating.
+  Policy documents use the codes; the category name alone is insufficient evidence.
 """.strip()
 
 TABLE_COLUMNS: dict[str, set[str]] = {

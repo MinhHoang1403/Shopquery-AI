@@ -54,6 +54,12 @@ Tài liệu này ghi lại cơ sở cho các quyết định AI và dữ liệu 
 - Browser QA: Playwright-managed Chromium kiểm tra mock states trên desktop/mobile và chạy live smoke riêng qua Nginx; screenshots, traces và reports là artifact local bị Git ignore.
 - Giới hạn: Nginx chỉ bind qua Compose vào `127.0.0.1:8080`; đây là cấu hình local readiness, chưa phải public production deployment.
 
+## Prompt cho workspace đa lĩnh vực
+
+- Nguồn: [Google Gemini prompt design strategies](https://ai.google.dev/gemini-api/docs/prompting-strategies), hướng dẫn dùng chỉ dẫn rõ ràng, context và ví dụ đa dạng; tài liệu cũng yêu cầu thử nghiệm/lặp lại theo use case thực tế.
+- Áp dụng: router nhận schema của workspace được chọn và phân loại theo loại bằng chứng; generator chung không mang quy tắc bán hàng sang dữ liệu upload. Quy tắc cửa hàng nằm trong default-store schema context. Mapping tách rõ tên hiển thị, header gốc và định danh bảng/cột SQL. Hybrid đối chiếu bản ghi của lĩnh vực bất kỳ với tài liệu cùng workspace.
+- Giới hạn: đây là lựa chọn prompt của dự án, không phải bảo đảm độ chính xác từ nhà cung cấp. SQLGlot allowlist, role chỉ đọc, giới hạn một bảng/không JOIN, timeout/row limit và kiểm tra citation vẫn là lớp kiểm soát thực thi. Kết quả live và lần lỗi ban đầu được ghi tại [đánh giá đa lĩnh vực](multidomain_evaluation.md).
+
 ## FastAPI, SQLAlchemy và Docker Compose
 
 - Nguồn: [FastAPI](https://fastapi.tiangolo.com/), [SQLAlchemy](https://docs.sqlalchemy.org/) và [Docker Compose](https://docs.docker.com/compose/).
