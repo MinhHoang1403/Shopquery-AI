@@ -1,10 +1,12 @@
 """Deletion HTTP contracts without database or provider access."""
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.core.errors import ResourceConflictError, ResourceNotFoundError
 from app.main import app
+from tests.auth_helpers import TestClient
+
+pytestmark = pytest.mark.usefixtures("contract_session")
 
 
 class DeletionRepository:
@@ -26,7 +28,7 @@ class DeletionRepository:
 
 def test_dataset_delete_requires_explicit_history_consent(monkeypatch) -> None:
     repository = DeletionRepository()
-    monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda: repository)
+    monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda owner: repository)
     client = TestClient(app)
 
     assert client.delete("/api/datasets/7").status_code == 409
@@ -40,14 +42,14 @@ def test_dataset_delete_requires_explicit_history_consent(monkeypatch) -> None:
 @pytest.mark.parametrize("dataset_id", [0, -1, 99])
 def test_dataset_delete_missing_or_default_cannot_delete(monkeypatch, dataset_id: int) -> None:
     repository = DeletionRepository()
-    monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda: repository)
+    monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda owner: repository)
     assert TestClient(app).delete(f"/api/datasets/{dataset_id}").status_code == 404
     assert repository.calls == []
 
 
 def test_table_delete_is_scoped_and_returns_empty_response(monkeypatch) -> None:
     repository = DeletionRepository()
-    monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda: repository)
+    monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda owner: repository)
     client = TestClient(app)
     for path in ("/api/datasets/8/tables/12", "/api/datasets/7/tables/99"):
         assert client.delete(path).status_code == 404

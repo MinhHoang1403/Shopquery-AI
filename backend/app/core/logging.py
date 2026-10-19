@@ -8,5 +8,5 @@ def configure_logging(level: str) -> None:
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    for name in ("httpx", "httpx2", "openai", "langchain", "langsmith"):
+    for name in ("httpx", "httpx2", "httpcore", "authlib", "openai", "langchain", "langsmith"):
         logging.getLogger(name).setLevel(logging.WARNING)

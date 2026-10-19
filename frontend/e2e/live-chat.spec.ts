@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 
+const runtimeEnv = (globalThis as typeof globalThis & {
+  process?: { env?: Record<string, string | undefined> };
+}).process?.env ?? {};
+
 test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, testInfo) => {
+  test.skip(runtimeEnv.RUN_LIVE_CHAT_E2E !== "1", "Live AI requires explicit opt-in.");
+  test.skip(!runtimeEnv.SHOPQUERY_LIVE_STORAGE_STATE, "An authenticated test account is required.");
   test.skip(testInfo.project.name !== "desktop-1440", "Live Gemini smoke runs once on desktop Chromium.");
   test.setTimeout(900_000);
 

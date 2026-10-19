@@ -27,6 +27,7 @@ from app.rag.repository import DocumentRepository
 from app.rag.upload_parser import ParsedDocument
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.validator import SqlValidator
+from tests.auth_helpers import TEST_OWNER
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +84,7 @@ class FailingEmbedder:
 def test_conversations_persist_rename_isolate_and_delete(
     management_database: Engine,
 ) -> None:
-    repository = ConversationRepository(management_database)
+    repository = ConversationRepository(management_database, TEST_OWNER)
     first = repository.create(None)
     second = repository.create(None)
 
@@ -124,7 +125,7 @@ def test_conversations_persist_rename_isolate_and_delete(
 def test_dataset_import_query_isolation_permissions_and_rollback(
     management_database: Engine,
 ) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine())
+    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
     first = repository.create(
         "Doanh số fixture A",
         parsed_csv(
@@ -204,7 +205,7 @@ def test_dataset_import_query_isolation_permissions_and_rollback(
 
 @pytest.mark.integration
 def test_dataset_executor_keeps_row_limit(management_database: Engine) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine())
+    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
     dataset = repository.create(
         "Giới hạn dòng fixture",
         parsed_csv("rows.csv", "Giá trị\n1\n2\n3\n"),
@@ -223,7 +224,7 @@ def test_dataset_executor_keeps_row_limit(management_database: Engine) -> None:
 def test_dataset_aggregates_distinguish_matches_null_and_zero(
     management_database: Engine,
 ) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine())
+    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
     dataset = repository.create(
         "Aggregate semantics fixture",
         parsed_csv(
@@ -271,7 +272,7 @@ def test_dataset_aggregates_distinguish_matches_null_and_zero(
 def test_xlsx_dataset_is_persisted_with_sheet_metadata(
     management_database: Engine,
 ) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine())
+    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
 
     dataset = repository.create("Tồn kho XLSX fixture", parsed_xlsx())
 
@@ -298,7 +299,7 @@ def test_xlsx_dataset_is_persisted_with_sheet_metadata(
 def test_empty_workspace_multiple_tables_and_join_rejection(
     management_database: Engine,
 ) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine())
+    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
     workspace = repository.create_workspace("Multi source workspace fixture")
 
     assert workspace.table is None
@@ -315,16 +316,10 @@ def test_empty_workspace_multiple_tables_and_join_rejection(
 
     assert first.table_count == 1
     assert second.table_count == 2
-    context = build_dataset_sql_context(
-        second, repository.categorical_values(second)
-    )
-    validator = SqlValidator(
-        context.table_columns, context.allowed_schemas, max_tables=1
-    )
+    context = build_dataset_sql_context(second, repository.categorical_values(second))
+    validator = SqlValidator(context.table_columns, context.allowed_schemas, max_tables=1)
     first_table, second_table = second.tables
-    validator.validate(
-        f"SELECT COUNT(*) FROM uploaded_data.{first_table.physical_table_name}"
-    )
+    validator.validate(f"SELECT COUNT(*) FROM uploaded_data.{first_table.physical_table_name}")
     with pytest.raises(SqlValidationError, match="relationship metadata"):
         validator.validate(
             f"SELECT * FROM uploaded_data.{first_table.physical_table_name} a "
@@ -342,21 +337,17 @@ def test_empty_workspace_multiple_tables_and_join_rejection(
 def test_document_isolation_delete_and_embedding_rollback(
     management_database: Engine,
 ) -> None:
-    datasets = DatasetRepository(management_database, get_readonly_engine())
-    documents = DocumentRepository(management_database, get_readonly_engine())
+    datasets = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
+    documents = DocumentRepository(management_database, get_readonly_engine(), TEST_OWNER)
     dataset_a = datasets.create_workspace("Document isolation A fixture")
     dataset_b = datasets.create_workspace("Document isolation B fixture")
     parsed_a = ParsedDocument(
-        MarkdownDocument(
-            "policy.txt", "Vận chuyển", "# Vận chuyển\n\nMiễn phí từ 500.000đ."
-        ),
+        MarkdownDocument("policy.txt", "Vận chuyển", "# Vận chuyển\n\nMiễn phí từ 500.000đ."),
         "txt",
         "a" * 64,
     )
     parsed_b = ParsedDocument(
-        MarkdownDocument(
-            "policy.txt", "Vận chuyển", "# Vận chuyển\n\nMiễn phí từ 1.000.000đ."
-        ),
+        MarkdownDocument("policy.txt", "Vận chuyển", "# Vận chuyển\n\nMiễn phí từ 1.000.000đ."),
         "txt",
         "b" * 64,
     )
@@ -374,27 +365,20 @@ def test_document_isolation_delete_and_embedding_rollback(
             )
         )
         session.commit()
-    chunks_a = documents.retrieve(
-        [1.0, 0.0, *([0.0] * 766)], dataset_id=dataset_a.dataset_id
-    )
-    chunks_b = documents.retrieve(
-        [1.0, 0.0, *([0.0] * 766)], dataset_id=dataset_b.dataset_id
-    )
+    chunks_a = documents.retrieve([1.0, 0.0, *([0.0] * 766)], dataset_id=dataset_a.dataset_id)
+    chunks_b = documents.retrieve([1.0, 0.0, *([0.0] * 766)], dataset_id=dataset_b.dataset_id)
 
     assert {chunk.content for chunk in chunks_a} == {"Miễn phí từ 500.000đ."}
     assert {chunk.content for chunk in chunks_b} == {"Miễn phí từ 1.000.000đ."}
     assert set(chunks_a).isdisjoint(chunks_b)
-    assert {
-        chunk.content
-        for chunk in documents.retrieve([1.0, 0.0, *([0.0] * 766)])
-    } == {"Default corpus must stay isolated."}
+    assert {chunk.content for chunk in documents.retrieve([1.0, 0.0, *([0.0] * 766)])} == {
+        "Default corpus must stay isolated."
+    }
     with pytest.raises(ResourceConflictError):
         documents.add_document(dataset_a.dataset_id, parsed_a, FixtureEmbedder())
 
     with Session(management_database) as session:
-        before_documents = session.scalar(
-            select(func.count()).select_from(DatasetDocument)
-        )
+        before_documents = session.scalar(select(func.count()).select_from(DatasetDocument))
         before_chunks = session.scalar(select(func.count()).select_from(DocumentChunk))
     failed = ParsedDocument(
         MarkdownDocument("failure.txt", "Failure", "# Failure\n\nRollback me."),
@@ -404,10 +388,7 @@ def test_document_isolation_delete_and_embedding_rollback(
     with pytest.raises(RuntimeError, match="embedding unavailable"):
         documents.add_document(dataset_a.dataset_id, failed, FailingEmbedder())
     with Session(management_database) as session:
-        assert (
-            session.scalar(select(func.count()).select_from(DatasetDocument))
-            == before_documents
-        )
+        assert session.scalar(select(func.count()).select_from(DatasetDocument)) == before_documents
         assert session.scalar(select(func.count()).select_from(DocumentChunk)) == before_chunks
 
     documents.delete_document(dataset_a.dataset_id, document_a.document_id)

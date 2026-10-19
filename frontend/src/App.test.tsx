@@ -221,7 +221,7 @@ describe("ShopQuery workspace", () => {
     await user.click(screen.getByRole("checkbox", { name: /Xóa cả lịch sử chat/ }));
     await user.click(screen.getByRole("button", { name: "Xác nhận xóa vĩnh viễn" }));
     await screen.findByText(/Đã xóa Doanh số 2026/);
-    expect(fetchMock).toHaveBeenCalledWith("/api/datasets/7?delete_conversations=true", { method: "DELETE" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/datasets/7?delete_conversations=true", expect.objectContaining({ method: "DELETE", credentials: "same-origin" }));
     expect(screen.queryByText("Nội dung của workspace bị xóa")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Chat học phí cần xóa" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Chat cửa hàng cần giữ" })).toBeInTheDocument();

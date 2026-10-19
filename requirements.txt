@@ -19,6 +19,10 @@ anyio==4.15.1 \
     #   openai
     #   starlette
     #   watchfiles
+authlib==1.9.1 \
+    --hash=sha256:5c7d9848f47cac340f060f76ae0bc09b59f5c8e89cc1bb032d4370a0c55b5974 \
+    --hash=sha256:8b9be8b1e5174dcbf5520e984f1a22dc2edae5b6e40a61d4cedbf86b97e9e69b
+    # via shopquery-backend
 certifi==2026.7.22 \
     --hash=sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775 \
     --hash=sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55
@@ -158,7 +162,10 @@ cryptography==50.0.2 \
     --hash=sha256:f9f6143a8c75945eb960d9eb98905a441394abfa24afaae239d514ffb2586480 \
     --hash=sha256:fa8f5efb344d6908a1ce62f4a24e2e5780f825d6f53f5f50ec5ffacac72936cb \
     --hash=sha256:fdd28f912fccfec1846a94e2e1e8f9b0012f557f0c46fe4f3eb0d7a87afcf90b
-    # via google-auth
+    # via
+    #   authlib
+    #   google-auth
+    #   joserfc
 distro==1.9.0 \
     --hash=sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed \
     --hash=sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2
@@ -288,6 +295,10 @@ jiter==0.17.0 \
     --hash=sha256:f0bc7f684b65bcda9c20434267577db71bf9905ceddd32b60d1d93278d8c8d3a \
     --hash=sha256:f3d7f7b34114f7ddc6d72a8e882d49de636b35d9fd12b4d420d3c5729f6c9812
     # via openai
+joserfc==1.7.7 \
+    --hash=sha256:06979cfbab78bc802f14c0358f32969826cc26720e13cb38926ffdc86bc0cb2c \
+    --hash=sha256:471d0fd12a5a0d1c0942de280f39efe6f597878315033270b504d4d006d25510
+    # via authlib
 jsonpatch==1.35 \
     --hash=sha256:417e05303ebf7aef98d3ebf1e1ae7e7a4de6ec57bc5d243cd3509eff650e959f \
     --hash=sha256:679ad08672b4663c7ef1e5f3331d940f5e7786661b9acc1530104be1638e7a4f

@@ -1,13 +1,17 @@
 """Opt-in evaluation on synthetic data in an isolated database, never in default CI."""
 
 import os
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
+from app.auth.repository import AuthRepository, csrf_token
 from app.core.config import get_settings
 from app.database.session import get_setup_engine
+from app.database.setup import create_schema
+from app.database.test_safety import require_test_database
 from app.main import app
 
 pytestmark = [
@@ -17,6 +21,39 @@ pytestmark = [
         reason="Set RUN_LIVE_AI=1 for controlled live evaluation",
     ),
 ]
+
+
+@pytest.fixture(autouse=True)
+def live_test_session(monkeypatch):
+    settings = get_settings()
+    require_test_database(settings.database_setup_url)
+    if not settings.beta_provider_data_enabled:
+        pytest.fail("Explicit BETA_PROVIDER_DATA_ENABLED=true is required for live AI")
+    create_schema(get_setup_engine())
+    email = f"live-{uuid4().hex}@example.invalid"
+    auth = AuthRepository(get_setup_engine())
+    owner = auth.identity(uuid4().hex, email, "Isolated live test")
+    raw = auth.create_session(owner, 1)
+    monkeypatch.setattr(
+        "app.auth.dependencies.get_settings",
+        lambda: settings.model_copy(update={"auth_invited_emails": [email]}),
+    )
+    factory = TestClient
+    monkeypatch.setattr(
+        "tests.test_multimodel_live.TestClient",
+        lambda application: factory(
+            application,
+            cookies={settings.session_cookie_name: raw},
+            headers={
+                "Origin": settings.app_origin,
+                "X-CSRF-Token": csrf_token(raw),
+            },
+        ),
+    )
+    yield
+    from app.auth.repository import token_hash
+
+    auth.revoke(token_hash(raw))
 
 
 @pytest.mark.parametrize(

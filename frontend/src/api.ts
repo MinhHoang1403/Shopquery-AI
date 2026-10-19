@@ -14,6 +14,48 @@ import type {
 } from "./types";
 
 const ROUTES = new Set<RouteLabel>(["SQL", "RAG", "HYBRID", "UNSUPPORTED"]);
+let sessionEpoch = 0;
+let csrfToken: string | null = null;
+const pendingRequests = new Set<AbortController>();
+
+export function resetSessionRequests() {
+  sessionEpoch += 1;
+  csrfToken = null;
+  for (const controller of pendingRequests) controller.abort();
+  pendingRequests.clear();
+}
+
+export function setSessionCsrf(token: string) {
+  csrfToken = token;
+}
+
+function assertCurrentEpoch(epoch: number) {
+  if (epoch !== sessionEpoch) throw new DOMException("Session changed", "AbortError");
+}
+
+export interface SessionInfo {
+  user: { user_id: string; email: string; display_name: string };
+  csrf_token: string;
+}
+
+export async function getCurrentSession(signal?: AbortSignal): Promise<SessionInfo> {
+  const result = await requestJson("/api/auth/me", { signal });
+  if (!isRecord(result) || !isRecord(result.user) || typeof result.user.user_id !== "string" ||
+      typeof result.user.email !== "string" || typeof result.user.display_name !== "string" ||
+      typeof result.csrf_token !== "string") {
+    throw new ChatApiError("Phiên đăng nhập không hợp lệ.", "invalid_response");
+  }
+  return result as unknown as SessionInfo;
+}
+
+export async function logoutSession(): Promise<void> {
+  const token = csrfToken;
+  resetSessionRequests();
+  const result = await fetch("/api/auth/logout", {
+    method: "POST", credentials: "same-origin", headers: { "X-CSRF-Token": token ?? "" },
+  });
+  if (!result.ok && result.status !== 401) throw new Error("Không thể xác nhận đăng xuất phía máy chủ.");
+}
 
 export class ChatApiError extends Error {
   constructor(
@@ -79,17 +121,37 @@ async function requestJson(
   validationMessage = "Dữ liệu gửi lên không hợp lệ.",
 ): Promise<unknown> {
   let response: Response;
+  const epoch = sessionEpoch;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  options.signal?.addEventListener("abort", abort, { once: true });
+  pendingRequests.add(controller);
   try {
-    response = await fetch(url, options);
+    const headers = new Headers(options.headers);
+    if (csrfToken && !["GET", "HEAD"].includes(options.method ?? "GET")) {
+      headers.set("X-CSRF-Token", csrfToken);
+    }
+    response = await fetch(url, { ...options, credentials: "same-origin", headers,
+      signal: controller.signal });
+    assertCurrentEpoch(epoch);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ChatApiError(
       "Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
       "network",
     );
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
+    pendingRequests.delete(controller);
+  }
+  if (response.status === 401 || response.headers.get("X-Session-Invalid") === "1") {
+    if (url !== "/api/auth/me") window.dispatchEvent(new Event("shopquery:session-expired"));
+    throw new ChatApiError("Phiên đăng nhập không còn được phép sử dụng.", "server", response.status);
   }
   if (response.status === 204) return null;
   const body = await readJson(response);
+  assertCurrentEpoch(epoch);
   if (!response.ok) {
     const detail = isRecord(body) && typeof body.detail === "string" ? body.detail : null;
     if (response.status === 409) {
@@ -100,6 +162,9 @@ async function requestJson(
     }
     if (response.status === 422) {
       throw new ChatApiError(detail ?? validationMessage, "validation", response.status);
+    }
+    if (response.status === 403 || response.status === 429) {
+      throw new ChatApiError(detail ?? "Yêu cầu không được phép hoặc đã vượt giới hạn.", "validation", response.status);
     }
     throw new ChatApiError("Máy chủ gặp sự cố. Vui lòng thử lại sau.", "server", response.status);
   }

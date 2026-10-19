@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "FastAPI backend for the ShopQuery AI e-commerce assistant"
 requires-python = ">=3.11,<3.13"
 dependencies = [
+    "authlib>=1.6.5,<2",
     "fastapi>=0.119,<1",
     "google-genai>=1.50,<2",
     "langchain-openai>=1,<2",

@@ -53,7 +53,7 @@ function sameDataset(left: number | null, right: number | null) {
   return left === right;
 }
 
-export default function App() {
+export default function App({ account, onLogout }: { account?: string; onLogout?: () => void }) {
   const [draft, setDraft] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationEntry[]>([]);
@@ -147,6 +147,12 @@ export default function App() {
   useEffect(() => {
     conversationEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, isLoading]);
+
+  useEffect(() => () => {
+    selectionSequence.current += 1;
+    activeConversation.current = null;
+    requestController.current?.abort();
+  }, []);
 
   function updateDraft(value: string) {
     setDraft(value);
@@ -355,6 +361,8 @@ export default function App() {
   return (
     <div className={`app-shell ${sidebarCollapsed ? "app-shell--collapsed" : ""}`}>
       <Sidebar
+        account={account}
+        onLogout={onLogout}
         activeConversationId={activeConversationId}
         collapsed={sidebarCollapsed}
         conversations={conversations}

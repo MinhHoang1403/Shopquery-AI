@@ -1,5 +1,11 @@
 .git
 .env
+.env.*
+**/.env
+**/.env.*
+**/.auth
+*.dump
+*.backup
 .venv
 **/.venv
 __pycache__

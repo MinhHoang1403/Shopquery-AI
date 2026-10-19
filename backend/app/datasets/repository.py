@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BIGINT,
@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ResourceConflictError, ResourceNotFoundError
 from app.database.models import ChatConversation, Dataset, DatasetTable
+from app.database.quotas import enforce_storage_budget, lock_owner_budget
 from app.datasets.parser import ColumnSpec, ParsedTable
 from app.text_to_sql.executor import _json_safe
 
@@ -68,6 +69,7 @@ class DatasetInfo:
     table: DatasetTableInfo | None
     tables: tuple[DatasetTableInfo, ...] = ()
     document_count: int = 0
+    owner_user_id: UUID | None = None
 
     @property
     def table_count(self) -> int:
@@ -75,13 +77,17 @@ class DatasetInfo:
 
 
 class DatasetRepository:
-    def __init__(self, setup_engine: Engine, readonly_engine: Engine) -> None:
+    def __init__(self, setup_engine: Engine, readonly_engine: Engine, owner_user_id: UUID) -> None:
+        if not isinstance(owner_user_id, UUID):
+            raise ValueError("An authenticated owner is required")
         self._setup_engine = setup_engine
         self._readonly_engine = readonly_engine
+        self._owner_user_id = owner_user_id
 
     def list(self) -> list[DatasetInfo]:
         statement = (
             select(Dataset)
+            .where(Dataset.owner_user_id == self._owner_user_id)
             .options(selectinload(Dataset.tables), selectinload(Dataset.documents))
             .order_by(Dataset.created_at.desc(), Dataset.dataset_id.desc())
         )
@@ -92,7 +98,7 @@ class DatasetRepository:
         statement = (
             select(Dataset)
             .options(selectinload(Dataset.tables), selectinload(Dataset.documents))
-            .where(Dataset.dataset_id == dataset_id)
+            .where(Dataset.dataset_id == dataset_id, Dataset.owner_user_id == self._owner_user_id)
         )
         with Session(self._setup_engine) as session:
             dataset = session.scalar(statement)
@@ -105,8 +111,11 @@ class DatasetRepository:
         normalized_name = self._validate_name(name)
         try:
             with Session(self._setup_engine) as session:
-                dataset = Dataset(name=normalized_name)
+                lock_owner_budget(session.connection(), self._owner_user_id)
+                dataset = Dataset(name=normalized_name, owner_user_id=self._owner_user_id)
                 session.add(dataset)
+                session.flush()
+                enforce_storage_budget(session.connection(), self._owner_user_id)
                 session.commit()
                 dataset_id = dataset.dataset_id
         except IntegrityError as exc:
@@ -122,10 +131,12 @@ class DatasetRepository:
         display_name = parsed.sheet_name or PurePosixPath(parsed.filename).stem[:120]
         try:
             with self._setup_engine.begin() as connection:
+                lock_owner_budget(connection, self._owner_user_id)
                 dataset_id = connection.scalar(
                     insert(Dataset)
                     .values(
                         name=normalized_name,
+                        owner_user_id=self._owner_user_id,
                         original_filename=parsed.filename,
                         file_type=parsed.file_type,
                         row_count=parsed.row_count,
@@ -143,6 +154,7 @@ class DatasetRepository:
                     parsed,
                     dynamic_table,
                 )
+                enforce_storage_budget(connection, self._owner_user_id)
         except IntegrityError as exc:
             raise ResourceConflictError("Tên bộ dữ liệu hoặc bảng đã tồn tại.") from exc
         return self.get(dataset_id)
@@ -158,6 +170,8 @@ class DatasetRepository:
         dynamic_table = self._table(physical_name, parsed.columns)
         try:
             with self._setup_engine.begin() as connection:
+                lock_owner_budget(connection, self._owner_user_id)
+                self._lock_dataset(connection, dataset_id)
                 self._insert_table(
                     connection,
                     dataset_id,
@@ -166,6 +180,7 @@ class DatasetRepository:
                     parsed,
                     dynamic_table,
                 )
+                enforce_storage_budget(connection, self._owner_user_id)
         except IntegrityError as exc:
             raise ResourceConflictError("Tên bảng đã tồn tại trong bộ dữ liệu.") from exc
         return self.get(dataset_id)
@@ -236,10 +251,11 @@ class DatasetRepository:
                 )
             connection.execute(delete(Dataset).where(Dataset.dataset_id == dataset_id))
 
-    @staticmethod
-    def _lock_dataset(connection: Any, dataset_id: int) -> None:
+    def _lock_dataset(self, connection: Any, dataset_id: int) -> None:
         exists = connection.scalar(
-            select(Dataset.dataset_id).where(Dataset.dataset_id == dataset_id).with_for_update()
+            select(Dataset.dataset_id)
+            .where(Dataset.dataset_id == dataset_id, Dataset.owner_user_id == self._owner_user_id)
+            .with_for_update()
         )
         if exists is None:
             raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")
@@ -253,6 +269,7 @@ class DatasetRepository:
     ) -> dict[str, tuple[str, ...]] | dict[str, dict[str, tuple[str, ...]]]:
         """Return bounded exact values grouped by physical table name."""
 
+        dataset = self.get(dataset.dataset_id)
         result: dict[str, dict[str, tuple[str, ...]]] = {}
         with self._readonly_engine.connect() as connection:
             for info in dataset.tables or (() if dataset.table is None else (dataset.table,)):
@@ -375,4 +392,5 @@ class DatasetRepository:
             table=first,
             tables=tables,
             document_count=len(dataset.documents),
+            owner_user_id=dataset.owner_user_id,
         )

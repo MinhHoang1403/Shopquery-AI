@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import httpx2
 import pytest
-from fastapi.testclient import TestClient
 from langchain_openai import ChatOpenAI
 
 from app.ai.chat import ModelChatService
@@ -23,6 +22,7 @@ from app.core.errors import (
 from app.main import app
 from app.routing.router import RouteDecision, RouteLabel
 from app.routing.service import ChatResult
+from tests.auth_helpers import TestClient
 
 
 def settings(**kwargs) -> Settings:
@@ -291,7 +291,7 @@ def test_both_providers_fail_without_loop_or_fabricated_answer(monkeypatch):
     assert error.value.fallback_used
 
 
-def test_models_discovery_is_fixed_and_does_not_call_upstream(monkeypatch):
+def test_models_discovery_is_fixed_and_does_not_call_upstream(monkeypatch, contract_session):
     monkeypatch.setattr("app.api.routes.get_settings", lambda: settings())
     body = TestClient(app).get("/api/models").json()
     assert body["default_model"] == "inetcloud-knowledge"

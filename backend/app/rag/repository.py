@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +18,7 @@ from app.core.errors import (
     UploadValidationError,
 )
 from app.database.models import Dataset, DatasetDocument, DocumentChunk
+from app.database.quotas import enforce_storage_budget, lock_owner_budget
 from app.rag.chunking import DocumentChunkData, chunk_document
 from app.rag.upload_parser import ParsedDocument
 
@@ -43,9 +45,15 @@ class DatasetDocumentInfo:
 
 
 class DocumentRepository:
-    def __init__(self, setup_engine: Engine, readonly_engine: Engine | None = None) -> None:
+    def __init__(
+        self,
+        setup_engine: Engine,
+        readonly_engine: Engine | None = None,
+        owner_user_id: UUID | None = None,
+    ) -> None:
         self._setup_engine = setup_engine
         self._readonly_engine = readonly_engine or setup_engine
+        self._owner_user_id = owner_user_id
 
     def sync(self, chunks: list[DocumentChunkData], embedder: EmbeddingGateway) -> dict[str, int]:
         """Synchronize only the legacy/default corpus."""
@@ -101,6 +109,7 @@ class DocumentRepository:
         return [self._to_info(item) for item in documents]
 
     def get_document(self, dataset_id: int, document_id: int) -> DatasetDocumentInfo:
+        self._require_dataset(dataset_id)
         with Session(self._setup_engine) as session:
             item = session.scalar(
                 select(DatasetDocument).where(
@@ -131,14 +140,18 @@ class DocumentRepository:
 
         chunks = chunk_document(parsed.document)
         if not chunks:
-            raise UploadValidationError(
-                "Tài liệu không có nội dung bên dưới tiêu đề để tạo chunk."
-            )
+            raise UploadValidationError("Tài liệu không có nội dung bên dưới tiêu đề để tạo chunk.")
         embeddings = [
             embedder.embed_document(chunk.section_title, chunk.content) for chunk in chunks
         ]
         try:
             with Session(self._setup_engine) as session:
+                lock_owner_budget(session.connection(), self._owner_user_id)
+                parent = session.scalar(select(Dataset.dataset_id).where(
+                    Dataset.dataset_id == dataset_id, Dataset.owner_user_id == self._owner_user_id
+                ).with_for_update())
+                if parent is None:
+                    raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")
                 document = DatasetDocument(
                     dataset_id=dataset_id,
                     original_filename=parsed.document.source_file,
@@ -164,6 +177,8 @@ class DocumentRepository:
                             embedding=embedding,
                         )
                     )
+                session.flush()
+                enforce_storage_budget(session.connection(), self._owner_user_id)
                 session.commit()
                 document_id = document.document_id
         except IntegrityError as exc:
@@ -171,6 +186,7 @@ class DocumentRepository:
         return self.get_document(dataset_id, document_id)
 
     def delete_document(self, dataset_id: int, document_id: int) -> None:
+        self._require_dataset(dataset_id)
         with Session(self._setup_engine) as session:
             result = session.execute(
                 delete(DatasetDocument).where(
@@ -190,12 +206,18 @@ class DocumentRepository:
         *,
         dataset_id: int | None = None,
     ) -> list[RetrievedChunk]:
+        if dataset_id is not None:
+            self._require_dataset(dataset_id)
         distance = DocumentChunk.embedding.cosine_distance(query_vector).label("distance")
         scope = (
             DocumentChunk.dataset_id.is_(None)
             if dataset_id is None
             else DocumentChunk.dataset_id == dataset_id
         )
+        if dataset_id is not None:
+            scope = scope & select(Dataset.dataset_id).where(
+                Dataset.dataset_id == dataset_id, Dataset.owner_user_id == self._owner_user_id
+            ).exists()
         statement = select(DocumentChunk, distance).where(scope).order_by(distance).limit(top_k)
         with Session(self._readonly_engine) as session:
             results = session.execute(statement).all()
@@ -211,9 +233,13 @@ class DocumentRepository:
         ]
 
     def _require_dataset(self, dataset_id: int) -> None:
+        if self._owner_user_id is None:
+            raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")
         with Session(self._setup_engine) as session:
             exists = session.scalar(
-                select(Dataset.dataset_id).where(Dataset.dataset_id == dataset_id)
+                select(Dataset.dataset_id).where(
+                    Dataset.dataset_id == dataset_id, Dataset.owner_user_id == self._owner_user_id
+                )
             )
         if exists is None:
             raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")

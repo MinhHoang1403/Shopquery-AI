@@ -1,7 +1,6 @@
 """Application object graph construction kept outside request handlers."""
 
-from functools import lru_cache
-from threading import Lock
+from uuid import UUID
 
 from app.ai.chat import ModelChatService
 from app.ai.gemini import GenerationGateway
@@ -9,7 +8,6 @@ from app.ai.providers import build_embedding_gateway
 from app.conversations.repository import ConversationRepository
 from app.core.config import Settings
 from app.database.session import get_readonly_engine, get_setup_engine
-from app.database.setup import create_schema
 from app.datasets.context import DatasetSqlContext
 from app.datasets.repository import DatasetRepository
 from app.rag.pipeline import RagPipeline
@@ -21,8 +19,6 @@ from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.generator import SqlGenerator
 from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import SqlValidator
-
-_schema_setup_lock = Lock()
 
 
 def build_chat_service(settings: Settings) -> ModelChatService:
@@ -96,7 +92,9 @@ def _build_dataset_chat_service(
         rag_pipeline = RagPipeline(
             embedder=build_embedding_gateway(settings),
             gateway=gateway,
-            repository=DocumentRepository(get_setup_engine(), get_readonly_engine()),
+            repository=DocumentRepository(
+                get_setup_engine(), get_readonly_engine(), context.owner_user_id
+            ),
             dataset_id=context.dataset_id,
         )
     hybrid_pipeline = (
@@ -112,33 +110,13 @@ def _build_dataset_chat_service(
     )
 
 
-def build_document_repository() -> DocumentRepository:
-    ensure_application_schema(get_settings_url())
-    return DocumentRepository(get_setup_engine(), get_readonly_engine())
+def build_document_repository(owner_user_id: UUID) -> DocumentRepository:
+    return DocumentRepository(get_setup_engine(), get_readonly_engine(), owner_user_id)
 
 
-def build_dataset_repository() -> DatasetRepository:
-    ensure_application_schema(get_settings_url())
-    return DatasetRepository(get_setup_engine(), get_readonly_engine())
+def build_dataset_repository(owner_user_id: UUID) -> DatasetRepository:
+    return DatasetRepository(get_setup_engine(), get_readonly_engine(), owner_user_id)
 
 
-def build_conversation_repository() -> ConversationRepository:
-    ensure_application_schema(get_settings_url())
-    return ConversationRepository(get_setup_engine())
-
-
-def get_settings_url() -> str:
-    """Return the active setup URL without exposing it in logs or responses."""
-
-    from app.core.config import get_settings
-
-    return get_settings().database_setup_url
-
-
-@lru_cache
-def ensure_application_schema(database_url: str) -> None:
-    """Serialize idempotent schema setup for each cached database URL."""
-
-    del database_url
-    with _schema_setup_lock:
-        create_schema(get_setup_engine())
+def build_conversation_repository(owner_user_id: UUID) -> ConversationRepository:
+    return ConversationRepository(get_setup_engine(), owner_user_id)

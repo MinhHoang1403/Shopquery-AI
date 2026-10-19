@@ -92,6 +92,7 @@ class DatasetDocumentResponse(BaseModel):
 
 
 class DatasetCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=120)
 
     @field_validator("name")
@@ -136,11 +137,13 @@ class DatasetDetailResponse(DatasetResponse):
 
 
 class ConversationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     dataset_id: int | None = Field(default=None, ge=1)
     model_id: ModelId | None = None
 
 
 class ConversationRenameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     title: str | None = Field(default=None, min_length=1, max_length=120)
     model_id: ModelId | None = None
 

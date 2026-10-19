@@ -8,7 +8,7 @@ from io import BytesIO
 from uuid import UUID, uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from fastapi.testclient import TestClient
+import pytest
 from openpyxl import Workbook
 
 from app.conversations.repository import ConversationRecord, MessageRecord
@@ -18,6 +18,9 @@ from app.datasets.repository import DatasetInfo, DatasetTableInfo
 from app.main import app
 from app.routing.router import RouteLabel
 from app.routing.service import ChatResult
+from tests.auth_helpers import TestClient
+
+pytestmark = pytest.mark.usefixtures("contract_session")
 
 NOW = datetime(2026, 10, 14, tzinfo=UTC)
 
@@ -154,7 +157,7 @@ class FakeDatasetRepository:
 
 def test_conversation_crud_and_message_contract(monkeypatch) -> None:
     repository = FakeConversationRepository()
-    monkeypatch.setattr("app.api.routes.build_conversation_repository", lambda: repository)
+    monkeypatch.setattr("app.api.routes.build_conversation_repository", lambda owner: repository)
     monkeypatch.setattr("app.api.routes.build_chat_service", lambda settings: FakeChatService())
     client = TestClient(app)
 
@@ -183,7 +186,7 @@ def test_conversation_crud_and_message_contract(monkeypatch) -> None:
 
 def test_dataset_list_detail_and_scoped_chat(monkeypatch) -> None:
     repository = FakeDatasetRepository()
-    monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda: repository)
+    monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda owner: repository)
     monkeypatch.setattr(
         "app.api.routes.build_dataset_chat_service",
         lambda settings, context: FakeChatService(),

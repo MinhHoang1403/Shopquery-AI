@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "test:e2e": "playwright test e2e/mock-chat.spec.ts",
+    "test:e2e": "playwright test e2e/mock-chat.spec.ts e2e/auth-mock.spec.ts",
     "test:e2e:live": "playwright test e2e/live-chat.spec.ts --project=desktop-1440",
     "test:e2e:workspace-live": "playwright test e2e/workspace-live.spec.ts --project=desktop-1440",
     "test:e2e:models-live": "playwright test e2e/models-live.spec.ts --project=desktop-1440"

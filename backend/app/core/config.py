@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, HttpUrl, field_validator
+from pydantic import Field, HttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +18,21 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "ShopQuery AI"
+    app_environment: Literal["development", "test", "production"] = "development"
+    app_origin: str = "http://127.0.0.1:8080"
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    auth_invited_emails: list[str] = Field(default_factory=list)
+    auth_session_hours: int = Field(default=12, ge=1, le=168)
+    api_docs_enabled: bool = False
+    beta_provider_data_enabled: bool = False
+    beta_login_per_ip_hour: int = Field(default=20, ge=1, le=1000)
+    beta_chat_per_user_hour: int = Field(default=30, ge=1, le=1000)
+    beta_upload_per_user_hour: int = Field(default=10, ge=1, le=1000)
+    beta_user_concurrency: int = Field(default=1, ge=1, le=10)
+    beta_system_concurrency: int = Field(default=4, ge=1, le=30)
+    beta_max_datasets: int = Field(default=20, ge=1, le=100)
+    beta_max_user_bytes: int = Field(default=100 * 1024 * 1024, ge=1024)
     ai_default_model: Literal["inetcloud-knowledge", "gemini"] = "inetcloud-knowledge"
     inetcloud_base_url: str | None = None
     inetcloud_model: Literal["knowledge"] = "knowledge"
@@ -44,6 +59,37 @@ class Settings(BaseSettings):
     upload_max_rows: int = Field(default=5_000, ge=1, le=20_000)
     upload_max_columns: int = Field(default=30, ge=1, le=100)
     log_level: str = "INFO"
+
+    @model_validator(mode="after")
+    def validate_auth_origin(self) -> "Settings":
+        parsed = HttpUrl(self.app_origin)
+        if (
+            parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or parsed.path != "/"
+        ):
+            raise ValueError("APP_ORIGIN must be an origin without credentials or a path")
+        if parsed.scheme != "https" and (
+            self.app_environment == "production" or parsed.host not in {"localhost", "127.0.0.1"}
+        ):
+            raise ValueError("APP_ORIGIN requires HTTPS outside localhost development")
+        self.app_origin = str(parsed).rstrip("/")
+        self.auth_invited_emails = [email.strip().casefold() for email in self.auth_invited_emails]
+        return self
+
+    @property
+    def session_cookie_name(self) -> str:
+        return "__Host-shopquery_session" if self.secure_cookies else "shopquery_session"
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.app_environment == "production" or self.app_origin.startswith("https://")
+
+    @property
+    def oidc_callback_url(self) -> str:
+        return f"{self.app_origin}/api/auth/callback"
 
     @field_validator("inetcloud_base_url")
     @classmethod

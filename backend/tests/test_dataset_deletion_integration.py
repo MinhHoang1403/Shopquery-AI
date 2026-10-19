@@ -16,6 +16,7 @@ from app.datasets.repository import DatasetRepository
 from app.rag.documents import MarkdownDocument
 from app.rag.repository import DocumentRepository
 from app.rag.upload_parser import ParsedDocument
+from tests.auth_helpers import TEST_OWNER
 
 pytestmark = pytest.mark.integration
 
@@ -29,9 +30,9 @@ class Embedder:
 def sources():
     engine = get_setup_engine()
     create_schema(engine)
-    datasets = DatasetRepository(engine, get_readonly_engine())
-    documents = DocumentRepository(engine)
-    chats = ConversationRepository(engine)
+    datasets = DatasetRepository(engine, get_readonly_engine(), TEST_OWNER)
+    documents = DocumentRepository(engine, owner_user_id=TEST_OWNER)
+    chats = ConversationRepository(engine, TEST_OWNER)
     created: list[int] = []
 
     def create():

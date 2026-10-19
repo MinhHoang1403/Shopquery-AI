@@ -1,37 +1,27 @@
-"""Tests for application dependency construction."""
+"""Runtime repositories never perform schema setup and always bind an owner."""
 
-from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
-from time import sleep
+from uuid import uuid4
 
-from app.dependencies import ensure_application_schema
+import pytest
+
+from app.dependencies import (
+    build_conversation_repository,
+    build_dataset_repository,
+    build_document_repository,
+)
 
 
-def test_schema_initialization_is_serialized(monkeypatch) -> None:
-    ensure_application_schema.cache_clear()
-    counter_lock = Lock()
-    active_calls = 0
-    highest_concurrency = 0
-
-    def create_schema(_engine: object) -> None:
-        nonlocal active_calls, highest_concurrency
-        with counter_lock:
-            active_calls += 1
-            highest_concurrency = max(highest_concurrency, active_calls)
-        sleep(0.05)
-        with counter_lock:
-            active_calls -= 1
-
+@pytest.mark.parametrize(
+    "factory", [build_conversation_repository, build_dataset_repository, build_document_repository]
+)
+def test_repository_construction_requires_owner_without_schema_writes(monkeypatch, factory):
     monkeypatch.setattr("app.dependencies.get_setup_engine", lambda: object())
-    monkeypatch.setattr("app.dependencies.create_schema", create_schema)
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [
-            executor.submit(ensure_application_schema, "postgresql://test")
-            for _ in range(2)
-        ]
-        for future in futures:
-            future.result()
-
-    ensure_application_schema.cache_clear()
-    assert highest_concurrency == 1
+    monkeypatch.setattr("app.dependencies.get_readonly_engine", lambda: object())
+    monkeypatch.setattr(
+        "app.database.setup.create_schema", lambda engine: pytest.fail("Runtime DDL")
+    )
+    owner = uuid4()
+    repository = factory(owner)
+    assert repository._owner_user_id == owner
+    with pytest.raises(TypeError):
+        factory()

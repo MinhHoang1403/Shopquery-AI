@@ -1,19 +1,19 @@
 """Model selection, attribution persistence, and legacy migration coverage."""
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.conversations.repository import ConversationRepository
 from app.database.session import get_setup_engine
 from app.database.setup import create_schema
 from app.main import app
+from tests.auth_helpers import TEST_OWNER, TestClient
 from tests.test_management_api import FakeChatService, FakeConversationRepository
 
 
-def test_api_preserves_selection_and_restores_attribution(monkeypatch):
+def test_api_preserves_selection_and_restores_attribution(monkeypatch, contract_session):
     repository = FakeConversationRepository()
-    monkeypatch.setattr("app.api.routes.build_conversation_repository", lambda: repository)
+    monkeypatch.setattr("app.api.routes.build_conversation_repository", lambda owner: repository)
     selections = []
 
     def build(settings):
@@ -38,7 +38,7 @@ def test_nullable_model_migration_is_idempotent_and_history_is_preserved():
     engine = get_setup_engine()
     assert engine.url.database != "shopquery", "Migration tests require an isolated test database"
     create_schema(engine)
-    repository = ConversationRepository(engine)
+    repository = ConversationRepository(engine, TEST_OWNER)
     old = repository.create(None, "gemini")
     metadata = {
         "answer": "Legacy answer",

@@ -28,6 +28,65 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("issuer", "subject", name="uq_users_identity"),)
+
+    user_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    issuer: Mapped[str] = mapped_column(String(255), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.user_id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OidcFlow(Base):
+    __tablename__ = "oidc_flows"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    state: Mapped[str] = mapped_column(String(100), nullable=False)
+    nonce: Mapped[str] = mapped_column(String(100), nullable=False)
+    code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class ResourceLimit(Base):
+    __tablename__ = "resource_limits"
+
+    key: Mapped[str] = mapped_column(String(150), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class ResourceLease(Base):
+    __tablename__ = "resource_leases"
+
+    lease_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.user_id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class Category(Base):
     __tablename__ = "categories"
 
@@ -127,7 +186,10 @@ class Dataset(Base):
     __tablename__ = "datasets"
 
     dataset_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.user_id"), nullable=False, index=True
+    )
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     file_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -194,6 +256,9 @@ class ChatConversation(Base):
 
     conversation_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     title: Mapped[str] = mapped_column(String(120), nullable=False, default="Cuộc trò chuyện mới")
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.user_id"), nullable=False, index=True
+    )
     title_customized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     model_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     dataset_id: Mapped[int | None] = mapped_column(

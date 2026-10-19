@@ -1,11 +1,14 @@
 """FastAPI contract tests independent of Gemini and PostgreSQL."""
 
-from fastapi.testclient import TestClient
+import pytest
 
 from app.core.errors import ModelResponseError
 from app.main import app
 from app.routing.router import RouteLabel
 from app.routing.service import ChatResult
+from tests.auth_helpers import TestClient
+
+pytestmark = pytest.mark.usefixtures("contract_session")
 
 
 class FakeChatService:

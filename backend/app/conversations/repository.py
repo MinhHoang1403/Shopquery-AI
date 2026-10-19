@@ -39,12 +39,16 @@ class ConversationRecord:
 
 
 class ConversationRepository:
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: Engine, owner_user_id: UUID) -> None:
+        if not isinstance(owner_user_id, UUID):
+            raise ValueError("An authenticated owner is required")
         self._engine = engine
+        self._owner_user_id = owner_user_id
 
     def list(self, limit: int, offset: int) -> list[ConversationRecord]:
         statement = (
             select(ChatConversation)
+            .where(ChatConversation.owner_user_id == self._owner_user_id)
             .options(selectinload(ChatConversation.dataset))
             .order_by(ChatConversation.updated_at.desc(), ChatConversation.created_at.desc())
             .limit(limit)
@@ -62,10 +66,19 @@ class ConversationRepository:
         with Session(self._engine, expire_on_commit=False) as session, session.begin():
             dataset = None
             if dataset_id is not None:
-                dataset = session.get(Dataset, dataset_id)
+                dataset = session.scalar(
+                    select(Dataset)
+                    .where(
+                        Dataset.dataset_id == dataset_id,
+                        Dataset.owner_user_id == self._owner_user_id,
+                    )
+                    .with_for_update()
+                )
                 if dataset is None:
                     raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")
-            conversation = ChatConversation(dataset_id=dataset_id, model_id=model_id)
+            conversation = ChatConversation(
+                dataset_id=dataset_id, model_id=model_id, owner_user_id=self._owner_user_id
+            )
             session.add(conversation)
             session.flush()
             conversation.dataset = dataset
@@ -78,7 +91,10 @@ class ConversationRepository:
                 selectinload(ChatConversation.dataset),
                 selectinload(ChatConversation.messages),
             )
-            .where(ChatConversation.conversation_id == conversation_id)
+            .where(
+                ChatConversation.conversation_id == conversation_id,
+                ChatConversation.owner_user_id == self._owner_user_id,
+            )
         )
         with Session(self._engine) as session:
             conversation = session.scalar(statement)
@@ -93,7 +109,14 @@ class ConversationRepository:
         if len(normalized_title) > 120:
             raise ValueError("Tên cuộc trò chuyện không được vượt quá 120 ký tự.")
         with Session(self._engine, expire_on_commit=False) as session, session.begin():
-            conversation = session.get(ChatConversation, conversation_id)
+            conversation = session.scalar(
+                select(ChatConversation)
+                .where(
+                    ChatConversation.conversation_id == conversation_id,
+                    ChatConversation.owner_user_id == self._owner_user_id,
+                )
+                .with_for_update()
+            )
             if conversation is None:
                 raise ResourceNotFoundError("Không tìm thấy cuộc trò chuyện.")
             conversation.title = normalized_title
@@ -103,7 +126,14 @@ class ConversationRepository:
 
     def delete(self, conversation_id: UUID) -> None:
         with Session(self._engine) as session, session.begin():
-            conversation = session.get(ChatConversation, conversation_id)
+            conversation = session.scalar(
+                select(ChatConversation)
+                .where(
+                    ChatConversation.conversation_id == conversation_id,
+                    ChatConversation.owner_user_id == self._owner_user_id,
+                )
+                .with_for_update()
+            )
             if conversation is None:
                 raise ResourceNotFoundError("Không tìm thấy cuộc trò chuyện.")
             session.delete(conversation)
@@ -114,7 +144,10 @@ class ConversationRepository:
         with Session(self._engine) as session, session.begin():
             conversation = session.scalar(
                 select(ChatConversation)
-                .where(ChatConversation.conversation_id == conversation_id)
+                .where(
+                    ChatConversation.conversation_id == conversation_id,
+                    ChatConversation.owner_user_id == self._owner_user_id,
+                )
                 .with_for_update()
             )
             if conversation is None:
@@ -127,7 +160,10 @@ class ConversationRepository:
         with Session(self._engine, expire_on_commit=False) as session, session.begin():
             conversation = session.scalar(
                 select(ChatConversation)
-                .where(ChatConversation.conversation_id == conversation_id)
+                .where(
+                    ChatConversation.conversation_id == conversation_id,
+                    ChatConversation.owner_user_id == self._owner_user_id,
+                )
                 .with_for_update()
             )
             if conversation is None:
@@ -161,7 +197,10 @@ class ConversationRepository:
         with Session(self._engine, expire_on_commit=False) as session, session.begin():
             conversation = session.scalar(
                 select(ChatConversation)
-                .where(ChatConversation.conversation_id == conversation_id)
+                .where(
+                    ChatConversation.conversation_id == conversation_id,
+                    ChatConversation.owner_user_id == self._owner_user_id,
+                )
                 .with_for_update()
             )
             if conversation is None:

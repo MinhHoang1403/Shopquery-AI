@@ -16,11 +16,25 @@ def create_schema(engine: Engine) -> None:
     with engine.begin() as connection:
         _finish_workspace_schema(connection)
         connection.execute(
-            text("CREATE UNIQUE INDEX IF NOT EXISTS uq_datasets_name_ci ON datasets (lower(name))")
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_datasets_owner_name_ci "
+                "ON datasets (owner_user_id, lower(name))"
+            )
         )
         connection.execute(text("GRANT USAGE ON SCHEMA public TO shopquery_reader"))
         connection.execute(text("GRANT USAGE ON SCHEMA uploaded_data TO shopquery_reader"))
-        connection.execute(text("GRANT SELECT ON ALL TABLES IN SCHEMA public TO shopquery_reader"))
+        connection.execute(
+            text(
+                "GRANT SELECT ON categories, products, orders, order_items, datasets, "
+                "dataset_tables, dataset_documents, document_chunks TO shopquery_reader"
+            )
+        )
+        connection.execute(
+            text(
+                "REVOKE ALL ON users, user_sessions, oidc_flows, resource_limits, resource_leases "
+                "FROM shopquery_reader"
+            )
+        )
         connection.execute(
             text("GRANT SELECT ON ALL TABLES IN SCHEMA uploaded_data TO shopquery_reader")
         )
@@ -42,8 +56,10 @@ def _prepare_legacy_schema(connection: Connection) -> None:
             BEGIN
               IF to_regclass('public.chat_conversations') IS NOT NULL THEN
                 ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS model_id VARCHAR(40);
+                ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS owner_user_id UUID;
               END IF;
               IF to_regclass('public.datasets') IS NOT NULL THEN
+                ALTER TABLE datasets ADD COLUMN IF NOT EXISTS owner_user_id UUID;
                 ALTER TABLE datasets ALTER COLUMN original_filename DROP NOT NULL;
                 ALTER TABLE datasets ALTER COLUMN file_type DROP NOT NULL;
                 ALTER TABLE datasets ALTER COLUMN row_count DROP NOT NULL;

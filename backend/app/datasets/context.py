@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import dataclass
+from uuid import UUID
 
 from app.datasets.repository import UPLOADED_SCHEMA, DatasetInfo
 
@@ -13,6 +14,7 @@ class DatasetSqlContext:
     allowed_schemas: dict[str, str]
     dataset_id: int | None = None
     has_documents: bool = False
+    owner_user_id: UUID | None = None
 
 
 def build_dataset_sql_context(
@@ -31,9 +33,7 @@ def build_dataset_sql_context(
             for column, values in categorical_values.items()
             if isinstance(values, tuple)
         }
-        nested_values = (
-            {tables[0].physical_table_name: flat_values} if tables else {}
-        )
+        nested_values = {tables[0].physical_table_name: flat_values} if tables else {}
     else:
         nested_values = {
             table_name: values
@@ -91,4 +91,5 @@ Rules:
         allowed_schemas={table.physical_table_name: UPLOADED_SCHEMA for table in tables},
         dataset_id=dataset.dataset_id,
         has_documents=dataset.document_count > 0,
+        owner_user_id=dataset.owner_user_id,
     )

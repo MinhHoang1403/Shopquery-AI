@@ -4,6 +4,14 @@
 
 ShopQuery AI là ứng dụng trợ lý E-commerce dùng AI để trả lời câu hỏi từ dữ liệu bán hàng và tài liệu chính sách. Dự án dùng dữ liệu giả lập để minh họa toàn bộ luồng từ giao diện React, FastAPI, iNetCloud Knowledge/Gemini đến PostgreSQL/pgvector; đây không phải hệ thống doanh nghiệp hoặc dịch vụ thương mại thật.
 
+## Authentication & multi-user — thay đổi cần đọc trước khi chạy
+
+Source đã bổ sung Google OIDC invite-only, opaque PostgreSQL sessions, CSRF và ownership cho dataset/conversation. Ngoài `/api/health`, API dữ liệu/model yêu cầu đăng nhập. Frontend kiểm tra session trước khi tải history/datasets; logout huỷ request và xoá state của tài khoản.
+
+**Chưa nghiệm thu Google login thật hoặc migration database chính. Không rebuild/restart ứng dụng đang dùng database cũ trước khi hoàn tất quy trình nâng cấp có xác nhận.** Container API không còn tự chạy schema setup. Không có cơ chế tự gán dữ liệu cho người đăng nhập đầu tiên.
+
+Đọc [hướng dẫn authentication, cấu hình và migration](docs/authentication.md) trước mọi lệnh setup/seed bên dưới. Các bảng kết quả live ở phần tiếp theo là bằng chứng lịch sử trước auth, không phải kết quả live mới của bản multi-user. Không seed/ingest lại database cũ chỉ để bật auth.
+
 ## Trạng thái nghiệm thu — 19/10/2026
 
 **Sẵn sàng sử dụng local/MVP trong phạm vi đã kiểm chứng; chưa nghiệm thu production công khai.** Đã chạy thật qua giao diện React/Nginx với dữ liệu cửa hàng mẫu, không mock và không dùng Gemini fallback để tính Knowledge pass.
@@ -28,7 +36,7 @@ Xem [báo cáo nghiệm thu cuối](docs/final_audit_report.md) để biết câ
 - **Ngoài phạm vi (`UNSUPPORTED`)**: từ chối câu hỏi không thuộc dữ liệu và tài liệu của cửa hàng. Ví dụ: “Thời tiết Hà Nội hôm nay thế nào?”
 - **Lịch sử hội thoại**: lưu conversation và từng message trong PostgreSQL; hỗ trợ tạo mới, chuyển, đổi tên, xóa và khôi phục sau khi tải lại trang.
 - **Dataset workspace**: tạo bộ dữ liệu rỗng, thêm nhiều bảng CSV/XLSX và nhiều tài liệu PDF/DOCX/TXT/MD, sau đó dùng SQL, RAG hoặc Hybrid trong đúng workspace đã chọn.
-- **Workspace đa lĩnh vực**: prompt dựa trên schema/tài liệu được chọn, không ép bảng upload theo mô hình bán hàng. Đã kiểm tra dữ liệu giả lập về doanh thu, học phí, giờ làm, vận tải và điện năng với cả Knowledge/Gemini; xem [báo cáo đa lĩnh vực](docs/multidomain_evaluation.md). Mỗi truy vấn upload vẫn chỉ dùng một bảng, chưa JOIN hoặc phân quyền theo người dùng.
+- **Workspace đa lĩnh vực**: prompt dựa trên schema/tài liệu được chọn, không ép bảng upload theo mô hình bán hàng. Đã kiểm tra dữ liệu giả lập về doanh thu, học phí, giờ làm, vận tải và điện năng với cả Knowledge/Gemini; xem [báo cáo đa lĩnh vực](docs/multidomain_evaluation.md). Mỗi truy vấn upload vẫn chỉ dùng một bảng, chưa JOIN; quyền truy cập được lọc theo owner ở backend.
 - **Giao diện responsive**: light theme, sidebar thu gọn/off-canvas, composer đa dòng và evidence toolbar gọn với các nút **Bảng dữ liệu**, **SQL** và **Nguồn tham khảo**; mỗi lần chỉ mở một panel.
 
 ## Công nghệ
@@ -137,12 +145,12 @@ Chi tiết API, giới hạn và cách kiểm thử: [Multi-model integration](d
 
 ### Thiết lập lần đầu
 
-Sau khi đã tạo `.env` và điền API key:
+Chỉ áp dụng cho database mới hoàn toàn. Database hiện hữu phải theo [quy trình migration](docs/authentication.md), không chạy seed/ingest lại. Cấu hình Google OAuth, allowlist và provider permission trong `.env` trước khi nghiệm thu đăng nhập:
 
 ```powershell
 docker compose up -d --build
 docker compose ps
-docker compose exec api python scripts/setup_database.py
+docker compose exec api python scripts/setup_database.py --confirm-database shopquery
 docker compose exec api python scripts/load_seed_data.py
 docker compose exec api python scripts/ingest_documents.py
 ```
@@ -151,11 +159,11 @@ Chờ ba service `db`, `api`, `web` healthy rồi mở `http://127.0.0.1:8080`. 
 
 Đây là cổng **mặc định của repository**. Môi trường nghiệm thu dùng override local API 8001 và PostgreSQL 15432, web vẫn 8080; không cần sao chép override đó trên máy mới. Khi đổi cổng host PostgreSQL, cập nhật hai database URL cho backend native/test; URL giữa các container vẫn dùng `db:5432`.
 
-API tự chạy `setup_database.py` khi container khởi động. Migration idempotent thêm metadata workspace, `dataset_documents` và scope cho `document_chunks`; nó không drop bảng/cột hoặc xóa seed, conversation, dataset hay chunks cũ. Với database quan trọng, tạo `pg_dump -Fc` trước, thử restore/migration trên database riêng rồi mới chạy script trên database chính:
+API không tự setup/migration khi khởi động hoặc nhận request. Schema expansion là lệnh quản trị có xác nhận target; backfill ownership dùng migration riêng. Với database quan trọng cần backup, restore rehearsal và xác nhận owner trước mọi thay đổi. Ví dụ expansion sau khi được phép:
 
 ```powershell
 cd backend
-uv run python scripts/setup_database.py
+uv run python scripts/setup_database.py --confirm-database shopquery
 ```
 
 `ingest_documents.py` gọi Gemini Embedding và có thể tiêu thụ quota. Chỉ cần ingest lần đầu hoặc khi tài liệu thay đổi; `content_hash` giúp bỏ qua các chunk không đổi.
@@ -177,7 +185,7 @@ Volume `postgres_data` giữ dữ liệu. Không dùng `docker compose down -v` 
 
 ### Kiểm tra sử dụng sau khi khởi động
 
-1. Chọn **Dữ liệu cửa hàng mẫu**, tạo chat mới và chọn model trong composer.
+1. Đăng nhập bằng tài khoản Google được mời, chọn **Dữ liệu cửa hàng mẫu**, tạo chat mới và chọn model trong composer.
 2. Hỏi “Top 5 sản phẩm bán chạy nhất tháng 9/2025 là gì?”; mở bảng và SQL. Đối chứng mẫu: product IDs `10, 47, 120, 123, 135` với quantity `15, 14, 11, 11, 10`; hai sản phẩm quantity 11 có thể đổi thứ tự.
 3. Hỏi “Chính sách đổi trả của cửa hàng như thế nào?”; mở nguồn để đối chiếu thời hạn 14 ngày.
 4. Hỏi “Top 5 sản phẩm bán chạy nhất tháng 9/2025 có thuộc danh mục được miễn phí vận chuyển không?”; phải có cả bảng/SQL và nguồn. Trong top 5 này chỉ sản phẩm ID 10 thuộc `PHONE` được miễn phí tiêu chuẩn.
@@ -205,7 +213,7 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 Nếu đây là database mới, chạy ba script thiết lập trước lệnh Uvicorn:
 
 ```powershell
-uv run python scripts/setup_database.py
+uv run python scripts/setup_database.py --confirm-database shopquery
 uv run python scripts/load_seed_data.py
 uv run python scripts/ingest_documents.py
 ```
@@ -294,20 +302,21 @@ Khởi động `db`, tạo database test riêng rồi trỏ hai kết nối vào
 
 ```powershell
 docker compose up -d db
-docker compose exec db psql -U shopquery_setup -d postgres -c "CREATE DATABASE shopquery_test OWNER shopquery_setup;"
+docker compose exec db psql -U shopquery_setup -d postgres -c "CREATE DATABASE shopquery_test_local OWNER shopquery_setup;"
 Set-Location backend
-$env:DATABASE_SETUP_URL = "postgresql+psycopg://shopquery_setup:setup_password@127.0.0.1:54321/shopquery_test"
-$env:DATABASE_READONLY_URL = "postgresql+psycopg://shopquery_reader:readonly_password@127.0.0.1:54321/shopquery_test"
+$env:DATABASE_SETUP_URL = "postgresql+psycopg://shopquery_setup:setup_password@127.0.0.1:54321/shopquery_test_local"
+$env:DATABASE_READONLY_URL = "postgresql+psycopg://shopquery_reader:readonly_password@127.0.0.1:54321/shopquery_test_local"
+$env:SHOPQUERY_TEST_DATABASE_URL = $env:DATABASE_SETUP_URL
 $env:RUN_DATABASE_TESTS = "1"
 uv run pytest -m "integration and not live"
-Remove-Item Env:DATABASE_SETUP_URL, Env:DATABASE_READONLY_URL, Env:RUN_DATABASE_TESTS
+Remove-Item Env:DATABASE_SETUP_URL, Env:DATABASE_READONLY_URL, Env:SHOPQUERY_TEST_DATABASE_URL, Env:RUN_DATABASE_TESTS
 Set-Location ..
-docker compose exec db psql -U shopquery_setup -d postgres -c "DROP DATABASE shopquery_test;"
+docker compose exec db psql -U shopquery_setup -d postgres -c "DROP DATABASE shopquery_test_local;"
 ```
 
 Không chạy integration tests với `shopquery` nếu cần giữ nguyên database chính. Test integration dùng embedding giả lập có tính quyết định, không phải kết quả Gemini thật.
 
-GitHub CI tự chạy job `PostgreSQL integration` với PostgreSQL 17/pgvector và database `shopquery_ci` riêng cho mỗi job. Job bật `RUN_DATABASE_TESTS=1`, chạy đủ 57 integration tests (gồm 40 test múi giờ), dùng role đọc riêng và không cần API key Knowledge/Gemini. Live tests không chạy trong CI; service database được hủy sau job, không kết nối database đang sử dụng của ứng dụng.
+GitHub CI chạy PostgreSQL 17/pgvector với database `shopquery_ci` riêng, `RUN_DATABASE_TESTS=1` và `SHOPQUERY_TEST_DATABASE_URL` khớp target. Ngoài regression múi giờ/upload/delete còn có session, CSRF, A/B isolation, quota và migration checks. Không cần Google hoặc AI credentials. Live tests không chạy trong CI; service database được hủy sau job, không kết nối database đang sử dụng của ứng dụng. Số test mới và giới hạn nghiệm thu ghi trong [báo cáo auth](docs/authentication.md).
 
 ### Frontend
 
@@ -357,6 +366,8 @@ Invoke-WebRequest http://127.0.0.1:8080/api/health -UseBasicParsing
 ```
 
 ## API
+
+Ngoài health và OIDC login/callback, các API cần session cookie hợp lệ. Thiếu session trả 401; POST/PATCH/DELETE/upload cần Origin và X-CSRF-Token lấy từ `/api/auth/me`. Không chia sẻ cookie/token thật. Xem [auth contract](docs/authentication.md).
 
 ### `GET /api/health`
 
@@ -434,7 +445,7 @@ Luồng giao diện: chọn **Quản lý dữ liệu** → **Tạo bộ dữ li�
 
 Trong **Quản lý bộ hiện có**, chọn đúng bộ rồi dùng nút thùng rác để xóa từng bảng hoặc tài liệu, hoặc **Xóa bộ dữ liệu** để xóa toàn bộ nguồn trong bộ đó. Mọi thao tác đều cần xác nhận và không thể hoàn tác từ giao diện; file gốc trên máy không bị xóa. Với XLSX, mỗi bảng là một sheet đã import, không tự xóa các sheet/bảng khác cùng tên file.
 
-Xóa bảng sẽ xóa bảng vật lý và metadata; xóa tài liệu sẽ xóa cả chunks/embeddings. Lịch sử chat vẫn giữ kết quả/trích đoạn cũ khi chỉ xóa một nguồn. Nếu xóa cả bộ đã có chat, cần tích **Xóa cả lịch sử chat gắn với bộ dữ liệu này** hoặc xóa các chat đó trước; API trả `409` nếu chưa đồng ý. Không tự chuyển chat sang nguồn mặc định. Bộ cửa hàng mẫu không có thao tác xóa. Các bộ khác và lịch sử của chúng không bị ảnh hưởng. Thao tác không dùng AI/API key và không thêm schema/dependency; quyền quản lý hiện vẫn dùng chung trong môi trường local, chưa có phân quyền người dùng.
+Xóa bảng sẽ xóa bảng vật lý và metadata; xóa tài liệu sẽ xóa cả chunks/embeddings. Lịch sử chat vẫn giữ kết quả/trích đoạn cũ khi chỉ xóa một nguồn. Nếu xóa cả bộ đã có chat, cần tích **Xóa cả lịch sử chat gắn với bộ dữ liệu này** hoặc xóa các chat đó trước; API trả `409` nếu chưa đồng ý. Không tự chuyển chat sang nguồn mặc định. Bộ cửa hàng mẫu không có thao tác xóa. Chỉ owner được quản lý nguồn; thiếu session trả 401, sai owner trả 404. Thao tác xoá không dùng AI/API key.
 
 API quản lý xóa: `DELETE /api/datasets/{dataset_id}/tables/{table_id}`, `DELETE /api/datasets/{dataset_id}/documents/{document_id}` và `DELETE /api/datasets/{dataset_id}?delete_conversations=false` (chỉ đặt `true` khi đồng ý xóa chat liên quan). Các endpoint thành công trả `204`, nguồn không tồn tại/không thuộc bộ trả `404`. Xóa bộ/bảng dùng một PostgreSQL transaction, chỉ DROP bảng đăng ký trong `uploaded_data`, không dùng `DROP CASCADE` ([PostgreSQL dependency tracking](https://www.postgresql.org/docs/current/ddl-depend.html), [SQLAlchemy Table.drop](https://docs.sqlalchemy.org/en/20/core/metadata.html#sqlalchemy.schema.Table.drop)).
 
@@ -499,12 +510,12 @@ Dữ liệu bảng nằm trong `uploaded_data` với tên vật lý ngẫu nhiê
 ## Giới hạn của MVP
 
 - Dữ liệu bán hàng và tài liệu đều là dữ liệu giả lập.
-- Không có authentication hoặc rate limiting dành cho production.
+- Có auth/session/CSRF/ownership và giới hạn beta; Google login thật và migration chính cần nghiệm thu riêng. Chưa production-ready.
 - Chỉ hỗ trợ tập con SQL trên bốn bảng nghiệp vụ mẫu hoặc bảng upload đúng workspace; CTE, subquery và câu lệnh ghi bị từ chối.
 - Mỗi lần upload bảng chỉ chọn một sheet; workspace có thể chứa nhiều bảng nhưng chưa khai báo quan hệ nên không hỗ trợ JOIN.
 - PDF scan cần OCR không được hỗ trợ; binary tài liệu gốc không được lưu.
-- Chưa có endpoint xóa dataset; có thể xóa từng tài liệu/chunks trong workspace hoặc xóa conversation qua API tương ứng.
-- File upload có validation và giới hạn tài nguyên nhưng demo chưa có authentication, phân quyền theo người dùng, antivirus hoặc object storage; không đưa dữ liệu nhạy cảm lên bản local dùng chung.
+- Có endpoint xoá workspace, từng bảng/tài liệu và conversation, đều yêu cầu owner; xoá source không xoá evidence snapshot trong history đã lưu.
+- Upload có parser validation, ownership và quota beta, chưa có antivirus/object storage hoặc kiểm chứng tải production. Không gửi dữ liệu chưa được phép tới AI providers.
 - Corpus chỉ có sáu tài liệu và chưa có benchmark chứng minh cấu hình retrieval là tối ưu.
 - Chưa triển khai VPS hoặc website public.
 - Chất lượng và khả dụng live phụ thuộc Knowledge/Gemini, mạng, cấu hình và quota; chưa kiểm thử tải hoặc bảo đảm uptime.

@@ -13,6 +13,8 @@ import { useEffect, useState } from "react";
 import type { ConversationSummary } from "../types";
 
 interface SidebarProps {
+  account?: string;
+  onLogout?: () => void;
   open: boolean;
   collapsed: boolean;
   conversations: ConversationSummary[];
@@ -27,6 +29,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  account,
+  onLogout,
   open,
   collapsed,
   conversations,
@@ -118,6 +122,10 @@ export function Sidebar({
 
         <div className="sidebar-footer">
           <button className="upload-button" onClick={onUpload} type="button"><Upload size={17} /><span>Quản lý dữ liệu</span></button>
+          {onLogout ? <div className="account-menu">
+            {!collapsed ? <span title={account}>{account}</span> : null}
+            <button type="button" onClick={onLogout} aria-label="Đăng xuất">Đăng xuất</button>
+          </div> : null}
         </div>
       </aside>
     </>

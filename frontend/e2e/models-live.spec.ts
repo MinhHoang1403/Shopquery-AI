@@ -6,6 +6,7 @@ const runtimeEnv = (globalThis as typeof globalThis & {
 
 test("uses manual Gemini then Knowledge and restores per-answer attribution", async ({ page }, testInfo) => {
   test.skip(runtimeEnv.SHOPQUERY_LIVE_MODELS !== "1", "Opt-in live test on an isolated API.");
+  test.skip(!runtimeEnv.SHOPQUERY_LIVE_STORAGE_STATE, "An authenticated test account is required.");
   test.setTimeout(600_000);
   await expect.poll(async () => (await page.request.get("/api/health")).status(), {
     timeout: 30_000,

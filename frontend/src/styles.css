@@ -382,3 +382,14 @@ button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-v
   .dialog-actions { flex-wrap: wrap; }
   .dialog-actions button { flex: 1; }
 }
+:root { color-scheme: light; }
+.auth-screen { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: #f7f8fa; }
+.auth-card { width: min(100%, 420px); padding: 36px; background: white; border: 1px solid #e5e7eb; border-radius: 22px; text-align: center; box-shadow: 0 12px 45px #15243b08; }
+.auth-symbol { margin: 0 auto 20px; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: #eff6ff; color: #2563eb; font-weight: 700; }
+.auth-card h1 { font-size: 26px; margin: 0 0 12px; }
+.auth-card p { color: #64748b; line-height: 1.65; }
+.auth-card small { display: block; color: #64748b; margin-top: 18px; line-height: 1.6; }
+.google-login { display: block; background: #172033; color: white; padding: 13px; margin-top: 24px; border-radius: 10px; text-decoration: none; }
+.account-menu { display: flex; gap: 8px; justify-content: space-between; align-items: center; padding-top: 12px; font-size: 12px; }
+.account-menu span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu button { flex-shrink: 0; border: 0; background: transparent; color: #475569; cursor: pointer; font-size: 12px; }

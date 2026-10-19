@@ -23,6 +23,7 @@ async function sendQuestion(page: Page, message: string, expectedRoute: string) 
 }
 
 test("creates a multi-source workspace and completes SQL, RAG and Hybrid", async ({ page }) => {
+  test.skip(!runtimeEnv.SHOPQUERY_LIVE_STORAGE_STATE, "An authenticated test account is required.");
   test.skip(
     runtimeEnv.SHOPQUERY_LIVE_WORKSPACE !== "1",
     "Set SHOPQUERY_LIVE_WORKSPACE=1 with the isolated API running.",

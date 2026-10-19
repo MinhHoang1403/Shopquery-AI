@@ -16,6 +16,9 @@ venv/
 !.env.example
 *.pem
 *.key
+*.dump
+*.backup
+.auth/
 
 # Logs and local data
 *.log

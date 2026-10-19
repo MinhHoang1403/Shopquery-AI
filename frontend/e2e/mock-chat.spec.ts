@@ -103,7 +103,11 @@ test.beforeEach(async ({ page }, testInfo) => {
   runtimeErrors.set(page, errors);
   page.on("console", (message) => { if (message.type() === "error") errors.console.push(message.text()); });
   page.on("pageerror", (error) => errors.page.push(error.message));
-  page.on("requestfailed", (request) => errors.requests.push(`${request.method()} ${request.url()}`));
+  page.on("requestfailed", (request) => {
+    if (request.failure()?.errorText !== "net::ERR_ABORTED") {
+      errors.requests.push(`${request.method()} ${request.url()}`);
+    }
+  });
   page.on("response", (response) => { if (response.status() >= 400) errors.responses.push(`${response.status()} ${response.url()}`); });
 });
 
@@ -162,6 +166,10 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method();
+    if (url.pathname === "/api/auth/me") return json(route, {
+      user: { user_id: "mock-account-a", email: "a@example.invalid", display_name: "Mock account A" },
+      csrf_token: "mock-csrf-token",
+    });
     if (url.pathname === "/api/models") return json(route, {
       default_model: "inetcloud-knowledge", gemini_fallback_enabled: true,
       models: [
