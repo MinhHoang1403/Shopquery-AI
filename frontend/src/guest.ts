@@ -1,5 +1,5 @@
 import { ChatApiError, parseChatResponse } from "./api";
-import type { ConversationDetail, ConversationMessage, ConversationSendResponse, ConversationSummary, Dataset, ModelId, ModelsResponse } from "./types";
+import type { ConversationDetail, ConversationMessage, ConversationSendResponse, ConversationSummary, Dataset, ModelId, ModelsResponse, RelationshipClient, RelationshipPreview, RelationshipRecord } from "./types";
 
 export interface GuestFileInfo {
   file_id: string; filename: string; kind: "table" | "document"; size: number;
@@ -11,6 +11,7 @@ export interface GuestStatus extends ModelsResponse {
   max_files: number; max_file_bytes: number; max_rows: number; max_columns: number;
   max_pages?: number; max_session_bytes?: number; max_chunks?: number;
   files: GuestFileInfo[]; limited?: boolean; expired?: boolean;
+  sql_join_v1_enabled?: boolean;
 }
 
 interface GuestSession extends GuestStatus { token: string; csrf_token: string }
@@ -129,6 +130,12 @@ export function createGuestClient(onStatus: (value: GuestStatus) => void) {
 
   return {
     async getDatasets() { const value = guestDataset(await initialize()); return value ? [value] : []; },
+    relationships: {
+      list: async (signal) => await request("relationships", { signal }),
+      preview: async (input) => await request("relationships/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }) as RelationshipPreview,
+      confirm: async (input) => await request("relationships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }) as RelationshipRecord,
+      remove: async (id) => { await request(`relationships/${encodeURIComponent(id)}?confirmed=true`, { method: "DELETE" }); },
+    } satisfies RelationshipClient,
     async getModels() { return await initialize(); },
     async getConversations() { ensureOpen(); return [...conversations.values()]; },
     async getConversation(id: string) { return detail(id); },

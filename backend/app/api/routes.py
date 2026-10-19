@@ -40,7 +40,6 @@ from app.core.errors import (
     ShopQueryError,
     UploadValidationError,
 )
-from app.datasets.context import build_dataset_sql_context
 from app.datasets.parser import ParsedTable, parse_tabular_file
 from app.datasets.repository import DatasetInfo, DatasetTableInfo
 from app.dependencies import (
@@ -49,6 +48,7 @@ from app.dependencies import (
     build_dataset_chat_service,
     build_dataset_repository,
     build_document_repository,
+    build_workspace_context,
 )
 from app.rag.repository import DatasetDocumentInfo
 from app.rag.upload_parser import MAX_PDF_PAGES, parse_document_file
@@ -97,6 +97,7 @@ def upload_limits(user: CurrentUser) -> dict:
         "provider_data_enabled": settings.beta_provider_data_enabled,
         "preview_per_hour": settings.beta_preview_per_user_hour,
         "upload_per_hour": settings.beta_upload_per_user_hour,
+        "sql_join_v1_enabled": settings.sql_join_v1_enabled,
     }
 
 
@@ -119,7 +120,7 @@ def chat(user: CurrentUser, request: ChatRequest) -> ChatResponse:
             else:
                 service = build_dataset_chat_service(
                     settings,
-                    build_dataset_sql_context(dataset, repository.categorical_values(dataset)),
+                    build_workspace_context(settings, dataset, repository),
                 )
             return _chat_response(service.chat(request.message))
     except ResourceNotFoundError as exc:
@@ -237,7 +238,7 @@ def _persist_chat_turn(
             dataset = dataset_repository.get(conversation.dataset_id)
             service = build_dataset_chat_service(
                 settings,
-                build_dataset_sql_context(dataset, dataset_repository.categorical_values(dataset)),
+                build_workspace_context(settings, dataset, dataset_repository),
             )
         response = _chat_response(service.chat(request.message))
     except ShopQueryError as exc:

@@ -10,6 +10,9 @@ import type {
   ModelId,
   ModelsResponse,
   RouteLabel,
+  RelationshipClient,
+  RelationshipPreview,
+  RelationshipRecord,
   SourceReference,
 } from "./types";
 
@@ -242,6 +245,7 @@ export async function getModels(signal?: AbortSignal): Promise<ModelsResponse> {
 export interface UploadLimits {
   max_file_bytes: number; max_rows: number; max_columns: number; max_pdf_pages: number;
   provider_data_enabled: boolean; preview_per_hour: number; upload_per_hour: number;
+  sql_join_v1_enabled?: boolean;
 }
 
 export async function getUploadLimits(signal?: AbortSignal): Promise<UploadLimits> {
@@ -328,6 +332,20 @@ export async function createDataset(name: string): Promise<Dataset> {
 
 export async function getDataset(datasetId: number): Promise<Dataset> {
   return await requestJson(`/api/datasets/${datasetId}`) as Dataset;
+}
+
+export function createRelationshipClient(datasetId: number): RelationshipClient {
+  const path = `/api/datasets/${datasetId}/relationships`;
+  return {
+    list: async (signal) => await requestJson(path, { signal }) as Awaited<ReturnType<RelationshipClient["list"]>>,
+    preview: async (input) => await requestJson(`${path}/preview`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    }) as RelationshipPreview,
+    confirm: async (input) => await requestJson(path, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    }) as RelationshipRecord,
+    remove: async (id) => { await requestJson(`${path}/${encodeURIComponent(id)}?confirmed=true`, { method: "DELETE" }); },
+  };
 }
 
 export async function deleteDataset(datasetId: number, deleteConversations = false): Promise<void> {

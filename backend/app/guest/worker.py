@@ -14,7 +14,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.core.config import Settings
-from app.core.errors import UploadValidationError
+from app.core.errors import ResourceNotFoundError, UploadValidationError
 from app.datasets.parser import parse_tabular_file
 from app.guest.store import GuestFile
 from app.rag.chunking import chunk_document
@@ -57,13 +57,15 @@ def _worker_main(connection: Connection, action: str, payload: tuple, settings: 
             resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
             cpu = settings.guest_worker_cpu_seconds
             resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
-        if action == "parse":
+        if action in {"parse", "relationship"}:
             for key in tuple(os.environ):
                 if (
-                    key.startswith(("GOOGLE_", "DATABASE_", "INETCLOUD_"))
+                    key.startswith(("GOOGLE_", "INETCLOUD_"))
+                    or (action == "parse" and key.startswith("DATABASE_"))
                     or key == "GEMINI_API_KEY"
                 ):
                     os.environ.pop(key, None)
+        if action == "parse":
             # Keep the existing PDF/parser limits, with stricter guest bounds in this child only.
             import app.rag.upload_parser as parser
 
@@ -77,12 +79,28 @@ def _worker_main(connection: Connection, action: str, payload: tuple, settings: 
         elif action == "chat":
             from app.guest.pipeline import run_guest_chat
 
-            result = run_guest_chat(*payload, settings)
+            if len(payload) == 3:
+                result = run_guest_chat(payload[0], payload[1], settings, relationships=payload[2])
+            else:
+                result = run_guest_chat(*payload, settings)
+        elif action == "relationship":
+            from app.datasets.relationships import verify_relationship
+            from app.guest.pipeline import GuestSqlDatabase
+
+            files, request = payload
+            database = GuestSqlDatabase(settings, files)
+            try:
+                with database.engine.connect() as sql:
+                    result = verify_relationship(sql, request, database.file_tables)
+            finally:
+                database.close()
         else:
             raise ValueError("Unsupported internal operation")
         connection.send((True, result))
     except UploadValidationError as exc:
         connection.send((False, (422, str(exc))))
+    except ResourceNotFoundError as exc:
+        connection.send((False, (404, str(exc))))
     except BaseException:
         connection.send(
             (False, (502, "Không thể hoàn tất xử lý dữ liệu tạm. Không tạo kết quả giả."))
@@ -100,15 +118,17 @@ def run_isolated(
     target=_worker_main,
 ) -> Any:
     context = multiprocessing.get_context("spawn")
-    if action == "parse":
+    if action in {"parse", "relationship"}:
         settings = settings.model_copy(
             update={
                 "google_client_id": None,
                 "google_client_secret": None,
                 "gemini_api_key": None,
                 "inetcloud_base_url": None,
-                "database_setup_url": "",
-                "database_readonly_url": "",
+                "database_setup_url": "" if action == "parse" else settings.database_setup_url,
+                "database_readonly_url": ""
+                if action == "parse"
+                else settings.database_readonly_url,
                 "auth_invited_emails": [],
             }
         )
@@ -116,7 +136,7 @@ def run_isolated(
     process = context.Process(target=target, args=(send, action, payload, settings), daemon=True)
     timeout = (
         settings.guest_parse_timeout_seconds
-        if action == "parse"
+        if action in {"parse", "relationship"}
         else settings.guest_request_timeout_seconds
     )
     deadline = time.monotonic() + timeout

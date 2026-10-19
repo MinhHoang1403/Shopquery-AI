@@ -11,8 +11,14 @@ from app.ai.chat import ModelChatService
 from app.ai.gemini import EmbeddingGateway, GenerationGateway
 from app.ai.providers import build_embedding_gateway
 from app.core.config import Settings
-from app.core.errors import ConfigurationError, ModelResponseError
+from app.core.errors import ConfigurationError, ModelResponseError, ResourceConflictError
 from app.datasets.context import build_dataset_sql_context
+from app.datasets.relationships import (
+    RelationshipRecord,
+    RelationshipTable,
+    relationship_revision,
+    relationship_tables,
+)
 from app.datasets.repository import SQL_TYPES, DatasetInfo, DatasetTableInfo
 from app.guest.store import GuestFile
 from app.rag.pipeline import RagPipeline
@@ -22,6 +28,7 @@ from app.routing.router import QueryRouter
 from app.routing.service import ChatResult, DatasetChatService
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.generator import SqlGenerator
+from app.text_to_sql.join_policy import ApprovedJoin
 from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import SqlValidator
 
@@ -34,6 +41,7 @@ class GuestSqlDatabase:
             connect_args={"connect_timeout": 5, "application_name": "shopquery_guest_temp"},
         )
         self.tables: list[DatasetTableInfo] = []
+        self.file_tables: dict[str, RelationshipTable] = {}
         try:
             with self.engine.begin() as connection:
                 connection.execute(text("SET log_min_error_statement = 'PANIC'"))
@@ -60,6 +68,13 @@ class GuestSqlDatabase:
                     )
                     table.create(connection)
                     connection.execute(table.insert(), parsed.database_rows())
+                    self.file_tables[file.file_id] = RelationshipTable(
+                        file.file_id,
+                        name,
+                        parsed.columns,
+                        parsed.row_count,
+                        "pg_temp",
+                    )
                     self.tables.append(
                         DatasetTableInfo(
                             name,
@@ -161,9 +176,28 @@ def run_guest_chat(
     *,
     gateway: GenerationGateway | None = None,
     embedder: EmbeddingGateway | None = None,
+    relationships: tuple[RelationshipRecord, ...] = (),
 ) -> ChatResult:
     sql = GuestSqlDatabase(settings, files) if any(file.table for file in files) else None
     try:
+        joins = []
+        if settings.sql_join_v1_enabled and sql:
+            for record in relationships:
+                if not record.valid or record.revision != relationship_revision(
+                    record, sql.file_tables
+                ):
+                    raise ResourceConflictError("Liên kết Guest không còn hợp lệ trong phiên này.")
+                source, target = relationship_tables(record, sql.file_tables)
+                joins.append(
+                    ApprovedJoin(
+                        record.relationship_id,
+                        source.physical_name,
+                        record.source_column,
+                        target.physical_name,
+                        record.target_column,
+                        record.revision,
+                    )
+                )
 
         def build(selected: GenerationGateway):
             if not files:
@@ -181,11 +215,23 @@ def run_guest_chat(
                 tables=tables,
                 document_count=sum(bool(file.chunks) for file in files),
             )
-            context = build_dataset_sql_context(info, schema_name="pg_temp")
+            context = build_dataset_sql_context(
+                info,
+                schema_name="pg_temp",
+                approved_joins=tuple(joins),
+                join_v1_enabled=settings.sql_join_v1_enabled,
+            )
             sql_pipeline = (
                 TextToSqlPipeline(
                     SqlGenerator(selected, settings.demo_reference_date, context.schema_context),
-                    SqlValidator(context.table_columns, context.allowed_schemas, max_tables=1),
+                    SqlValidator(
+                        context.table_columns,
+                        context.allowed_schemas,
+                        max_tables=2 if joins else 1,
+                        approved_joins=tuple(joins),
+                        column_types=context.column_types,
+                        join_v1_enabled=settings.sql_join_v1_enabled,
+                    ),
                     SqlExecutor(sql.engine, min(settings.sql_statement_timeout_ms, 3000), 100),
                     selected,
                 )

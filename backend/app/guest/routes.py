@@ -81,6 +81,7 @@ def status(context: GuestContext) -> dict:
             for id, label in MODEL_LABELS.items()
         ],
         "gemini_fallback_enabled": settings.ai_gemini_fallback_enabled,
+        "sql_join_v1_enabled": settings.sql_join_v1_enabled,
     }
 
 
@@ -207,9 +208,10 @@ def chat(request: Request, guest: CurrentGuest, body: GuestChatRequest) -> dict:
             update={"ai_default_model": body.model_id or settings.ai_default_model}
         )
         try:
-            result = run_isolated(
-                "chat", (list(guest.files), body.message), selected, guest.cancelled
-            )
+            payload = (list(guest.files), body.message)
+            if settings.sql_join_v1_enabled:
+                payload += (tuple(guest.relationships),)
+            result = run_isolated("chat", payload, selected, guest.cancelled)
         except HTTPException as exc:
             exc.headers = {**(exc.headers or {}), "X-Guest-Remaining": str(guest.remaining)}
             raise

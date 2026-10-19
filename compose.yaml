@@ -28,6 +28,7 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:-inetcloud-knowledge}
+      SQL_JOIN_V1_ENABLED: ${SQL_JOIN_V1_ENABLED:-false}
       APP_ENVIRONMENT: ${APP_ENVIRONMENT:-development}
       APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:8080}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

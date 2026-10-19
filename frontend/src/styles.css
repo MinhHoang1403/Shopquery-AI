@@ -437,3 +437,12 @@ button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-v
   .app-shell--collapsed .account-trigger { justify-content: center; padding: 8px 0; }
   .app-shell--collapsed .account-trigger .account-details, .app-shell--collapsed .account-chevron { display: none; }
 }
+.relationship-panel { min-width: 0; }
+.relationship-panel summary { cursor: pointer; font-weight: 600; }
+.relationship-panel fieldset { min-width: 0; margin: 10px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.relationship-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.relationship-fields select { min-width: 0; width: 100%; max-width: 100%; }
+.relationship-panel dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+.relationship-panel dd { margin: 0; }
+.relationship-panel p, .relationship-panel li { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .relationship-fields { grid-template-columns: minmax(0, 1fr); } }

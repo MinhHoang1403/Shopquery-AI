@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.errors import SqlUnsupportedError
 from app.rag.pipeline import RagPipeline, Source
 from app.routing.hybrid import HybridPipeline
 from app.routing.router import QueryRouter, RouteLabel
@@ -88,15 +89,23 @@ class DatasetChatService:
             )
         route = self._router.route(question, frozenset(allowed)).route
         if route == RouteLabel.SQL and self._sql_pipeline is not None:
-            result = self._sql_pipeline.run(question)
+            try:
+                result = self._sql_pipeline.run(question)
+            except SqlUnsupportedError as exc:
+                return ChatResult(str(exc), RouteLabel.UNSUPPORTED)
             return ChatResult(result.answer, route, result.sql, result.rows)
         if route == RouteLabel.RAG and self._rag_pipeline is not None:
             result = self._rag_pipeline.run(question)
             return ChatResult(result.answer, route, sources=result.sources)
         if route == RouteLabel.HYBRID and self._hybrid_pipeline is not None:
-            result = self._hybrid_pipeline.run(question)
+            try:
+                result = self._hybrid_pipeline.run(question)
+            except SqlUnsupportedError as exc:
+                return ChatResult(str(exc), RouteLabel.UNSUPPORTED)
             return ChatResult(result.answer, route, result.sql, result.rows, result.sources)
         return ChatResult(
-            "Bộ dữ liệu không có đủ loại nguồn để trả lời câu hỏi này.",
+            "Bộ dữ liệu không có đủ loại nguồn để trả lời câu hỏi này. "
+            "Nếu cần ghép hai bảng, hãy kiểm tra Quản lý dữ liệu → Liên kết bảng. "
+            "JOIN v1 chỉ hỗ trợ hai bảng với quan hệ đã xác nhận và tổng hợp fact an toàn.",
             RouteLabel.UNSUPPORTED,
         )

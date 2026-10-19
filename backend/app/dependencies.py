@@ -1,5 +1,6 @@
 """Application object graph construction kept outside request handlers."""
 
+from functools import partial
 from uuid import UUID
 
 from app.ai.chat import ModelChatService
@@ -8,8 +9,9 @@ from app.ai.providers import build_embedding_gateway
 from app.conversations.repository import ConversationRepository
 from app.core.config import Settings
 from app.database.session import get_readonly_engine, get_setup_engine
-from app.datasets.context import DatasetSqlContext
-from app.datasets.repository import DatasetRepository
+from app.datasets.context import DatasetSqlContext, build_dataset_sql_context
+from app.datasets.relationship_repository import RelationshipRepository
+from app.datasets.repository import DatasetInfo, DatasetRepository
 from app.rag.pipeline import RagPipeline
 from app.rag.repository import DocumentRepository
 from app.routing.hybrid import HybridPipeline
@@ -62,12 +64,31 @@ def build_dataset_chat_service(
     )
 
 
+def build_workspace_context(
+    settings: Settings,
+    dataset: DatasetInfo,
+    repository: DatasetRepository,
+) -> DatasetSqlContext:
+    joins = ()
+    if settings.sql_join_v1_enabled:
+        joins = RelationshipRepository(get_setup_engine(), dataset.owner_user_id).approved(
+            dataset.dataset_id
+        )
+    return build_dataset_sql_context(
+        dataset,
+        repository.categorical_values(dataset),
+        approved_joins=joins,
+        join_v1_enabled=settings.sql_join_v1_enabled,
+    )
+
+
 def _build_dataset_chat_service(
     settings: Settings, context: DatasetSqlContext, gateway: GenerationGateway
 ) -> DatasetChatService:
     """Build request-local pipelines scoped to one uploaded workspace."""
 
     sql_pipeline = None
+    joins = context.approved_joins if settings.sql_join_v1_enabled else ()
     if context.table_columns:
         sql_pipeline = TextToSqlPipeline(
             generator=SqlGenerator(
@@ -78,7 +99,10 @@ def _build_dataset_chat_service(
             validator=SqlValidator(
                 table_columns=context.table_columns,
                 allowed_schemas=context.allowed_schemas,
-                max_tables=1,
+                max_tables=2 if joins else 1,
+                approved_joins=joins,
+                column_types=context.column_types,
+                join_v1_enabled=settings.sql_join_v1_enabled,
             ),
             executor=SqlExecutor(
                 get_readonly_engine(),
@@ -86,6 +110,13 @@ def _build_dataset_chat_service(
                 settings.sql_max_rows,
             ),
             gateway=gateway,
+            execution_guard=partial(
+                RelationshipRepository(get_setup_engine(), context.owner_user_id).execution_guard,
+                context.dataset_id,
+                joins,
+            )
+            if joins
+            else None,
         )
     rag_pipeline = None
     if context.has_documents:

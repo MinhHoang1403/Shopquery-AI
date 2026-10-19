@@ -5,6 +5,7 @@ import { guestDataset } from "../guest";
 import type { Dataset } from "../types";
 import { Modal } from "./Dialogs";
 import { ResultTable } from "./ResponseEvidence";
+import { RelationshipPanel } from "./RelationshipPanel";
 
 export function GuestUploadDialog({ client, status, onClose, onImported }: {
   client: GuestClient; status: GuestStatus | null; onClose: () => void; onImported: (dataset: Dataset) => void;
@@ -63,6 +64,11 @@ export function GuestUploadDialog({ client, status, onClose, onImported }: {
         <button className="primary-button" disabled={busy} onClick={() => void upload()} type="button">Dùng tệp trong phiên này</button>
       </div> : null}
       <details className="guest-privacy"><summary>Quyền riêng tư và thời gian lưu</summary><p>Không tải thông tin cá nhân, mật khẩu hoặc dữ liệu chưa được phép chia sẻ. {status ? `Máy chủ dọn tệp sau tối đa ${Math.ceil(status.ttl_seconds / 60)} phút kể từ khi tạo phiên.` : "Tệp được dọn khi hết hạn phiên."} Nếu bật AI, dữ liệu liên quan có thể gửi tới Knowledge/Gemini; RAG dùng Google Embedding. Xem trước không gọi AI.</p></details>
+      {status?.sql_join_v1_enabled ? <RelationshipPanel
+        key={JSON.stringify(status.files.map((file) => [file.file_id, file.columns]))}
+        client={client.relationships} disabled={busy}
+        tables={status.files.filter((file) => file.kind === "table").map((file) => ({ id: file.file_id, name: file.filename, columns: file.columns }))}
+      /> : null}
       <div className="dialog-actions"><button className="secondary-button" disabled={busy} type="button" onClick={onClose}>Đóng</button></div>
     </div>
   </Modal>;

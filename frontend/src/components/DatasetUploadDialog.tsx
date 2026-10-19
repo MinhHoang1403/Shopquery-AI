@@ -1,7 +1,8 @@
 import { AlertCircle, FileSpreadsheet, FileText, Plus, Trash2, UploadCloud } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createDataset,
+  createRelationshipClient,
   deleteDataset,
   deleteDatasetDocument,
   deleteDatasetTable,
@@ -17,6 +18,7 @@ import {
 import type { Dataset, DatasetDocument, DatasetPreview, DatasetTable } from "../types";
 import { Modal } from "./Dialogs";
 import { ResultTable } from "./ResponseEvidence";
+import { RelationshipPanel } from "./RelationshipPanel";
 
 interface DatasetUploadDialogProps {
   datasets: Dataset[];
@@ -56,6 +58,9 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
   const confirmation = useRef<HTMLElement | null>(null);
   const [limits, setLimits] = useState<UploadLimits | null>(null);
   const [limitsError, setLimitsError] = useState<string | null>(null);
+  const relationshipDatasetId = workspace?.dataset_id;
+  const relationshipEnabled = limits?.sql_join_v1_enabled === true;
+  const relationshipClient = useMemo(() => relationshipEnabled && relationshipDatasetId ? createRelationshipClient(relationshipDatasetId) : null, [relationshipDatasetId, relationshipEnabled]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -365,6 +370,11 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
           </>
         ) : null}
 
+        {workspace?.dataset_id && limits?.sql_join_v1_enabled && relationshipClient ? <RelationshipPanel
+          key={JSON.stringify([workspace.dataset_id, workspace.tables])}
+          client={relationshipClient} disabled={deletionDisabled || busy}
+          tables={(workspace.tables ?? []).filter((table) => table.dataset_table_id !== null).map((table) => ({ id: String(table.dataset_table_id), name: table.display_name, columns: table.columns }))}
+        /> : null}
         </fieldset>
         {deleteTarget ? (
           <section aria-label="Xác nhận xóa dữ liệu" className="workspace-delete-confirm" ref={confirmation} tabIndex={-1}>

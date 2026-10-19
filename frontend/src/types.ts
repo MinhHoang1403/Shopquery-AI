@@ -4,6 +4,22 @@ export type ModelId = "inetcloud-knowledge" | "gemini";
 // NUMERIC cells are exact decimal strings. Render unchanged, without Number()/parseFloat().
 export type ResultRow = Record<string, unknown>;
 
+export interface RelationshipInput {
+  source_table_id: string; source_column: string; target_table_id: string; target_column: string;
+}
+export interface RelationshipPreview extends RelationshipInput {
+  revision: string; valid: boolean; cardinality: "many-to-one" | "one-to-one" | null;
+  source_rows: number; target_rows: number; source_nulls: number; target_nulls: number;
+  target_duplicates: number; orphan_rows: number | null; reasons: string[];
+}
+export interface RelationshipRecord extends RelationshipPreview { relationship_id: string; confirmed: true }
+export interface RelationshipClient {
+  list: (signal?: AbortSignal) => Promise<{ enabled: boolean; relationships: RelationshipRecord[] }>;
+  preview: (input: RelationshipInput) => Promise<RelationshipPreview>;
+  confirm: (input: RelationshipInput & { revision: string; confirmed: true }) => Promise<RelationshipRecord>;
+  remove: (id: string) => Promise<void>;
+}
+
 export interface ModelOption {
   id: ModelId;
   label: string;

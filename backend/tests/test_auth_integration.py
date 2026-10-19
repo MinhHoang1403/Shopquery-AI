@@ -150,7 +150,7 @@ def test_account_cannot_access_other_resources_or_start_work(accounts, monkeypat
     for name in (
         "build_chat_service",
         "build_dataset_chat_service",
-        "build_dataset_sql_context",
+        "build_workspace_context",
         "GeminiGateway",
         "parse_document_file",
         "parse_tabular_file",

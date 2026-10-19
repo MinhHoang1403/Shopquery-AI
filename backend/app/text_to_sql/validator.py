@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from sqlglot import exp, parse
 from sqlglot.errors import ParseError
 
-from app.core.errors import SqlValidationError
+from app.core.errors import SqlUnsupportedError, SqlValidationError
+from app.text_to_sql.join_policy import ApprovedJoin, validate_uploaded_join
 from app.text_to_sql.schema_context import TABLE_COLUMNS
 
 ALLOWED_FUNCTIONS = {
@@ -48,6 +49,8 @@ PROHIBITED_NODES = (
 class ValidatedSql:
     statement: str
     tables: frozenset[str]
+    relationship_id: str | None = None
+    fact_table: str | None = None
 
 
 class SqlValidator:
@@ -58,6 +61,9 @@ class SqlValidator:
         table_columns: dict[str, set[str]] | None = None,
         allowed_schemas: dict[str, str] | None = None,
         max_tables: int | None = None,
+        approved_joins: tuple[ApprovedJoin, ...] = (),
+        column_types: dict[str, dict[str, str]] | None = None,
+        join_v1_enabled: bool = False,
     ) -> None:
         self._table_columns = {
             table.lower(): {column.lower() for column in columns}
@@ -67,6 +73,9 @@ class SqlValidator:
             table.lower(): schema.lower() for table, schema in (allowed_schemas or {}).items()
         }
         self._max_tables = max_tables
+        self._approved_joins = approved_joins
+        self._column_types = column_types or {}
+        self._join_v1_enabled = join_v1_enabled
 
     def validate(self, sql: str) -> ValidatedSql:
         if not sql.strip():
@@ -88,7 +97,23 @@ class SqlValidator:
         tables, aliases = self._validate_tables(root)
         self._validate_functions(root)
         self._validate_columns(root, aliases)
-        return ValidatedSql(statement=root.sql(dialect="postgres"), tables=frozenset(tables))
+        relation = None
+        if self._max_tables is not None and root.find(exp.Join) is not None:
+            if not self._join_v1_enabled:
+                raise SqlValidationError("Uploaded JOIN v1 is disabled")
+            relation = validate_uploaded_join(
+                root,
+                aliases,
+                self._approved_joins,
+                self._column_types,
+                self._table_columns,
+            )
+        return ValidatedSql(
+            statement=root.sql(dialect="postgres"),
+            tables=frozenset(tables),
+            relationship_id=relation.relationship_id if relation else None,
+            fact_table=relation.source_table if relation else None,
+        )
 
     def _validate_tables(self, root: exp.Select) -> tuple[set[str], dict[str, str]]:
         tables: set[str] = set()
@@ -110,10 +135,14 @@ class SqlValidator:
             aliases[visible_name] = table_name
         if not tables:
             raise SqlValidationError("A business table is required")
+        if self._max_tables == 1 and root.find(exp.Join) is not None:
+            if self._join_v1_enabled:
+                raise SqlUnsupportedError(
+                    "Hãy khai báo và xác nhận quan hệ tại Quản lý dữ liệu → Liên kết bảng."
+                )
+            raise SqlValidationError("JOIN is not supported without declared relationship metadata")
         if self._max_tables is not None and len(tables) > self._max_tables:
             raise SqlValidationError("Multiple tables require declared relationship metadata")
-        if self._max_tables == 1 and root.find(exp.Join) is not None:
-            raise SqlValidationError("JOIN is not supported without declared relationship metadata")
         return tables, aliases
 
     @staticmethod
@@ -148,8 +177,8 @@ class SqlValidator:
                 table for table in aliases.values() if column_name in self._table_columns[table]
             ]
             parent = column.parent
-            order_alias = (
-                isinstance(parent, exp.Ordered) and parent.parent is root.args.get("order")
+            order_alias = isinstance(parent, exp.Ordered) and parent.parent is root.args.get(
+                "order"
             )
             group_alias = isinstance(parent, exp.Group) and parent is root.args.get("group")
             # PostgreSQL ORDER BY prefers output names; GROUP BY prefers input names.

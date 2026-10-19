@@ -46,6 +46,12 @@ class HybridPipeline:
             f"section={chunk.section_title}]\n{chunk.content}"
             for chunk in chunks
         )
+        grain = (
+            f"JOIN grain is fact rows from {sql_result.fact_table}; "
+            "counts are not dimension entities."
+            if sql_result.fact_table
+            else ""
+        )
         prompt = f"""
 Answer in the same language as the question. Cross-check the SQL rows against the document
 conditions. Use both evidence sets, do not invent missing conditions or numbers, and cite only
@@ -65,6 +71,7 @@ the corresponding row and policy condition, and remove all draft reasoning or se
 
 Question: {question}
 SQL rows: {json.dumps(sql_result.rows, ensure_ascii=False)}
+{grain}
 Document evidence:
 {evidence}
 """.strip()

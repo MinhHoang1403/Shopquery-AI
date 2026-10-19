@@ -211,6 +211,7 @@ class DatasetTable(Base):
     __tablename__ = "dataset_tables"
     __table_args__ = (
         UniqueConstraint("physical_table_name", name="uq_dataset_tables_physical_name"),
+        UniqueConstraint("dataset_table_id", "dataset_id", name="uq_dataset_tables_scope"),
     )
 
     dataset_table_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -226,6 +227,47 @@ class DatasetTable(Base):
     row_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
     dataset: Mapped[Dataset] = relationship(back_populates="tables")
+
+
+class DatasetRelationship(Base):
+    __tablename__ = "dataset_relationships"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_table_id", "dataset_id"],
+            ["dataset_tables.dataset_table_id", "dataset_tables.dataset_id"],
+            ondelete="CASCADE",
+            name="fk_relationship_source_scope",
+        ),
+        ForeignKeyConstraint(
+            ["target_table_id", "dataset_id"],
+            ["dataset_tables.dataset_table_id", "dataset_tables.dataset_id"],
+            ondelete="CASCADE",
+            name="fk_relationship_target_scope",
+        ),
+        UniqueConstraint(
+            "dataset_id",
+            "source_table_id",
+            "source_column",
+            "target_table_id",
+            "target_column",
+            name="uq_relationship_pair",
+        ),
+        CheckConstraint("source_table_id <> target_table_id", name="ck_relationship_distinct"),
+    )
+
+    relationship_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.dataset_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_table_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_column: Mapped[str] = mapped_column(String(63), nullable=False)
+    target_table_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_column: Mapped[str] = mapped_column(String(63), nullable=False)
+    revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    statistics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class DatasetDocument(Base):

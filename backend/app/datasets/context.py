@@ -1,10 +1,11 @@
 """Immutable SQL context derived from one selected dataset workspace."""
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from app.datasets.repository import UPLOADED_SCHEMA, DatasetInfo
+from app.text_to_sql.join_policy import ApprovedJoin
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,8 @@ class DatasetSqlContext:
     dataset_id: int | None = None
     has_documents: bool = False
     owner_user_id: UUID | None = None
+    approved_joins: tuple[ApprovedJoin, ...] = ()
+    column_types: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 def build_dataset_sql_context(
@@ -24,6 +27,8 @@ def build_dataset_sql_context(
     ) = None,
     *,
     schema_name: str = UPLOADED_SCHEMA,
+    approved_joins: tuple[ApprovedJoin, ...] = (),
+    join_v1_enabled: bool = False,
 ) -> DatasetSqlContext:
     tables = dataset.tables or (() if dataset.table is None else (dataset.table,))
     nested_values: dict[str, dict[str, tuple[str, ...]]]
@@ -65,7 +70,7 @@ def build_dataset_sql_context(
             f"{hints}"
         )
 
-    context = f"""
+    source_context = f"""
 PostgreSQL dataset workspace:
 - Dataset name: {dataset.name}
 - Uploaded document count in this workspace: {dataset.document_count}
@@ -73,14 +78,53 @@ PostgreSQL dataset workspace:
   absent or lack a policy merely because this SQL schema describes only table columns.
 - Allowed tables:
 {chr(10).join(descriptions)}
+""".strip()
 
+    join_rules = """
+- Choose exactly one allowed table for the records or calculation needed by the question.
+- Never JOIN tables. No relationship metadata is available, even when column names look alike.
+- If the SQL requires combining tables, explain that no trusted relationship is declared."""
+    if not join_v1_enabled:
+        approved_joins = ()
+    if approved_joins:
+        by_name = {table.physical_table_name: table for table in tables}
+        relations = []
+        for relation in approved_joins:
+            for name, key in (
+                (relation.source_table, relation.source_column),
+                (relation.target_table, relation.target_column),
+            ):
+                if name not in by_name or not any(c.name == key for c in by_name[name].columns):
+                    raise ValueError("Relationship is outside the selected workspace metadata")
+            relations.append(
+                f"Approved INNER relation: {schema_name}."
+                f"{relation.source_table}.{relation.source_column} "
+                f"= {schema_name}.{relation.target_table}.{relation.target_column}; "
+                "direction fact -> dimension; verified N:1 or 1:1."
+            )
+        source_context += "\n" + "\n".join(relations)
+        join_rules = """
+- Prefer one table when it suffices. At most two table bindings and one approved relation per SQL.
+- Only INNER JOIN from fact to approved dimension; exact equality on the approved key pair.
+- Use explicit distinct aliases and qualified columns for joins; never invent a relationship.
+- SUM/AVG only direct fact NUMERIC/BIGINT columns. Never aggregate dimension measures/entities.
+- COUNT(*) AS fact_row_count or matched_row_count counts fact rows, not dimension entities.
+- COUNT(fact.column) AS fact_value_count. No DISTINCT counts or complex aggregate expressions.
+- No LEFT/RIGHT/FULL/CROSS/NATURAL/USING/self/multi-hop/composite-key joins, CTEs or subqueries.
+- Missing relationships, >2 tables, unsafe grain: return unsupported_reason, not partial SQL."""
+    elif join_v1_enabled:
+        source_context += (
+            "\nNo approved table-to-table relationships. Multi-table SQL is unsupported. "
+            "This does not prohibit a single-table SQL result combined with documents in HYBRID."
+        )
+
+    context = f"""
+{source_context}
 Rules:
 - This uploaded workspace may describe any domain; do not assume it is a store or sales data.
 - Interpret fields from their source headers and types. Do not invent missing fields or rules.
 - Never import default-store completed-order, revenue, shipping or category rules here.
-- Choose exactly one allowed table that directly answers the question.
-- Never JOIN tables. No relationship metadata is available, even when column names look alike.
-- If the question requires combining tables, explain that no trusted relationship is declared.
+{join_rules}
 - Use source-header mappings only to understand wording; use physical names in SQL.
 - In FROM, copy the fully qualified SQL table identifier above exactly, including {schema_name}.
 - Display labels, worksheet names and file names are never SQL table identifiers.
@@ -97,4 +141,9 @@ Rules:
         dataset_id=dataset.dataset_id,
         has_documents=dataset.document_count > 0,
         owner_user_id=dataset.owner_user_id,
+        approved_joins=approved_joins,
+        column_types={
+            table.physical_table_name: {c.name: c.data_type for c in table.columns}
+            for table in tables
+        },
     )

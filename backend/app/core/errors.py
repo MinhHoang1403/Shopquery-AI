@@ -40,6 +40,10 @@ class SqlExecutionError(ShopQueryError):
     """Raised when an approved query cannot be executed safely."""
 
 
+class SqlUnsupportedError(SqlValidationError):
+    """An unsupported relationship/grain must not become a partial numeric answer."""
+
+
 class RetrievalError(ShopQueryError):
     """Raised when document retrieval cannot be completed."""
 

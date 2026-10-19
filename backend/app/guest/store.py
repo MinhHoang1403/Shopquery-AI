@@ -1,6 +1,7 @@
 """RAM-only page contexts; no guest files, vectors, or messages in user tables."""
 
 import hashlib
+import pickle
 import secrets
 import threading
 import time
@@ -13,6 +14,7 @@ from fastapi import HTTPException
 
 from app.core.config import Settings, get_settings
 from app.datasets.parser import ParsedTable
+from app.datasets.relationships import MAX_RELATIONSHIPS, RelationshipRecord
 from app.rag.chunking import DocumentChunkData
 
 
@@ -32,6 +34,7 @@ class GuestContext:
     expires: float
     remaining: int
     files: list[GuestFile] = field(default_factory=list)
+    relationships: list[RelationshipRecord] = field(default_factory=list)
     uploaded_count: int = 0
     parse_count: int = 0
     cancelled: threading.Event = field(default_factory=threading.Event)
@@ -108,8 +111,8 @@ class GuestStore:
             self.ensure_active(context)
             if context.uploaded_count >= self.settings.guest_max_files:
                 raise HTTPException(429, "Đã đạt giới hạn số tệp của phiên khách.")
-            size = sum(item.memory_bytes for item in context.files) + file.memory_bytes
-            total = sum(item.memory_bytes for c in self._contexts.values() for item in c.files)
+            size = self._memory_bytes(context) + file.memory_bytes
+            total = sum(self._memory_bytes(c) for c in self._contexts.values())
             chunks = sum(len(item.chunks) for item in context.files) + len(file.chunks)
             if (
                 size > self.settings.guest_max_session_bytes
@@ -122,6 +125,69 @@ class GuestStore:
             context.files.append(file)
             context.uploaded_count += 1
 
+    @staticmethod
+    def _memory_bytes(context: GuestContext) -> int:
+        return sum(item.memory_bytes for item in context.files) + (
+            len(pickle.dumps(context.relationships)) * 4 if context.relationships else 0
+        )
+
+    def confirm_relationship(
+        self,
+        context: GuestContext,
+        record: RelationshipRecord,
+    ) -> RelationshipRecord:
+        with self._lock:
+            self.ensure_active(context)
+            table_ids = {file.file_id for file in context.files if file.table is not None}
+            if (
+                record.source_table_id not in table_ids
+                or record.target_table_id not in table_ids
+                or record.source_table_id == record.target_table_id
+            ):
+                raise HTTPException(404, "Hai bảng phải thuộc phiên hiện tại.")
+            existing = next(
+                (
+                    item
+                    for item in context.relationships
+                    if (
+                        item.source_table_id,
+                        item.source_column,
+                        item.target_table_id,
+                        item.target_column,
+                    )
+                    == (
+                        record.source_table_id,
+                        record.source_column,
+                        record.target_table_id,
+                        record.target_column,
+                    )
+                ),
+                None,
+            )
+            if existing:
+                return existing
+            if len(context.relationships) >= MAX_RELATIONSHIPS:
+                raise HTTPException(429, "Phiên đã đạt giới hạn 20 liên kết.")
+            added = len(pickle.dumps(record)) * 4 + 256
+            if (
+                self._memory_bytes(context) + added > self.settings.guest_max_session_bytes
+                or sum(self._memory_bytes(c) for c in self._contexts.values()) + added
+                > self.settings.guest_max_total_bytes
+            ):
+                raise HTTPException(429, "Liên kết vượt giới hạn bộ nhớ phiên khách.")
+            context.relationships.append(record)
+            return record
+
+    def delete_relationship(self, context: GuestContext, relationship_id: str) -> None:
+        with self._lock:
+            self.ensure_active(context)
+            item = next(
+                (r for r in context.relationships if r.relationship_id == relationship_id), None
+            )
+            if item is None:
+                raise HTTPException(404, "Không tìm thấy liên kết trong phiên này.")
+            context.relationships.remove(item)
+
     def reset(self, context: GuestContext) -> None:
         with self._lock:
             self._release(context.key)
@@ -131,6 +197,7 @@ class GuestStore:
         if context:
             context.cancelled.set()
             context.files.clear()
+            context.relationships.clear()
 
     def cleanup(self) -> None:
         with self._lock:

@@ -8,11 +8,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.relationship_routes import router as relationship_router
 from app.api.routes import router
 from app.auth.routes import router as auth_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.guest.middleware import GuestBodyLimit
+from app.guest.relationship_routes import router as guest_relationship_router
 from app.guest.routes import router as guest_router
 from app.guest.store import guest_store
 
@@ -52,8 +54,10 @@ app.add_middleware(
 )
 app.add_middleware(GuestBodyLimit)
 app.include_router(router)
+app.include_router(relationship_router)
 app.include_router(auth_router)
 app.include_router(guest_router)
+app.include_router(guest_relationship_router)
 
 
 @app.middleware("http")
