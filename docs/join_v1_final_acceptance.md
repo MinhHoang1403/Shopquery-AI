@@ -1,5 +1,8 @@
 # JOIN v1 — bàn giao local 8080, 20/10/2026
 
+> Báo cáo lịch sử của đợt trước. Kết quả mới và blocker Gemini UI còn tồn tại:
+> [nghiệm thu độ tin cậy SQL/JOIN](sql_join_reliability_acceptance.md).
+
 ## Kết quả và giới hạn
 
 - JOIN **ON** trong API runtime, 8080 health OK, web/API/DB healthy.

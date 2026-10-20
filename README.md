@@ -479,7 +479,7 @@ Giới hạn bảng mặc định là 10 MB, 5.000 dòng và 30 cột. CSV phả
 
 Tài liệu tối đa 10 MB; PDF tối đa 100 trang và phải có text layer. DOCX được kiểm tra số entry, tổng kích thước giải nén, tỷ lệ nén và đường dẫn archive. TXT/MD phải là UTF-8. Hệ thống không hỗ trợ OCR, PDF scan, DOC cũ, macro, URL ingestion hoặc ảnh. MVP chỉ lưu metadata, extracted text/chunks và embedding, không lưu binary gốc để tải lại. Nội dung tài liệu luôn được coi là dữ liệu không tin cậy. Nếu embedding 429/503, transaction không tạo metadata/chunks dở dang; hãy chờ quota/dịch vụ rồi tải lại.
 
-Dữ liệu bảng nằm trong `uploaded_data` với tên vật lý ngẫu nhiên. Context chỉ đưa các bảng của workspace đang chọn vào allowlist. Trong bản này, mỗi SQL chỉ được tham chiếu đúng một bảng; mọi JOIN bị từ chối vì chưa có relationship metadata, kể cả khi tên cột giống nhau. RAG lọc `dataset_id` ngay trong truy vấn pgvector. Hybrid tái sử dụng SQL và RAG đã scope trong cùng workspace, không suy đoán thuộc tính hoặc nguồn thiếu.
+Dữ liệu bảng nằm trong `uploaded_data` với tên vật lý ngẫu nhiên. Context chỉ đưa các bảng của workspace đang chọn vào allowlist. Mặc định SQL chỉ dùng một bảng. Khi `SQL_JOIN_V1_ENABLED=true`, JOIN v1 cho phép INNER JOIN hai bảng cùng owner/workspace qua một quan hệ đã kiểm tra và xác nhận trong Quản lý dữ liệu → Liên kết bảng, đúng chiều chi tiết → danh mục và tổng hợp fact an toàn; không tự đoán từ tên cột. RAG lọc `dataset_id` ngay trong truy vấn pgvector. Hybrid có thể kết hợp SQL một bảng với tài liệu mà không cần quan hệ JOIN. Xem [nghiệm thu SQL/JOIN và giới hạn live](docs/sql_join_reliability_acceptance.md).
 
 ## Cấu trúc dự án
 
@@ -536,7 +536,7 @@ Dữ liệu bảng nằm trong `uploaded_data` với tên vật lý ngẫu nhiê
 - Dữ liệu bán hàng và tài liệu đều là dữ liệu giả lập.
 - Có auth/session/CSRF/ownership và giới hạn beta; Google login thật và migration chính cần nghiệm thu riêng. Chưa production-ready.
 - Chỉ hỗ trợ tập con SQL trên bốn bảng nghiệp vụ mẫu hoặc bảng upload đúng workspace; CTE, subquery và câu lệnh ghi bị từ chối.
-- Mỗi lần upload bảng chỉ chọn một sheet; workspace có thể chứa nhiều bảng nhưng chưa khai báo quan hệ nên không hỗ trợ JOIN.
+- Mỗi lần upload bảng chỉ chọn một sheet. JOIN v1 là opt-in, tối đa hai bảng và một quan hệ đã xác nhận; không hỗ trợ JOIN tùy ý. Harness Knowledge/Gemini đã pass các ca synthetic sau sửa prompt, nhưng Gemini JOIN qua UI 8080 vẫn có lượt bị từ chối: chưa nghiệm thu đầy đủ live end-to-end.
 - PDF scan cần OCR không được hỗ trợ; binary tài liệu gốc không được lưu.
 - Có endpoint xoá workspace, từng bảng/tài liệu và conversation, đều yêu cầu owner; xoá source không xoá evidence snapshot trong history đã lưu.
 - Upload có parser validation, ownership và quota beta, chưa có antivirus/object storage hoặc kiểm chứng tải production. Không gửi dữ liệu chưa được phép tới AI providers.
@@ -545,4 +545,4 @@ Dữ liệu bảng nằm trong `uploaded_data` với tên vật lý ngẫu nhiê
 - Chất lượng và khả dụng live phụ thuộc Knowledge/Gemini, mạng, cấu hình và quota; chưa kiểm thử tải hoặc bảo đảm uptime.
 - Không đưa demo chứa API key lên Internet công khai khi chưa bổ sung xác thực, giới hạn lưu lượng và quản lý secret phù hợp.
 
-Repository: [github.com/MinhHoang1403/Shopquery-AI](https://github.com/MinhHoang1403/Shopquery-AI). Xem [nghiệm thu mới nhất](docs/final_audit_report.md), [cơ sở kỹ thuật](docs/technical_references.md) và [đánh giá lịch sử](docs/evaluation_report.md).
+Repository: [github.com/MinhHoang1403/Shopquery-AI](https://github.com/MinhHoang1403/Shopquery-AI). Xem [nghiệm thu SQL/JOIN mới nhất](docs/sql_join_reliability_acceptance.md), [audit trước](docs/final_audit_report.md), [cơ sở kỹ thuật](docs/technical_references.md) và [đánh giá lịch sử](docs/evaluation_report.md).
