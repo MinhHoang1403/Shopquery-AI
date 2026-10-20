@@ -546,16 +546,62 @@ REJECT đúng semantics thay vì sửa validator để xanh.
 Ruff PASS; targeted SQL/JOIN/golden/authenticated/domain/RAG/Hybrid: **261 PASS**.
 Full backend offline `pytest -m 'not live'`: **719 PASS, 16 live deselected**,
 102.29s; **449 unit + 270 PostgreSQL integration**, không skipped offline tests.
-CI exact SHA và API-only deployment đang chờ hoàn tất;
-chưa gắn CI baseline cho source mới. Không đổi frontend/API shape nên không
+Source commit **`be93d5a0659bdb0f887dfb89ce279d0100181c98`** đã push bình thường.
+[CI exact source SHA](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39366369154)
+**SUCCESS** cả Backend quality, PostgreSQL integration, Frontend quality:
+Ruff, 449 unit, 270 PG, ESLint/typecheck/build, 65 Vitest và 105 Playwright mock
+PASS. Không gắn CI baseline cho source mới. Không đổi frontend/API shape nên không
 chạy lại full frontend local; CI vẫn phải chạy đủ backend/PG/frontend.
 
 Preflight runtime: actual Compose gồm compose.yaml + hai private overrides
 `.env.compose-ui.yaml` và `.env.join-v1.yaml`; toàn bộ planned API environment
-trùng runtime. API đang source cũ; DB `511c4f5aaccc`, web `dbc51b8bcb4a`, main
+trùng runtime. API trước deploy chạy source cũ; DB `511c4f5aaccc`, web `dbc51b8bcb4a`, main
 volume `shopquery-ai_postgres_auth_20261019`. Không recreate DB/web hoặc migration.
 Fingerprint read-only trước deployment lưu private, 26 bảng; backup cũ còn
 SHA-256 `a9b458a5ee1c21966f9407e659075d2eadf6e071b4e244b9e07a2c9f18078138`.
+
+Sau CI xanh, chạy đúng actual Compose `up -d --no-deps --build api`:
+
+- API mới `54ccf295c96d`, image config SHA-256
+  `c3bed7ef1e76843144b472ce58c0979535ee85d80b5c8460f66463cb595d43be`.
+  Hash nội dung normalize LF của **8/8 modules** thay đổi kể từ runtime cũ khớp
+  commit be93d5a (errors/context/Hybrid/service/generator/join_policy/pipeline/validator).
+  Generator: `53af1f10913a65a9824d4cac380b63afa5131c67f256242f4ed99d796af411fd`;
+  context: `a8759148956320bd3731dbf3dad46c01b881db92e5e8067db128d603a3dfbea5`.
+- API/web/DB **3/3 healthy**, `/api/health` qua 8080 OK. JOIN ON; provider gate,
+  Guest AI, Google OAuth, model/embedding/768, fallback OFF và toàn bộ API
+  environment giữ nguyên (so sánh giá trị trong memory, không xuất secrets).
+- DB/web giữ **nguyên exact container IDs**, main volume không đổi. Không
+  migration, backup/restore, schema change, DML bằng AI, recreate web/DB hoặc prune.
+  Archived volume/recovery images và backup cũ được giữ nguyên.
+- Existing opt-in `relationships-live.spec.ts` trên **8080 thật: 2/2 PASS**,
+  59.7s, desktop1440/mobile390. Guest upload hai CSV synthetic → preview → confirm
+  → delete đúng quan hệ của phiên test; cross-capability 404, invalid CSRF/Origin
+  403, anonymous personal API 401; layout không overflow, reset đúng hai phiên
+  test của mỗi case. Đã xem ảnh mobile. Không gửi chat hoặc upload tài liệu cần
+  embedding; không đọc/export Google session/cookies/token. Google UI positive
+  JOIN **NOT RUN**; authenticated API/history được kiểm tra offline trong suite.
+- Private manifests: `C:\Work\ShopQuery-Backups\aggregation-contract-20261020`.
+  Schema/columns/constraints/indexes/ACL/roles/sequences/migration versions của
+  **26 bảng giữ nguyên**; tất cả owner-reference checks = 0. **25 bảng** ngoài
+  public.resource_limits giữ exact row counts và hashes, gồm accounts/sessions,
+  datasets/uploads/documents/embeddings/relationships/conversations/messages.
+  Fingerprint nhóm này trước/sau đều
+  `811db474412b821aede331318502ac23d464dbee07a8e4c85c41a093676ac91d`.
+- Đối chiếu strict toàn manifest ban đầu **FAIL riêng dữ liệu resource_limits**,
+  không che kết quả hoặc khẳng định toàn DB bất biến. Bảng vận hành này từ 6 lên
+  9 rows sau smoke (quan sát 10 khi lease test đang chạy); GuestControl vốn ghi
+  rate buckets và tạo/xóa concurrency lease qua PostgreSQL. Đã kiểm tra lại mọi
+  metadata của chính bảng này và mọi phần khác vẫn exact; lease còn treo = 0.
+  Không reset counters/quota để làm sạch hash; không có sai lệch bảng nghiệp vụ.
+- Checksum backup sau smoke vẫn bằng giá trị trước. Không có destructive tests
+  trên main, không tạo chat synthetic mới hoặc chỉnh dữ liệu workspace 5.
+  API restart làm hết phiên Guest RAM cũ theo thiết kế; dữ liệu persistent không đổi.
+
+Offline acceptance **PASS trong phạm vi test đã nêu**; không bảo đảm mọi cách
+diễn đạt/model SQL sẽ đúng. Commit tài liệu sau deployment chỉ cập nhật kết quả,
+không thay source runtime. CI của final documentation SHA phải được xác minh
+riêng sau push và báo trong bàn giao, không dùng run be93d5a thay thế.
 
 **0 live generation, 0 embedding calls trong nhiệm vụ này.** Chưa có bằng chứng
 Gemini sẽ tuân thủ prompt mới qua UI; không tuyên bố live PASS. Sau khi offline/
