@@ -1,5 +1,8 @@
 # Text-to-SQL và JOIN — nghiệm thu độ tin cậy, 20/10/2026
 
+> Mục A–M ghi kết quả lượt baseline `eeaffd4`. Bản sửa offline mới cho JOIN đảo
+> thứ tự được ghi ở mục N; chưa gọi provider hoặc triển khai bản sửa đó lên main.
+
 ## A. Kết luận
 
 **Chưa nghiệm thu đầy đủ Gemini JOIN end-to-end trên 8080.** Bản sửa giúp sáu
@@ -257,3 +260,107 @@ backup, recovery images hoặc Docker project khác. ShopQuery còn ba service c
 - [JavaScript safe integers](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER): giới hạn 2^53−1 cho serialization.
 - [PostgreSQL aggregates](https://www.postgresql.org/docs/17/functions-aggregate.html): COUNT rows/non-NULL và SUM/AVG giữ NULL/zero semantics.
 - [PostgreSQL date/time types](https://www.postgresql.org/docs/17/datatype-datetime.html): TIMESTAMP khác TIMESTAMPTZ; không sửa legacy timestamps.
+
+## N. Follow-up: sửa tương đương INNER JOIN, chờ duyệt live
+
+Baseline: `eeaffd4702442024b3d27ed357fdaae4d9cd1f34`. Không audit lại toàn hệ
+thống, không migration/backup/restore/main rebuild. Không sửa model, gates,
+quotas, OAuth, frontend copy hoặc SQL generation prompt trong lượt này.
+
+### Nguyên nhân đã chứng minh và giới hạn kết luận
+
+Kiểm tra read-only metadata workspace 5: students có `id BIGINT, name TEXT`;
+payments có `id BIGINT, student_id BIGINT, amount NUMERIC`, quan hệ
+`payments.student_id → students.id`. Fixture riêng dùng đúng kiểu metadata,
+tên vật lý ngẫu nhiên `dataset_<uuid>`, `RelationshipRepository.approved()` và
+`build_workspace_context()`/`build_dataset_chat_service()` như authenticated API.
+
+PostgreSQL test riêng chứng minh hai thứ tự INNER JOIN cho cùng rows và
+SUM/AVG/COUNT, nhưng baseline application từ chối SqlDraft đảo thứ tự trước
+executor. Test trước sửa: 8 unit FAIL/16 PASS; integration đầu tiên FAIL sau
+khi PostgreSQL oracle đã PASS. Đây là false-negative do phụ thuộc vị trí FROM,
+không phải lỗi Google 503. **Không suy ra raw draft của probe UI số 8 đã mất**:
+sai key/aggregate vẫn có thể là nguyên nhân riêng của lượt đó.
+
+Synthetic SqlDraft cụ thể trong `tests/test_join_order.py`:
+
+```sql
+SELECT s.name, SUM(p.amount) AS total, AVG(p.amount) AS average,
+       COUNT(*) AS fact_row_count
+FROM uploaded_data.dataset_11111111111111111111111111111111 AS s
+INNER JOIN uploaded_data.dataset_22222222222222222222222222222222 AS p
+  ON p.student_id = s.id
+GROUP BY s.name ORDER BY s.name;
+```
+
+AST sau chuẩn hóa chỉ đổi hai Table bindings ở FROM và JOIN: fact `...2222`
+với alias `p` vào FROM, dimension `...1111` alias `s` vào INNER JOIN. Không đổi
+ON, khóa, alias, projection, filters, grouping hoặc literals. Case An/Binh có
+oracle total 50.00/0.00 và fact counts 2/1. Fixture bổ sung NULL, Decimal lớn
+và key BIGINT `9007199254740993` cũng khớp oracle fact-only độc lập.
+
+### Logic và files
+
+- `core/errors.py`: giữ `reason` cho UI, thêm internal code:
+  `join_direction`, `join_key`, `join_aggregate`, `join_relationship`.
+- `text_to_sql/join_policy.py`: yêu cầu đúng một approved relation cho cặp bảng;
+  phân biệt thiếu/ambiguous relation, sai ON key, đảo thứ tự, aggregate không
+  an toàn. Fact/measure types lấy từ backend relationship metadata, không từ
+  alias hoặc vị trí FROM. Từ chối cả JOIN decorations ngoài allowlist.
+- `text_to_sql/validator.py`: chỉ bắt đúng `join_direction` đã chứng minh
+  một INNER equality giữa đúng hai approved bindings, đổi thứ tự AST một lần,
+  chạy lại table/schema/function/column và toàn bộ JOIN policy. Không sửa SQL
+  sai key/grain, không thêm generation call, retry hay repair loop.
+- `routing/service.py`: log duy nhất mã nội bộ khi từ chối, không exception
+  detail/SQL/prompt/rows/credentials. API/frontend không nhận mã nội bộ mới;
+  thông báo ngắn gọn và response shape giữ nguyên.
+- Tests mới `test_join_order.py`, `test_join_order_integration.py`; mở rộng
+  `test_join_policy.py`, `test_sql_reliability.py` và authenticated API tests
+  trong `test_relationship_api_integration.py` cho cả hai thứ tự bảng.
+
+### Regression và an toàn
+
+Ruff toàn app/scripts/tests **PASS**. Nhóm targeted ban đầu **90 unit PASS**,
+**28 PostgreSQL/API integration PASS**. Sau thêm kiểm tra alias độc lập và
+canonicalization idempotent, chạy **324 affected regressions PASS** (34.90s),
+gồm single-table SQL, SQL/RAG/Hybrid với hai model selections fake, API/history,
+Guest, relationships, golden/domain pipelines, Decimal/BIGINT/timezone.
+Không gọi gateway thật; Knowledge regression ở đây là contract/offline,
+không phải live provider acceptance mới.
+
+Giữ SELECT-only, hai bảng/một INNER/một verified key pair; cấm wrong key,
+ON OR/AND/1=1, CROSS/outer/lateral, aliases sai, unknown schema/table/columns,
+dimension SUM/AVG/COUNT, unsafe COUNT alias, SQL injection/multiple statements.
+Các assertions security cũ không bị bỏ; case reverse hợp lệ được chuyển sang
+positive equivalence và vẫn giữ negative reverse sai khóa. Approved fact và
+relationship ID vẫn truyền vào execution guard; test normalized query chặn
+foreign owner, foreign workspace và relation đã xóa trước khi executor/answer chạy.
+
+Không chạy lại frontend local vì không sửa frontend. CI chuẩn của commit được
+push sẽ kiểm tra checkout đúng SHA; kết quả/URL exact SHA được báo trong bàn giao,
+không gán CI baseline cho code mới. Không có test offline thất bại còn treo.
+
+### Trạng thái runtime và đề xuất cần phê duyệt
+
+**0 live calls trong lượt này.** Main 8080 vẫn chạy source trước; chưa rebuild/
+recreate API/web để nghiệm thu bản sửa mới. PostgreSQL main/volumes và workspace 5
+chỉ được đọc metadata, không ghi, không tạo session giả, không xuất cookies.
+
+Đề xuất tối đa **2 Gemini SQL JOIN probes**, cùng synthetic students/payments:
+
+1. Harness cô lập mô phỏng authenticated metadata/physical identifiers,
+   giữ raw synthetic SqlDraft, internal code và canonical SQL trước executor;
+   đối chiếu independent PostgreSQL oracle.
+2. Sau khi cập nhật riêng API an toàn, dùng phiên Google hợp lệ trên 8080,
+   chỉ workspace synthetic 5; kiểm tra rows, SQL canonical và reload history.
+
+Mỗi probe dự kiến 3 logical generation (router + draft + answer), tối đa
+**6 logical generation, 0 embedding** cho cả hai; nếu validator từ chối thì
+dừng trước answer. SDK retries có thể tăng HTTP requests/quota/cost; không ước
+lượng token/billing khi thiếu metadata. Không tự retry probe hoặc bật fallback.
+**Chờ chủ dự án phê duyệt; không tuyên bố Gemini UI live PASS.**
+
+Cơ sở: [PostgreSQL INNER JOIN/ON semantics](https://www.postgresql.org/docs/17/queries-table-expressions.html#QUERIES-JOIN)
+và [SQLGlot AST API](https://sqlglot.com/sqlglot/expressions.html). Tính tương
+đương chỉ áp dụng cho cặp bindings/predicate đã qua các điều kiện hẹp ở trên,
+không phải phép rewrite JOIN tổng quát.

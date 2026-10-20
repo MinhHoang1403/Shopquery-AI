@@ -115,7 +115,7 @@ def test_verified_sql_refusal_reason_maps_to_friendly_answer(
     assert result.rows == [] and result.sql is None and result.sources == []
 
 
-def test_observed_gemini_reverse_join_is_rejected_without_claiming_relation_is_absent() -> None:
+def test_observed_gemini_reverse_join_is_canonicalized_with_the_approved_fact() -> None:
     relation = ApprovedJoin("r", "table_2", "student_id", "table_1", "student_id", "revision")
     validator = SqlValidator(
         {"table_1": {"student_id", "name"}, "table_2": {"student_id", "amount"}},
@@ -130,6 +130,7 @@ def test_observed_gemini_reverse_join_is_rejected_without_claiming_relation_is_a
         "FROM pg_temp.table_1 AS t1 INNER JOIN pg_temp.table_2 AS t2 "
         "ON t2.student_id = t1.student_id GROUP BY t1.student_id, t1.name ORDER BY t1.name"
     )
-    with pytest.raises(SqlUnsupportedError) as rejected:
-        validator.validate(observed)
-    assert rejected.value.reason == "calculation"
+    validated = validator.validate(observed)
+    assert "FROM pg_temp.table_2 AS t2 INNER JOIN pg_temp.table_1 AS t1" in validated.statement
+    assert validated.fact_table == "table_2"
+    assert validated.relationship_id == "r"

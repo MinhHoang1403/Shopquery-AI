@@ -118,8 +118,9 @@ def test_extra_sql_physical_names_cross_workspace_and_flag_off(relationship_acco
 
 @pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
 @pytest.mark.parametrize("pipeline", ["SQL", "RAG", "HYBRID"])
+@pytest.mark.parametrize("reverse", [False, True])
 def test_join_api_pipelines_and_persisted_history(
-    relationship_accounts, monkeypatch, model, pipeline
+    relationship_accounts, monkeypatch, model, pipeline, reverse: bool
 ):
     from app.rag.pipeline import RagAnswerDraft
     from app.routing.hybrid import HybridAnswerDraft
@@ -152,10 +153,12 @@ def test_join_api_pipelines_and_persisted_history(
                 assert fact in prompt and dim in prompt
                 return RouteDecision(route=RouteLabel(pipeline), reason="Offline JOIN test")
             if schema is SqlDraft:
-                return SqlDraft(
-                    sql=f"SELECT SUM(f.amount) AS total FROM uploaded_data.{fact} f "
-                    f"INNER JOIN uploaded_data.{dim} d ON f.key=d.value"
+                bindings = (
+                    f"FROM uploaded_data.{dim} d INNER JOIN uploaded_data.{fact} f"
+                    if reverse
+                    else f"FROM uploaded_data.{fact} f INNER JOIN uploaded_data.{dim} d"
                 )
+                return SqlDraft(sql=f"SELECT SUM(f.amount) AS total {bindings} ON f.key=d.value")
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(answer="Synthetic policy", used_chunk_ids=[chunk_id])
             if schema is HybridAnswerDraft:
@@ -191,6 +194,10 @@ def test_join_api_pipelines_and_persisted_history(
     assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 4}[pipeline]
     if pipeline != "RAG":
         assert response["rows"] == [{"total": "5"}] and "INNER JOIN" in response["sql"]
+        assert (
+            f"FROM uploaded_data.{fact} AS f INNER JOIN uploaded_data.{dim} AS d"
+            in (response["sql"])
+        )
     if pipeline != "SQL":
         assert response["sources"][0]["source_file"] == "policy.md"
     detail = a.client.get(path).json()

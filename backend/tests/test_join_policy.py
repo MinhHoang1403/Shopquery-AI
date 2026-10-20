@@ -36,9 +36,17 @@ BASE = (
         "s.name, COUNT(p.amount) AS fact_value_count",
     ],
 )
-def test_approved_fact_aggregates(projection: str) -> None:
-    validated = join_validator().validate(f"SELECT {projection} {BASE} GROUP BY s.name")
+@pytest.mark.parametrize("reverse", [False, True])
+def test_approved_fact_aggregates(projection: str, reverse: bool) -> None:
+    suffix = (
+        "FROM uploaded_data.students s INNER JOIN uploaded_data.payments p "
+        "ON p.student_id=s.student_id"
+        if reverse
+        else BASE
+    )
+    validated = join_validator().validate(f"SELECT {projection} {suffix} GROUP BY s.name")
     assert validated.relationship_id == "approved"
+    assert validated.fact_table == "payments"
 
 
 @pytest.mark.parametrize(
@@ -67,7 +75,7 @@ def test_approved_fact_aggregates(projection: str) -> None:
         f"SELECT p.amount {BASE.replace('p.student_id', 'CAST(p.student_id AS TEXT)')}",
         f"SELECT p.amount {BASE} JOIN uploaded_data.other o ON o.id=p.id",
         "SELECT p.amount FROM uploaded_data.students s JOIN uploaded_data.payments p "
-        "ON p.student_id=s.student_id",
+        "ON p.id=s.student_id",
         *[
             f"SELECT p.amount {BASE.replace('INNER JOIN', kind)}"
             for kind in ("NATURAL JOIN", "RIGHT JOIN", "FULL JOIN", "JOIN LATERAL")

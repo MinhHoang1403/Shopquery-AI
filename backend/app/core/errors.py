@@ -50,9 +50,12 @@ class SqlUnsupportedError(SqlValidationError):
         message: str,
         *,
         reason: Literal["unknown", "relationship", "calculation"] = "unknown",
+        code: Literal["join_direction", "join_key", "join_aggregate", "join_relationship"]
+        | None = None,
     ) -> None:
         super().__init__(message)
         self.reason = reason
+        self.code = code
 
 
 class RetrievalError(ShopQueryError):

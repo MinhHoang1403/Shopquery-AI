@@ -1,5 +1,6 @@
 """Top-level chat dispatch with one stable response shape."""
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -13,6 +14,7 @@ INSUFFICIENT_INFORMATION = (
     "Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. "
     "Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé."
 )
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,6 +31,7 @@ class ChatResult:
 
 
 def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
+    logger.info("SQL request refused: %s", exc.code or "unspecified")
     messages = {
         "relationship": (
             "Mình chưa tìm thấy liên kết phù hợp giữa các bảng. "

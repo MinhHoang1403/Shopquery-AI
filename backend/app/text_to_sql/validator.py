@@ -101,13 +101,24 @@ class SqlValidator:
         if self._max_tables is not None and root.find(exp.Join) is not None:
             if not self._join_v1_enabled:
                 raise SqlValidationError("Uploaded JOIN v1 is disabled")
-            relation = validate_uploaded_join(
-                root,
-                aliases,
-                self._approved_joins,
-                self._column_types,
-                self._table_columns,
-            )
+            try:
+                relation = validate_uploaded_join(
+                    root, aliases, self._approved_joins, self._column_types, self._table_columns
+                )
+            except SqlUnsupportedError as exc:
+                if exc.code != "join_direction":
+                    raise
+                # The policy proved a single INNER equality on one approved key pair.
+                source, join = root.args["from_"], root.args["joins"][0]
+                dimension, fact = source.this, join.this
+                source.set("this", fact.copy())
+                join.set("this", dimension.copy())
+                tables, aliases = self._validate_tables(root)
+                self._validate_functions(root)
+                self._validate_columns(root, aliases)
+                relation = validate_uploaded_join(
+                    root, aliases, self._approved_joins, self._column_types, self._table_columns
+                )
         return ValidatedSql(
             statement=root.sql(dialect="postgres"),
             tables=frozenset(tables),
@@ -138,7 +149,9 @@ class SqlValidator:
         if self._max_tables == 1 and root.find(exp.Join) is not None:
             if self._join_v1_enabled:
                 raise SqlUnsupportedError(
-                    "A JOIN requires a confirmed relationship", reason="relationship"
+                    "A JOIN requires a confirmed relationship",
+                    reason="relationship",
+                    code="join_relationship",
                 )
             raise SqlValidationError("JOIN is not supported without declared relationship metadata")
         if self._max_tables is not None and len(tables) > self._max_tables:

@@ -56,6 +56,7 @@ def validate_uploaded_join(
         or join.args.get("using")
         or (join.args.get("kind") or "").upper() not in {"", "INNER"}
         or not isinstance(join.this, exp.Table)
+        or any(value for key, value in join.args.items() if key not in {"this", "on", "kind"})
     ):
         raise SqlValidationError("Only explicit INNER JOIN ON is supported")
     predicate = join.args.get("on")
@@ -72,29 +73,30 @@ def validate_uploaded_join(
     }
     source = root.args["from_"].this.name.lower()
     target = join.this.name.lower()
-    relationship = next(
-        (
-            item
-            for item in relationships
-            if (
-                item.source_table == source
-                and item.target_table == target
-                and endpoints
-                == {
-                    (item.source_table, item.source_column),
-                    (item.target_table, item.target_column),
-                }
-            )
-        ),
-        None,
-    )
-    if relationship is None:
-        known_pair = any(
-            {source, target} == {item.source_table, item.target_table} for item in relationships
-        )
+    candidates = [
+        item for item in relationships if {source, target} == {item.source_table, item.target_table}
+    ]
+    if len(candidates) != 1:
         raise SqlUnsupportedError(
-            "JOIN direction or key does not match an approved relationship",
-            reason="calculation" if known_pair else "relationship",
+            "JOIN requires exactly one approved relationship for its table pair",
+            reason="relationship",
+            code="join_relationship",
+        )
+    relationship = candidates[0]
+    if endpoints != {
+        (relationship.source_table, relationship.source_column),
+        (relationship.target_table, relationship.target_column),
+    }:
+        raise SqlUnsupportedError(
+            "JOIN ON does not match the approved key pair",
+            reason="calculation",
+            code="join_key",
+        )
+    if source != relationship.source_table or target != relationship.target_table:
+        raise SqlUnsupportedError(
+            "Equivalent INNER JOIN bindings are in dimension-to-fact order",
+            reason="calculation",
+            code="join_direction",
         )
     output_names = {item.alias.lower() for item in root.expressions if item.alias}
     input_names = set().union(*(table_columns[name] for name in aliases.values()))
@@ -111,20 +113,26 @@ def validate_uploaded_join(
         if col.name.lower() not in output_names or not (order_alias or group_alias):
             raise SqlValidationError("JOIN v1 requires qualified source columns")
     if root.find(exp.Filter) is not None:
-        raise SqlUnsupportedError("JOIN aggregates cannot use FILTER", reason="calculation")
+        raise SqlUnsupportedError(
+            "JOIN aggregates cannot use FILTER", reason="calculation", code="join_aggregate"
+        )
     for projection in root.expressions:
         expression = projection.this if isinstance(projection, exp.Alias) else projection
         if expression.is_star:
             raise SqlValidationError("Select explicit columns in JOIN v1")
         if expression.find(exp.AggFunc) and not isinstance(expression, exp.AggFunc):
             raise SqlUnsupportedError(
-                "JOIN projections require direct fact aggregates", reason="calculation"
+                "JOIN projections require direct fact aggregates",
+                reason="calculation",
+                code="join_aggregate",
             )
     for aggregate in root.find_all(exp.AggFunc):
         argument = aggregate.this
         if aggregate.expressions:
             raise SqlUnsupportedError(
-                "JOIN aggregates require one direct column", reason="calculation"
+                "JOIN aggregates require one direct column",
+                reason="calculation",
+                code="join_aggregate",
             )
         if isinstance(aggregate, exp.Count) and isinstance(argument, exp.Star):
             output = aggregate.parent
@@ -133,7 +141,9 @@ def validate_uploaded_join(
                 "matched_row_count",
             }:
                 raise SqlUnsupportedError(
-                    "JOIN COUNT(*) requires a fact-row alias", reason="calculation"
+                    "JOIN COUNT(*) requires a fact-row alias",
+                    reason="calculation",
+                    code="join_aggregate",
                 )
             continue
         if (
@@ -142,16 +152,24 @@ def validate_uploaded_join(
             or aggregate.expressions
         ):
             raise SqlUnsupportedError(
-                "Cannot aggregate dimension or expressions", reason="calculation"
+                "Cannot aggregate dimension or expressions",
+                reason="calculation",
+                code="join_aggregate",
             )
         if isinstance(aggregate, exp.Count):
             output = aggregate.parent
             if not isinstance(output, exp.Alias) or output.alias.lower() != "fact_value_count":
                 raise SqlUnsupportedError(
-                    "COUNT(column) requires fact_value_count", reason="calculation"
+                    "COUNT(column) requires fact_value_count",
+                    reason="calculation",
+                    code="join_aggregate",
                 )
-        elif not isinstance(aggregate, (exp.Sum, exp.Avg)) or column_types.get(source, {}).get(
-            argument.name.lower()
-        ) not in {"BIGINT", "NUMERIC"}:
-            raise SqlUnsupportedError("SUM/AVG require a numeric fact column", reason="calculation")
+        elif not isinstance(aggregate, (exp.Sum, exp.Avg)) or column_types.get(
+            relationship.source_table, {}
+        ).get(argument.name.lower()) not in {"BIGINT", "NUMERIC"}:
+            raise SqlUnsupportedError(
+                "SUM/AVG require a numeric fact column",
+                reason="calculation",
+                code="join_aggregate",
+            )
     return relationship
