@@ -99,7 +99,7 @@ def _build_dataset_chat_service(
             validator=SqlValidator(
                 table_columns=context.table_columns,
                 allowed_schemas=context.allowed_schemas,
-                max_tables=2 if joins else 1,
+                max_tables=3 if len(joins) >= 2 else 2 if joins else 1,
                 approved_joins=joins,
                 column_types=context.column_types,
                 join_v1_enabled=settings.sql_join_v1_enabled,

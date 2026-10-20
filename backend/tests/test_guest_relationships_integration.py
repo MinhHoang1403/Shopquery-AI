@@ -17,6 +17,8 @@ from app.rag.pipeline import RagAnswerDraft
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft
+from tests.test_guest import guest_api as guest_api_fixture  # noqa: F401
+from tests.test_guest import new_guest
 from tests.test_guest_integration import OfflineEmbedder
 
 pytestmark = pytest.mark.integration
@@ -135,4 +137,83 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
         assert result.rows == [{"total": "50"}]
     if route != RouteLabel.SQL:
         assert result.sources[0].source_file == "rules.md"
+    assert legacy_fingerprints(get_setup_engine()) == before
+
+
+@pytest.mark.parametrize("model", ["gemini", "inetcloud-knowledge"])
+def test_guest_upload_detects_then_chats_without_manual_confirmation(
+    guest_api_fixture,  # noqa: F811
+    monkeypatch,
+    model,
+):
+    api = guest_api_fixture
+    api.settings.sql_join_v1_enabled = True
+    api.settings.database_setup_url = get_settings().database_setup_url
+    api.settings.database_readonly_url = get_settings().database_readonly_url
+    configure_guest_access(get_setup_engine())
+    before = legacy_fingerprints(get_setup_engine())
+    monkeypatch.setattr("app.guest.relationship_routes.get_settings", lambda: api.settings)
+    monkeypatch.setattr("app.guest.relationship_routes.guest_store", lambda: api.store)
+    calls = []
+
+    class Gateway:
+        def generate_structured(self, prompt, schema):
+            calls.append(schema.__name__)
+            if schema is RouteDecision:
+                return RouteDecision(route=RouteLabel.SQL, reason="Synthetic guest auto relation")
+            assert schema is SqlDraft and "Never JOIN tables" not in prompt
+            return SqlDraft(
+                sql="SELECT d.name, SUM(f.amount) AS total, "
+                "COUNT(f.student_id) AS fact_row_count FROM pg_temp.table_1 d "
+                "INNER JOIN pg_temp.table_2 f ON f.student_id=d.id "
+                "GROUP BY d.id,d.name ORDER BY d.id"
+            )
+
+        def generate_text(self, prompt):
+            calls.append("answer")
+            assert '"total": "0.00"' in prompt
+            return "An 20.00 / 2, Binh 0.00 / 1"
+
+    monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
+
+    def worker(action, payload, settings, cancelled):
+        if action == "parse":
+            return parse_guest_file(*payload, settings)
+        if action == "detect_relationships":
+            return run_isolated(action, payload, settings, cancelled)
+        assert action == "chat" and len(payload[2]) == 1
+        return run_guest_chat(payload[0], payload[1], settings, relationships=payload[2])
+
+    api.worker.side_effect = worker
+    own, other = new_guest(api), new_guest(api)
+    for name, content in [
+        ("students.csv", b"Id,Name\nS1,An\nS2,Binh\n"),
+        ("payments.csv", b"Student id,Amount\nS1,20.00\nS1,0.00\nS2,0.00\n"),
+    ]:
+        response = api.client.post(
+            f"/api/guest/files?filename={name}", headers=own, content=content
+        )
+        assert response.status_code == 200, response.text
+    path = "/api/guest/relationships"
+    records = api.client.get(path, headers=own).json()["relationships"]
+    assert len(records) == 1 and records[0]["origin"] == "automatic"
+    assert records[0]["confirmed"] is False
+    assert api.client.get(path, headers=other).json()["relationships"] == []
+    denied = api.client.post(
+        "/api/guest/chat",
+        headers={**own, "X-Guest-CSRF": "bad"},
+        json={"message": "Synthetic", "model_id": model},
+    )
+    assert denied.status_code == 403 and calls == []
+    response = api.client.post(
+        "/api/guest/chat", headers=own, json={"message": "Synthetic", "model_id": model}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()["response"]
+    assert body["route"] == "SQL" and body["used_model"] == model
+    assert body["rows"] == [
+        {"name": "An", "total": "20.00", "fact_row_count": 2},
+        {"name": "Binh", "total": "0.00", "fact_row_count": 1},
+    ]
+    assert calls == ["RouteDecision", "SqlDraft", "answer"]
     assert legacy_fingerprints(get_setup_engine()) == before

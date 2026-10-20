@@ -3,6 +3,7 @@
 import asyncio
 import hmac
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -14,6 +15,7 @@ from app.auth.repository import csrf_token
 from app.core.client_ip import client_ip
 from app.core.config import get_settings
 from app.database.session import get_setup_engine
+from app.datasets.relationships import MAX_RELATIONSHIPS, RelationshipRecord
 from app.guest.limits import GuestControl
 from app.guest.store import GuestContext, file_metadata, guest_store
 from app.guest.worker import run_isolated
@@ -166,7 +168,34 @@ async def process_file(
         store.ensure_active(guest)
         if commit:
             control.ip_rate(peer_ip(request), "upload", settings.guest_uploads_per_ip_hour)
-            store.add_file(guest, parsed)
+            detected = []
+            if settings.sql_join_v1_enabled and parsed.table and any(f.table for f in guest.files):
+                detected = await run_in_threadpool(
+                    run_isolated,
+                    "detect_relationships",
+                    (
+                        list(guest.files) + [parsed],
+                        parsed.file_id,
+                        {
+                            frozenset({r.source_table_id, r.target_table_id})
+                            for r in guest.relationships
+                        },
+                    ),
+                    settings,
+                    guest.cancelled,
+                )
+            records = [
+                RelationshipRecord(
+                    **preview.model_dump(),
+                    relationship_id=uuid4().hex,
+                    origin="automatic",
+                    confirmed=False,
+                )
+                for preview in detected
+            ]
+            if len(guest.relationships) + len(records) > MAX_RELATIONSHIPS:
+                records = []
+            store.add_file(guest, parsed, tuple(records))
         preview = {
             **file_metadata(parsed),
             "sheet_names": list(parsed.table.sheet_names) if parsed.table else [],

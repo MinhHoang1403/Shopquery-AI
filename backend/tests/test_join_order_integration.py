@@ -206,8 +206,8 @@ def aggregate_workspace():
             parse(
                 "payments.csv",
                 (
-                    b"Id,Student id,Amount,Units\n1,101,20.00,1\n,101,,2\n3,102,0.00,0\n"
-                    b"4,103,,3\n5,101,12345678901234567890.12,9007199254740993\n"
+                    b"Id,Student id,Amount,Units,Note\n1,101,20.00,1,a\n,101,,2,b\n3,102,0.00,0,c\n"
+                    b"4,103,,3,d\n5,101,12345678901234567890.12,9007199254740993,e\n"
                 ),
             ),
         )
@@ -263,7 +263,7 @@ def aggregate_workspace():
         ("COUNT(*) AS matched_row_count", "COUNT(*) AS matched_row_count", False, None, None),
         ("COUNT(p.id) AS fact_row_count", None, False, None, "join_aggregate"),
         ("COUNT(p.units) AS fact_row_count", None, False, None, "join_aggregate"),
-        ("COUNT(p.student_id) AS fact_row_count", None, False, None, "join_aggregate"),
+        ("COUNT(p.student_id) AS fact_row_count", "COUNT(*) AS fact_row_count", True, None, None),
         (
             "COUNT(p.student_id) AS fact_value_count",
             "COUNT(student_id) AS fact_value_count",
@@ -456,6 +456,12 @@ def test_recorded_synthetic_draft_replay(authenticated_workspace, case: str, cod
         with pytest.raises(SqlUnsupportedError) as error:
             pipeline.run("Synthetic captured draft replay")
         assert error.value.code == code
+        if case == "recorded-count-id":
+            assert error.value.aggregate_reason == "count_column_alias"
+        elif case == "dimension-sum":
+            assert error.value.aggregate_reason == "dimension_column"
+        else:
+            assert error.value.aggregate_reason is None
         guard.assert_not_called()
         executor.execute.assert_not_called()
         gateway.generate_text.assert_not_called()
@@ -515,3 +521,199 @@ def test_database_proven_not_null_id_does_not_silently_rewrite_count(aggregate_w
     assert error.value.code == "join_aggregate"
     validated = join_validator(context).validate(sql.replace("fact_row_count", "fact_value_count"))
     assert "COUNT(p.id)" in validated.statement  # No extra COUNT canonicalizer is enabled.
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["fact-first", "dimension-first"])
+@pytest.mark.parametrize(
+    "projection,expected_reason",
+    [
+        ("SUM(p.amount) FILTER(WHERE p.amount>0)", "filter"),
+        ("SUM(p.amount)+1", "projection_expression"),
+        ("COUNT(p.id,p.amount) AS fact_value_count", "multiple_arguments"),
+        ("COUNT(*) AS payment_count", "count_star_alias"),
+        ("COUNT(DISTINCT p.id) AS fact_value_count", "argument_expression"),
+        ("SUM(s.fee)", "dimension_column"),
+        ("COUNT(p.id) AS fact_row_count", "count_column_alias"),
+        ("MIN(p.amount)", "unsupported_function"),
+        ("SUM(p.note)", "non_numeric_fact"),
+    ],
+)
+def test_real_workspace_metadata_diagnoses_each_aggregate_refusal_before_guard(
+    aggregate_workspace, reverse: bool, projection: str, expected_reason: str
+) -> None:
+    dataset, relations, context = aggregate_workspace
+    dimension, fact = dataset.tables
+    assert context.column_types[fact.physical_table_name]["note"] == "TEXT"
+    fact_binding = f"uploaded_data.{fact.physical_table_name} p"
+    dimension_binding = f"uploaded_data.{dimension.physical_table_name} s"
+    first, second = (
+        (dimension_binding, fact_binding) if reverse else (fact_binding, dimension_binding)
+    )
+    gateway = Mock()
+    gateway.generate_structured.return_value = SqlDraft(
+        sql=f"SELECT {projection} FROM {first} INNER JOIN {second} ON p.student_id=s.id"
+    )
+    executor = Mock(wraps=SqlExecutor(get_readonly_engine(), 1000, 100))
+    guard = Mock(
+        side_effect=lambda validated: relations.execution_guard(
+            dataset.dataset_id, context.approved_joins, validated
+        )
+    )
+    pipeline = TextToSqlPipeline(
+        SqlGenerator(gateway, "2026-10-20", context.schema_context),
+        join_validator(context),
+        executor,
+        gateway,
+        execution_guard=guard,
+    )
+    with pytest.raises(SqlUnsupportedError) as caught:
+        pipeline.run("Synthetic branch replay")
+    assert caught.value.code == "join_aggregate"
+    assert caught.value.reason == "calculation"
+    assert caught.value.aggregate_reason == expected_reason
+    guard.assert_not_called()
+    executor.execute.assert_not_called()
+    gateway.generate_text.assert_not_called()
+    gateway.generate_structured.assert_called_once()
+
+
+@pytest.mark.parametrize("model", ["gemini", "inetcloud-knowledge"])
+@pytest.mark.parametrize("reverse", [False, True], ids=["fact-first", "dimension-first"])
+def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
+    monkeypatch, model: str, reverse: bool
+) -> None:
+    repository = DatasetRepository(get_setup_engine(), get_readonly_engine(), TEST_OWNER)
+    workspaces = []
+    try:
+        for _ in range(2):
+            dataset = repository.create_workspace("Synthetic tuition scope " + uuid4().hex)
+            workspaces.append(dataset)
+            dataset = repository.add_table(
+                dataset.dataset_id,
+                parse(
+                    "payments.csv",
+                    (
+                        b"payment_id,student_id,amount_paid,paid_on,payment_method\n"
+                        b"P01,S01,20.00,2026-10-01,cash\nP02,S01,30.00,2026-10-02,cash\n"
+                        b"P03,S02,0.00,2026-10-03,card\nP04,S03,,2026-10-04,cash\n"
+                        b"P05,S04,1.00,2026-10-05,card\nP06,S04,2.00,2026-10-06,card\n"
+                        b"P07,S05,3.00,2026-10-07,cash\nP08,S05,4.00,2026-10-08,cash\n"
+                        b"P09,S06,5.00,2026-10-09,card\nP10,S06,6.00,2026-10-10,cash\n"
+                        b"P11,S07,7.00,2026-10-11,card\nP12,S07,8.00,2026-10-12,cash\n"
+                    ),
+                ),
+            )
+            dataset = repository.add_table(
+                dataset.dataset_id,
+                parse(
+                    "students.csv",
+                    (
+                        b"student_id,student_name,class_code,enrolled_on\n"
+                        b"S01,An,C1,2026-09-01\nS02,Binh,C1,2026-09-01\nS03,Chi,C1,2026-09-01\n"
+                        b"S04,Dung,C2,2026-09-01\nS05,Ha,C2,2026-09-01\nS06,Lan,C2,2026-09-01\n"
+                        b"S07,Minh,C2,2026-09-01\n"
+                    ),
+                ),
+            )
+            workspaces[-1] = dataset
+        foreign, selected = workspaces
+        relations = RelationshipRepository(get_setup_engine(), TEST_OWNER)
+
+        def confirm(dataset):
+            fact, dimension = dataset.tables
+            body = RelationshipInput(
+                source_table_id=str(fact.dataset_table_id),
+                source_column="student_id",
+                target_table_id=str(dimension.dataset_table_id),
+                target_column="student_id",
+            )
+            preview = relations.preview(dataset.dataset_id, body)
+            assert preview.valid and (preview.source_rows, preview.target_rows) == (12, 7)
+            relations.confirm(
+                dataset.dataset_id,
+                RelationshipConfirm(
+                    **body.model_dump(),
+                    revision=preview.revision,
+                    confirmed=True,
+                ),
+            )
+
+        confirm(foreign)
+        settings = get_settings().model_copy(
+            update={
+                "sql_join_v1_enabled": True,
+                "ai_default_model": model,
+            }
+        )
+        context = build_workspace_context(settings, selected, repository)
+        assert context.approved_joins == ()
+        assert "No approved table-to-table relationships" in context.routing_context
+        assert "Never JOIN tables" in context.schema_context
+        assert all(t.physical_table_name not in context.schema_context for t in foreign.tables)
+        fact, dimension = selected.tables
+        assert context.column_types[fact.physical_table_name]["student_id"] == "TEXT"
+        assert context.column_types[fact.physical_table_name]["amount_paid"] == "NUMERIC"
+        assert "student_name TEXT" in context.schema_context
+        fact_binding = f"uploaded_data.{fact.physical_table_name} AS f"
+        dimension_binding = f"uploaded_data.{dimension.physical_table_name} AS d"
+        first, second = (
+            (dimension_binding, fact_binding) if reverse else (fact_binding, dimension_binding)
+        )
+        sql = (
+            "SELECT d.student_name, SUM(f.amount_paid) AS total, COUNT(*) AS fact_row_count "
+            f"FROM {first} INNER JOIN {second} ON f.student_id=d.student_id "
+            "GROUP BY d.student_id,d.student_name ORDER BY d.student_id"
+        )
+        calls = []
+
+        class Gateway:
+            def generate_structured(self, prompt, schema):
+                calls.append(schema.__name__)
+                assert all(t.physical_table_name not in prompt for t in foreign.tables)
+                if schema is RouteDecision:
+                    assert context.routing_context in prompt
+                    return RouteDecision(route=RouteLabel.SQL, reason="Synthetic intent fixture")
+                assert schema is SqlDraft and context.schema_context in prompt
+                return SqlDraft(sql=sql)
+
+            def generate_text(self, prompt):
+                calls.append("answer")
+                assert '"total": "0.00"' in prompt and '"total": null' in prompt
+                return "Synthetic PostgreSQL evidence only"
+
+        monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
+        executor = Mock()
+        with monkeypatch.context() as block:
+            block.setattr("app.text_to_sql.executor.SqlExecutor.execute", executor)
+            refused = build_dataset_chat_service(settings, context).chat("Synthetic tuition JOIN")
+            assert refused.route == RouteLabel.UNSUPPORTED and refused.sql is None
+            assert refused.rows == [] and "liên kết" in refused.answer
+            executor.assert_not_called()
+        assert calls == ["RouteDecision", "SqlDraft"]
+        calls.clear()
+        confirm(selected)
+        context = build_workspace_context(settings, selected, repository)
+        assert len(context.approved_joins) == 1
+        assert context.approved_joins[0].source_table == fact.physical_table_name
+        assert context.approved_joins[0].target_table == dimension.physical_table_name
+        assert "Never JOIN tables" not in context.schema_context
+        assert f"FROM {fact_binding} INNER JOIN {dimension_binding}" in context.schema_context
+        result = build_dataset_chat_service(settings, context).chat("Synthetic tuition JOIN")
+        assert result.route == RouteLabel.SQL and result.used_model == model
+        assert result.fallback_used is False
+        assert calls == ["RouteDecision", "SqlDraft", "answer"]
+        with get_setup_engine().connect() as connection:
+            totals = connection.execute(
+                text(
+                    "SELECT student_id,SUM(amount_paid) AS total,COUNT(*) AS n "
+                    f"FROM uploaded_data.{fact.physical_table_name} "
+                    "GROUP BY student_id ORDER BY student_id"
+                )
+            ).all()
+        assert len(result.rows) == len(totals) == 7
+        for row, oracle in zip(result.rows, totals, strict=True):
+            assert row["total"] == (None if oracle.total is None else format(oracle.total, "f"))
+            assert row["fact_row_count"] == oracle.n
+    finally:
+        for dataset in workspaces:
+            repository.delete(dataset.dataset_id, delete_conversations=True)

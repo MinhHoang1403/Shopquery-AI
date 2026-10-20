@@ -26,13 +26,14 @@ from sqlalchemy import (
     text,
     update,
 )
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ResourceConflictError, ResourceNotFoundError
 from app.database.models import ChatConversation, Dataset, DatasetTable
 from app.database.quotas import enforce_storage_budget, lock_owner_budget
 from app.datasets.parser import ColumnSpec, ParsedTable
+from app.datasets.relationship_repository import RelationshipRepository
 from app.text_to_sql.executor import _json_safe
 
 UPLOADED_SCHEMA = "uploaded_data"
@@ -173,7 +174,12 @@ class DatasetRepository:
         return self.get(dataset_id)
 
     def add_table(
-        self, dataset_id: int, parsed: ParsedTable, display_name: str | None = None
+        self,
+        dataset_id: int,
+        parsed: ParsedTable,
+        display_name: str | None = None,
+        *,
+        auto_relationships: bool = False,
     ) -> DatasetInfo:
         self.get(dataset_id)
         name = (display_name or parsed.sheet_name or PurePosixPath(parsed.filename).stem).strip()
@@ -185,7 +191,7 @@ class DatasetRepository:
             with self._setup_engine.begin() as connection:
                 lock_owner_budget(connection, self._owner_user_id)
                 self._lock_dataset(connection, dataset_id)
-                self._insert_table(
+                table_id = self._insert_table(
                     connection,
                     dataset_id,
                     name,
@@ -193,9 +199,16 @@ class DatasetRepository:
                     parsed,
                     dynamic_table,
                 )
+                if auto_relationships:
+                    RelationshipRepository.detect_on_upload(connection, dataset_id, table_id)
                 enforce_storage_budget(connection, self._owner_user_id)
         except IntegrityError as exc:
             raise ResourceConflictError("Tên bảng đã tồn tại trong bộ dữ liệu.") from exc
+        except SQLAlchemyError as exc:
+            raise ResourceConflictError(
+                "Chưa lưu bảng hoặc kiểm chứng liên kết được. Hãy thử tải lại; "
+                "dữ liệu đã có không bị thay đổi."
+            ) from exc
         return self.get(dataset_id)
 
     def preview_rows(
@@ -319,12 +332,13 @@ class DatasetRepository:
         physical_name: str,
         parsed: ParsedTable,
         dynamic_table: Table,
-    ) -> None:
+    ) -> int:
         dynamic_table.create(connection)
         if parsed.rows:
             connection.execute(insert(dynamic_table), parsed.database_rows())
-        connection.execute(
-            insert(DatasetTable).values(
+        table_id = connection.scalar(
+            insert(DatasetTable)
+            .values(
                 dataset_id=dataset_id,
                 display_name=display_name,
                 original_filename=parsed.filename,
@@ -334,10 +348,13 @@ class DatasetRepository:
                 columns=[column.as_dict() for column in parsed.columns],
                 row_count=parsed.row_count,
             )
+            .returning(DatasetTable.dataset_table_id)
         )
         connection.execute(
             text(f'GRANT SELECT ON TABLE "{UPLOADED_SCHEMA}"."{physical_name}" TO shopquery_reader')
         )
+        assert table_id is not None
+        return table_id
 
     @staticmethod
     def _select_table(dataset: DatasetInfo, table_id: int | None) -> DatasetTableInfo:

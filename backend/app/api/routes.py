@@ -416,7 +416,12 @@ async def import_dataset_table(
         with resource_control().work(user.user_id, "upload"):
             resource_control().storage(user.user_id)
             parsed = await _parse_upload(file, sheet_name)
-            dataset = repository.add_table(dataset_id, parsed, display_name)
+            dataset = repository.add_table(
+                dataset_id,
+                parsed,
+                display_name,
+                auto_relationships=get_settings().sql_join_v1_enabled,
+            )
         return _dataset_response(dataset)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

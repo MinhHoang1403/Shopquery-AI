@@ -6,7 +6,11 @@ from sqlglot import exp, parse
 from sqlglot.errors import ParseError
 
 from app.core.errors import SqlUnsupportedError, SqlValidationError
-from app.text_to_sql.join_policy import ApprovedJoin, validate_uploaded_join
+from app.text_to_sql.join_policy import (
+    ApprovedJoin,
+    validate_uploaded_join,
+    validate_uploaded_join_tree,
+)
 from app.text_to_sql.schema_context import TABLE_COLUMNS
 
 ALLOWED_FUNCTIONS = {
@@ -51,6 +55,7 @@ class ValidatedSql:
     tables: frozenset[str]
     relationship_id: str | None = None
     fact_table: str | None = None
+    relationship_ids: tuple[str, ...] = ()
 
 
 class SqlValidator:
@@ -98,33 +103,51 @@ class SqlValidator:
         self._validate_functions(root)
         self._validate_columns(root, aliases)
         relation = None
+        tree = None
         if self._max_tables is not None and root.find(exp.Join) is not None:
             if not self._join_v1_enabled:
                 raise SqlValidationError("Uploaded JOIN v1 is disabled")
-            try:
-                relation = validate_uploaded_join(
+            if len(tables) == 3:
+                tree = validate_uploaded_join_tree(
                     root, aliases, self._approved_joins, self._column_types, self._table_columns
                 )
-            except SqlUnsupportedError as exc:
-                if exc.code != "join_direction":
-                    raise
-                # The policy proved a single INNER equality on one approved key pair.
-                source, join = root.args["from_"], root.args["joins"][0]
-                dimension, fact = source.this, join.this
-                source.set("this", fact.copy())
-                join.set("this", dimension.copy())
                 tables, aliases = self._validate_tables(root)
                 self._validate_functions(root)
                 self._validate_columns(root, aliases)
-                relation = validate_uploaded_join(
-                    root, aliases, self._approved_joins, self._column_types, self._table_columns
-                )
+            else:
+                relation = self._validate_two_table_join(root, aliases)
         return ValidatedSql(
             statement=root.sql(dialect="postgres"),
             tables=frozenset(tables),
             relationship_id=relation.relationship_id if relation else None,
-            fact_table=relation.source_table if relation else None,
+            fact_table=tree.fact_table if tree else relation.source_table if relation else None,
+            relationship_ids=tuple(r.relationship_id for r in tree.relationships) if tree else (),
         )
+
+    def _validate_two_table_join(
+        self,
+        root: exp.Select,
+        aliases: dict[str, str],
+    ) -> ApprovedJoin:
+        try:
+            relation = validate_uploaded_join(
+                root, aliases, self._approved_joins, self._column_types, self._table_columns
+            )
+        except SqlUnsupportedError as exc:
+            if exc.code != "join_direction":
+                raise
+            # The policy proved a single INNER equality on one approved key pair.
+            source, join = root.args["from_"], root.args["joins"][0]
+            dimension, fact = source.this, join.this
+            source.set("this", fact.copy())
+            join.set("this", dimension.copy())
+            _, aliases = self._validate_tables(root)
+            self._validate_functions(root)
+            self._validate_columns(root, aliases)
+            relation = validate_uploaded_join(
+                root, aliases, self._approved_joins, self._column_types, self._table_columns
+            )
+        return relation
 
     def _validate_tables(self, root: exp.Select) -> tuple[set[str], dict[str, str]]:
         tables: set[str] = set()

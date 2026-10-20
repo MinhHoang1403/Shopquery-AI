@@ -2,10 +2,12 @@
 
 import json
 from dataclasses import dataclass, field
+from itertools import combinations
 from uuid import UUID
 
+from app.core.errors import SqlUnsupportedError
 from app.datasets.repository import UPLOADED_SCHEMA, DatasetInfo
-from app.text_to_sql.join_policy import ApprovedJoin
+from app.text_to_sql.join_policy import ApprovedJoin, resolve_join_tree
 
 
 @dataclass(frozen=True)
@@ -109,11 +111,70 @@ PostgreSQL dataset workspace:
                 "Do not reverse FROM and JOIN, even when the question names the dimension first. "
                 "Use f for fact measures/counts and d for dimension attributes."
             )
+            measures = [
+                c.name
+                for c in by_name[relation.source_table].columns
+                if c.data_type in {"NUMERIC", "BIGINT"}
+                and c.name != relation.source_column
+                and c.name != "id"
+                and not c.name.endswith(("_id", "_code"))
+            ]
+            if measures:
+                measure = measures[0]
+                relations.append(
+                    "Supported aggregate syntax example only (not the user's requested query; "
+                    "use only requested metrics and group attributes): "
+                    f"SELECT d.{relation.target_column}, SUM(f.{measure}) AS total_amount, "
+                    f"AVG(f.{measure}) AS average_amount, COUNT(*) AS fact_row_count "
+                    f"FROM {schema_name}.{relation.source_table} AS f "
+                    f"INNER JOIN {schema_name}.{relation.target_table} AS d "
+                    f"ON f.{relation.source_column} = d.{relation.target_column} "
+                    f"GROUP BY d.{relation.target_column}. "
+                    "A request for number of transactions/events means fact rows: use "
+                    "COUNT(*) AS fact_row_count, not COUNT(f.some_id). "
+                    "The presence of a measure in this example does not make it a business key "
+                    "or imply the question asks for it."
+                )
         source_context += "\n" + "\n".join(relations)
+        examples = 0
+        for pair in combinations(approved_joins, 2):
+            names = {n for r in pair for n in (r.source_table, r.target_table)}
+            edges = tuple(
+                r for r in approved_joins if r.source_table in names and r.target_table in names
+            )
+            try:
+                plan = resolve_join_tree(edges)
+            except SqlUnsupportedError:
+                continue
+            aliases = {plan.fact_table: "f"}
+            fragment = f"FROM {schema_name}.{plan.fact_table} AS f"
+            for index, edge in enumerate(plan.relationships, 1):
+                aliases[edge.target_table] = f"d{index}"
+                fragment += (
+                    f" INNER JOIN {schema_name}.{edge.target_table} AS d{index} "
+                    f"ON {aliases[edge.source_table]}.{edge.source_column} "
+                    f"= d{index}.{edge.target_column}"
+                )
+            source_context += (
+                f"\nSafe three-table tree; root fact = {schema_name}.{plan.fact_table}. "
+                f"Required three-table FROM/JOIN fragment: {fragment}. "
+                "Aggregate only root f measures/counts; d1/d2 are dimensions in this query, "
+                "even if d1 is the source of the next relationship. "
+                "Pair fragments above describe two-table queries, not separate fact grains."
+            )
+            examples += 1
+            if examples == 3:
+                break
         join_rules = """
-- Prefer one table when it suffices. At most two table bindings and one approved relation per SQL.
+- Prefer one table when it suffices. At most three tables and two approved relations per SQL.
 - Only INNER JOIN from fact to approved dimension; exact equality on the approved key pair.
+- Three tables require exactly two unambiguous approved edges on those tables, forming a tree
+  with one root fact. Support root->dimension->dimension or root->two dimensions.
+  Never join two fact tables through a shared dimension, reverse an edge's business direction,
+  use a cycle, choose between multiple keys/paths, or aggregate intermediate dimensions.
 - Use explicit distinct aliases and qualified columns for joins; never invent a relationship.
+- For per-entity results, group by the dimension identifier as well as requested display fields;
+  names alone may refer to different entities. This does not introduce unrequested grouping.
 - SUM/AVG only direct fact NUMERIC/BIGINT columns. Never aggregate dimension measures/entities.
 - Row-count requests require COUNT(*) AS fact_row_count, never COUNT(f.id) or another column.
   COUNT(*) AS matched_row_count is the separate scalar SUM/AVG missing-match diagnostic.
@@ -125,8 +186,8 @@ PostgreSQL dataset workspace:
 - Fact counts are not dimension entity counts. Count dimension entities in that table alone
   when it suffices; otherwise unsupported grain must return unsupported_reason.
 - No DISTINCT, aggregate arithmetic, FILTER, numeric-to-float casts or complex aggregates.
-- No LEFT/RIGHT/FULL/CROSS/NATURAL/USING/self/multi-hop/composite-key joins, CTEs or subqueries.
-- Missing relationships, >2 tables, unsafe grain: return unsupported_reason, not partial SQL."""
+- No LEFT/RIGHT/FULL/CROSS/NATURAL/USING/self/composite-key joins, CTEs or subqueries.
+- Missing relationships, >3 tables, unsafe grain: return unsupported_reason, not partial SQL."""
     elif join_v1_enabled:
         source_context += (
             "\nNo approved table-to-table relationships. Multi-table SQL is unsupported. "

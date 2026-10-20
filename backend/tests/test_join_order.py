@@ -11,7 +11,8 @@ from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.datasets.context import DatasetSqlContext, build_dataset_sql_context
 from app.datasets.parser import ColumnSpec
 from app.datasets.repository import DatasetInfo, DatasetTableInfo
-from app.routing.service import _sql_refusal
+from app.routing.router import RouteDecision, RouteLabel
+from app.routing.service import DatasetChatService, _sql_refusal
 from app.text_to_sql.generator import SqlDraft, SqlGenerator
 from app.text_to_sql.join_policy import ApprovedJoin, validate_uploaded_join
 from app.text_to_sql.pipeline import TextToSqlPipeline
@@ -139,6 +140,16 @@ def test_fact_identity_does_not_depend_on_alias_spelling() -> None:
     )
 
 
+@pytest.mark.parametrize("bindings", [FORWARD, REVERSE])
+@pytest.mark.parametrize("alias", ["fact_row_count", "matched_row_count"])
+def test_count_verified_fact_join_key_has_row_semantics(bindings, alias):
+    result = validator().validate(f"SELECT COUNT(p.student_id) AS {alias} {bindings}")
+    assert f"COUNT(*) AS {alias}" in result.statement
+    assert result.relationship_id == RELATION.relationship_id
+    assert validator().validate(result.statement) == result
+    assert result.fact_table == FACT
+
+
 @pytest.mark.parametrize(
     "projection",
     [
@@ -250,3 +261,110 @@ def test_assembled_aggregate_contract_and_structured_intent_drafts(
         validated = validator().validate(generator.generate(question))
         assert len(validated.tables) == (2 if joined else 1)
         assert (validated.fact_table == FACT) is joined
+
+
+@pytest.mark.parametrize("bindings", [FORWARD, REVERSE], ids=["forward", "reverse"])
+@pytest.mark.parametrize(
+    "projection,amount_type,expected_reason",
+    [
+        ("SUM(p.amount) FILTER (WHERE p.amount>0)", "NUMERIC", "filter"),
+        ("SUM(p.amount)+1", "NUMERIC", "projection_expression"),
+        ("COALESCE(SUM(p.amount),0)", "NUMERIC", "projection_expression"),
+        ("COUNT(p.id,p.amount) AS fact_value_count", "NUMERIC", "multiple_arguments"),
+        ("COUNT(*) AS payment_count", "NUMERIC", "count_star_alias"),
+        ("COUNT(*) AS fact_value_count", "NUMERIC", "count_star_alias"),
+        ("COUNT(*)", "NUMERIC", "count_star_alias"),
+        ("SUM(p.amount*2)", "NUMERIC", "argument_expression"),
+        ("SUM(CAST(p.amount AS DOUBLE PRECISION))", "NUMERIC", "argument_expression"),
+        ("COUNT(1) AS fact_row_count", "NUMERIC", "argument_expression"),
+        ("COUNT(DISTINCT p.id) AS fact_value_count", "NUMERIC", "argument_expression"),
+        ("COUNT(COALESCE(p.amount,0)) AS fact_value_count", "NUMERIC", "argument_expression"),
+        ("SUM(s.id)", "NUMERIC", "dimension_column"),
+        ("AVG(s.id)", "NUMERIC", "dimension_column"),
+        ("COUNT(s.id) AS fact_row_count", "NUMERIC", "dimension_column"),
+        ("COUNT(p.id) AS fact_row_count", "NUMERIC", "count_column_alias"),
+        ("COUNT(p.amount) AS matched_row_count", "NUMERIC", "count_column_alias"),
+        ("MIN(p.amount)", "NUMERIC", "unsupported_function"),
+        ("MAX(p.amount)", "NUMERIC", "unsupported_function"),
+        ("SUM(p.amount)", "TEXT", "non_numeric_fact"),
+        ("AVG(p.amount)", "TEXT", "non_numeric_fact"),
+        ("SUM(p.amount)", "DOUBLE PRECISION", "non_numeric_fact"),
+    ],
+)
+def test_aggregate_diagnostic_branch_is_private_and_stops_before_execution(
+    bindings: str, projection: str, amount_type: str, expected_reason: str, caplog
+) -> None:
+    context = authenticated_context()
+    column_types = {name: dict(columns) for name, columns in context.column_types.items()}
+    column_types[FACT]["amount"] = amount_type
+    scoped_validator = SqlValidator(
+        context.table_columns,
+        context.allowed_schemas,
+        max_tables=2,
+        approved_joins=context.approved_joins,
+        column_types=column_types,
+        join_v1_enabled=True,
+    )
+    sql = f"SELECT {projection} {bindings}"
+    gateway = Mock()
+    gateway.generate_structured.return_value = SqlDraft(sql=sql)
+    executor, guard = Mock(), Mock()
+    pipeline = TextToSqlPipeline(
+        SqlGenerator(gateway, "2026-10-20", context.schema_context),
+        scoped_validator,
+        executor,
+        gateway,
+        execution_guard=guard,
+    )
+    with pytest.raises(SqlUnsupportedError) as caught:
+        pipeline.run("Synthetic aggregate diagnosis")
+    error = caught.value
+    assert error.code == "join_aggregate" and error.reason == "calculation"
+    assert error.aggregate_reason == expected_reason
+    guard.assert_not_called()
+    executor.execute.assert_not_called()
+    gateway.generate_text.assert_not_called()
+    gateway.generate_structured.assert_called_once()
+    with caplog.at_level("INFO", logger="app.routing.service"):
+        response = _sql_refusal(error)
+    assert f"SQL request refused: join_aggregate ({expected_reason})" in caplog.text
+    assert response.route == RouteLabel.UNSUPPORTED
+    assert response.answer == (
+        "Mình chưa thể tính chính xác kết quả này từ dữ liệu hiện có. "
+        "Bạn thử hỏi theo cách khác nhé."
+    )
+    assert response.sql is None and response.rows == [] and response.sources == []
+    for private in (sql, FACT, DIMENSION, projection, str(error), expected_reason):
+        assert private not in response.answer
+    for private in (sql, FACT, DIMENSION, str(error)):
+        assert private not in caplog.text
+
+
+@pytest.mark.parametrize("route", [RouteLabel.SQL, RouteLabel.HYBRID])
+def test_aggregate_diagnosis_never_continues_to_rag_or_hybrid_answer(route, caplog) -> None:
+    sql_gateway = Mock()
+    sql_gateway.generate_structured.return_value = SqlDraft(
+        sql=f"SELECT COUNT(p.id) AS fact_row_count {REVERSE}"
+    )
+    executor, answer_gateway = Mock(), Mock()
+    pipeline = TextToSqlPipeline(
+        SqlGenerator(sql_gateway, "2026-10-20", authenticated_context().schema_context),
+        validator(),
+        executor,
+        answer_gateway,
+    )
+    from app.routing.hybrid import HybridPipeline
+
+    rag, router = Mock(), Mock()
+    router.route.return_value = RouteDecision(route=route, reason="Synthetic branch")
+    with caplog.at_level("INFO", logger="app.routing.service"):
+        result = DatasetChatService(
+            router, pipeline, rag, HybridPipeline(pipeline, rag, answer_gateway)
+        ).chat("Synthetic refusal")
+    assert result.route == RouteLabel.UNSUPPORTED
+    assert result.sql is None and result.rows == [] and result.sources == []
+    assert "join_aggregate (count_column_alias)" in caplog.text
+    rag.retrieve.assert_not_called()
+    executor.execute.assert_not_called()
+    answer_gateway.generate_text.assert_not_called()
+    answer_gateway.generate_structured.assert_not_called()

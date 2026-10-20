@@ -2,6 +2,7 @@
 
 import math
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, MetaData, Table, create_engine, text
@@ -74,6 +75,7 @@ class GuestSqlDatabase:
                         parsed.columns,
                         parsed.row_count,
                         "pg_temp",
+                        display_name=parsed.sheet_name or PurePosixPath(parsed.filename).stem,
                     )
                     self.tables.append(
                         DatasetTableInfo(
@@ -227,7 +229,7 @@ def run_guest_chat(
                     SqlValidator(
                         context.table_columns,
                         context.allowed_schemas,
-                        max_tables=2 if joins else 1,
+                        max_tables=3 if len(joins) >= 2 else 2 if joins else 1,
                         approved_joins=tuple(joins),
                         column_types=context.column_types,
                         join_v1_enabled=settings.sql_join_v1_enabled,

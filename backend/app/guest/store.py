@@ -106,23 +106,40 @@ class GuestStore:
                 )
             context.remaining -= 1
 
-    def add_file(self, context: GuestContext, file: GuestFile) -> None:
+    def add_file(
+        self,
+        context: GuestContext,
+        file: GuestFile,
+        relationships: tuple[RelationshipRecord, ...] = (),
+    ) -> None:
         with self._lock:
             self.ensure_active(context)
             if context.uploaded_count >= self.settings.guest_max_files:
                 raise HTTPException(429, "Đã đạt giới hạn số tệp của phiên khách.")
-            size = self._memory_bytes(context) + file.memory_bytes
+            table_ids = {f.file_id for f in [*context.files, file] if f.table}
+            if any(
+                r.source_table_id not in table_ids
+                or r.target_table_id not in table_ids
+                or r.origin != "automatic"
+                for r in relationships
+            ):
+                raise HTTPException(404, "Liên kết không thuộc các tệp của phiên này.")
+            if len(context.relationships) + len(relationships) > MAX_RELATIONSHIPS:
+                raise HTTPException(429, "Phiên đã đạt giới hạn liên kết.")
+            added = file.memory_bytes + sum(len(pickle.dumps(r)) * 4 + 256 for r in relationships)
+            size = self._memory_bytes(context) + added
             total = sum(self._memory_bytes(c) for c in self._contexts.values())
             chunks = sum(len(item.chunks) for item in context.files) + len(file.chunks)
             if (
                 size > self.settings.guest_max_session_bytes
-                or total + file.memory_bytes > self.settings.guest_max_total_bytes
+                or total + added > self.settings.guest_max_total_bytes
                 or chunks > self.settings.guest_max_chunks
             ):
                 raise HTTPException(
                     429, "Dữ liệu tạm vượt giới hạn tài nguyên của phiên hoặc hệ thống."
                 )
             context.files.append(file)
+            context.relationships.extend(relationships)
             context.uploaded_count += 1
 
     @staticmethod
@@ -165,6 +182,10 @@ class GuestStore:
                 None,
             )
             if existing:
+                if record.origin == "manual" and existing.origin == "automatic":
+                    record = record.model_copy(update={"relationship_id": existing.relationship_id})
+                    context.relationships[context.relationships.index(existing)] = record
+                    return record
                 return existing
             if len(context.relationships) >= MAX_RELATIONSHIPS:
                 raise HTTPException(429, "Phiên đã đạt giới hạn 20 liên kết.")

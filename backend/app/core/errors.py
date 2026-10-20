@@ -2,6 +2,18 @@
 
 from typing import Literal
 
+JoinAggregateReason = Literal[
+    "filter",
+    "projection_expression",
+    "multiple_arguments",
+    "count_star_alias",
+    "argument_expression",
+    "dimension_column",
+    "count_column_alias",
+    "unsupported_function",
+    "non_numeric_fact",
+]
+
 
 class ShopQueryError(Exception):
     """Base class for expected application errors."""
@@ -50,12 +62,16 @@ class SqlUnsupportedError(SqlValidationError):
         message: str,
         *,
         reason: Literal["unknown", "relationship", "calculation"] = "unknown",
-        code: Literal["join_direction", "join_key", "join_aggregate", "join_relationship"]
+        code: Literal[
+            "join_direction", "join_key", "join_aggregate", "join_relationship", "join_graph"
+        ]
         | None = None,
+        aggregate_reason: JoinAggregateReason | None = None,
     ) -> None:
         super().__init__(message)
         self.reason = reason
         self.code = code
+        self.aggregate_reason = aggregate_reason
 
 
 class RetrievalError(ShopQueryError):

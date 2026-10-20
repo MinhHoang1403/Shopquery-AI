@@ -48,6 +48,8 @@ def guest_api(monkeypatch):
         side_effect=lambda action, payload, config, cancel: (
             parse_guest_file(*payload, config)
             if action == "parse"
+            else []
+            if action == "detect_relationships"
             else ChatResult("Explanation", None)
         )
     )

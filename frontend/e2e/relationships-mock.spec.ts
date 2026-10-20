@@ -74,7 +74,7 @@ for (const mode of ["authenticated", "guest"] as const) {
     await page.getByRole("button", { name: "Hủy xóa liên kết", exact: true }).click();
     await page.getByRole("button", { name: "Xóa liên kết payments đến students", exact: true }).click();
     await page.getByRole("button", { name: "Xác nhận xóa liên kết", exact: true }).click();
-    await expect(page.getByText("Chưa có liên kết đã xác nhận.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Chưa có liên kết hợp lệ. Hãy kiểm tra và xác nhận nếu hệ thống chưa tự nhận diện được.", { exact: true })).toBeVisible();
     expect(deletes).toBe(1);
     await expect(page.getByLabel("Bảng chi tiết (fact)").locator("option")).toHaveCount(3);
     const panel = page.locator(".relationship-panel");

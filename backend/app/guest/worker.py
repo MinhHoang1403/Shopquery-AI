@@ -57,7 +57,7 @@ def _worker_main(connection: Connection, action: str, payload: tuple, settings: 
             resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
             cpu = settings.guest_worker_cpu_seconds
             resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
-        if action in {"parse", "relationship"}:
+        if action in {"parse", "relationship", "detect_relationships"}:
             for key in tuple(os.environ):
                 if (
                     key.startswith(("GOOGLE_", "INETCLOUD_"))
@@ -83,15 +83,24 @@ def _worker_main(connection: Connection, action: str, payload: tuple, settings: 
                 result = run_guest_chat(payload[0], payload[1], settings, relationships=payload[2])
             else:
                 result = run_guest_chat(*payload, settings)
-        elif action == "relationship":
+        elif action in {"relationship", "detect_relationships"}:
+            from app.datasets.relationship_detection import detect_relationships
             from app.datasets.relationships import verify_relationship
             from app.guest.pipeline import GuestSqlDatabase
 
-            files, request = payload
+            files = payload[0]
             database = GuestSqlDatabase(settings, files)
             try:
                 with database.engine.connect() as sql:
-                    result = verify_relationship(sql, request, database.file_tables)
+                    if action == "relationship":
+                        result = verify_relationship(sql, payload[1], database.file_tables)
+                    else:
+                        result = detect_relationships(
+                            sql,
+                            database.file_tables,
+                            payload[1],
+                            payload[2],
+                        )
             finally:
                 database.close()
         else:
@@ -118,7 +127,7 @@ def run_isolated(
     target=_worker_main,
 ) -> Any:
     context = multiprocessing.get_context("spawn")
-    if action in {"parse", "relationship"}:
+    if action in {"parse", "relationship", "detect_relationships"}:
         settings = settings.model_copy(
             update={
                 "google_client_id": None,
@@ -136,7 +145,7 @@ def run_isolated(
     process = context.Process(target=target, args=(send, action, payload, settings), daemon=True)
     timeout = (
         settings.guest_parse_timeout_seconds
-        if action in {"parse", "relationship"}
+        if action in {"parse", "relationship", "detect_relationships"}
         else settings.guest_request_timeout_seconds
     )
     deadline = time.monotonic() + timeout

@@ -12,7 +12,7 @@ export interface RelationshipPreview extends RelationshipInput {
   source_rows: number; target_rows: number; source_nulls: number; target_nulls: number;
   target_duplicates: number; orphan_rows: number | null; reasons: string[];
 }
-export interface RelationshipRecord extends RelationshipPreview { relationship_id: string; confirmed: true }
+export interface RelationshipRecord extends RelationshipPreview { relationship_id: string; confirmed: boolean; origin?: "manual" | "automatic" }
 export interface RelationshipClient {
   list: (signal?: AbortSignal) => Promise<{ enabled: boolean; relationships: RelationshipRecord[] }>;
   preview: (input: RelationshipInput) => Promise<RelationshipPreview>;

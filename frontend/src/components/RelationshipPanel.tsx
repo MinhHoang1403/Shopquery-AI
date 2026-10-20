@@ -14,6 +14,7 @@ export function RelationshipPanel({ tables, client, disabled = false }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const tableVersion = tables.map((table) => table.id).join(",");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -21,7 +22,7 @@ export function RelationshipPanel({ tables, client, disabled = false }: {
       if (!controller.signal.aborted) { setEnabled(value.enabled); setRecords(value.relationships); }
     }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Không tải được liên kết."); });
     return () => controller.abort();
-  }, [client]);
+  }, [client, tableVersion]);
 
   function choose(field: keyof RelationshipInput, value: string) {
     setSelection((old) => ({ ...old, [field]: value,
@@ -39,7 +40,7 @@ export function RelationshipPanel({ tables, client, disabled = false }: {
   const tableName = (id: string) => tables.find((table) => table.id === id)?.name ?? "Nguồn đã bị xóa";
   return <details className="workspace-section relationship-panel">
     <summary>Liên kết bảng</summary>
-    <p>V1: hai bảng, một khóa cùng kiểu, INNER JOIN chi tiết → danh mục. Chỉ dùng sau khi bạn xác nhận; không tự đoán quan hệ.</p>
+    <p>Mỗi liên kết nối hai bảng qua một khóa cùng kiểu, INNER JOIN chi tiết → danh mục. Một câu hỏi có thể dùng tối đa 3 bảng qua 2 liên kết hợp lệ, với một bảng chi tiết gốc; không ghép hai bảng chi tiết gây nhân đôi số liệu. Khi tải bảng mới, hệ thống tự kiểm chứng liên kết có tên khóa rõ ràng và dữ liệu hợp lệ. Trường hợp chưa đủ chắc chắn cần bạn kiểm tra và xác nhận bên dưới.</p>
     {error ? <p role="alert" className="form-error">{error}</p> : null}
     {!enabled ? <p role="status">Liên kết bảng chưa được bật hoặc chưa sẵn sàng.</p> : <fieldset disabled={busy || disabled}>
       <legend>Chọn quan hệ cần kiểm tra</legend>
@@ -80,10 +81,11 @@ export function RelationshipPanel({ tables, client, disabled = false }: {
           })}>Xác nhận liên kết</button>
         </> : <div role="alert">{preview.reasons.map((reason) => <p key={reason}>{reason}</p>)}<p>Không được sử dụng trong v1.</p></div>}
       </section> : null}
-      <h4>Liên kết đã xác nhận</h4>
-      {records.length === 0 ? <p>Chưa có liên kết đã xác nhận.</p> : <ul>
+      <h4>Liên kết đang hoạt động</h4>
+      {records.length === 0 ? <p>Chưa có liên kết hợp lệ. Hãy kiểm tra và xác nhận nếu hệ thống chưa tự nhận diện được.</p> : <ul>
         {records.map((item) => <li key={item.relationship_id}>
           <p>{tableName(item.source_table_id)}.{item.source_column} → {tableName(item.target_table_id)}.{item.target_column} · {item.valid ? item.cardinality : "Không còn hợp lệ"}</p>
+          <p>{item.origin === "automatic" ? "Tự động kiểm chứng từ tên khóa và toàn bộ dữ liệu" : "Bạn đã xác nhận"}</p>
           {!item.valid ? <p>{item.reasons.join(" ")}</p> : null}
           <button type="button" className="secondary-button" aria-label={`Xóa liên kết ${tableName(item.source_table_id)} đến ${tableName(item.target_table_id)}`} onClick={() => setDeleting(item.relationship_id)}>Xóa liên kết</button>
         </li>)}

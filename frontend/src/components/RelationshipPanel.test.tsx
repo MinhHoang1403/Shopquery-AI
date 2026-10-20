@@ -66,3 +66,21 @@ it("does not advertise active relationships when the flag is off", async () => {
   expect(await screen.findByText("Liên kết bảng chưa được bật hoặc chưa sẵn sàng.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Kiểm tra quan hệ" })).not.toBeInTheDocument();
 });
+
+it("refreshes automatic links after upload without pretending the user confirmed", async () => {
+  const api = client();
+  const view = render(<RelationshipPanel tables={[tables[0]]} client={api} />);
+  await userEvent.click(screen.getByText("Liên kết bảng", { exact: true }));
+  expect(await screen.findByText(/Chưa có liên kết hợp lệ/)).toBeVisible();
+  vi.mocked(api.list).mockResolvedValue({ enabled: true, relationships: [
+    { ...preview, relationship_id: "automatic", confirmed: false, origin: "automatic" },
+  ] });
+  view.rerender(<RelationshipPanel tables={tables} client={api} />);
+  expect(await screen.findByText("Tự động kiểm chứng từ tên khóa và toàn bộ dữ liệu")).toBeVisible();
+  expect(screen.queryByText("Bạn đã xác nhận")).not.toBeInTheDocument();
+  expect(api.confirm).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Xóa liên kết payments đến students" }));
+  expect(api.remove).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Xác nhận xóa liên kết" }));
+  expect(api.remove).toHaveBeenCalledWith("automatic");
+});

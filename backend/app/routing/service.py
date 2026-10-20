@@ -31,7 +31,10 @@ class ChatResult:
 
 
 def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
-    logger.info("SQL request refused: %s", exc.code or "unspecified")
+    if exc.code == "join_aggregate" and exc.aggregate_reason is not None:
+        logger.info("SQL request refused: %s (%s)", exc.code, exc.aggregate_reason)
+    else:
+        logger.info("SQL request refused: %s", exc.code or "unspecified")
     messages = {
         "relationship": (
             "Mình chưa tìm thấy liên kết phù hợp giữa các bảng. "

@@ -1,5 +1,7 @@
 """Real sessions, CSRF and two owners protect relationship mutations."""
 
+from unittest.mock import Mock
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -253,3 +255,62 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
     assert response["sql"] is None and response["rows"] == [] and response["sources"] == []
     assert "Must not be persisted as success" not in sent.text
     assert a.client.get(path).json()["messages"][-1]["response"] == response
+
+
+@pytest.mark.parametrize("model", ["gemini", "inetcloud-knowledge"])
+@pytest.mark.parametrize("route", ["SQL", "HYBRID"])
+def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
+    relationship_accounts, monkeypatch, caplog, model: str, route: str
+) -> None:
+    from app.routing.router import RouteDecision, RouteLabel
+    from app.text_to_sql.generator import SqlDraft
+
+    a = relationship_accounts.a
+    relations = RelationshipRepository(relationship_accounts.engine, a.user_id)
+    body = RelationshipInput(**request_for(a))
+    preview = relations.preview(a.dataset.dataset_id, body)
+    relations.confirm(
+        a.dataset.dataset_id,
+        RelationshipConfirm(
+            **body.model_dump(),
+            revision=preview.revision,
+            confirmed=True,
+        ),
+    )
+    dim, fact = a.dataset.tables[0].physical_table_name, a.dataset.tables[1].physical_table_name
+    sql = (
+        f"SELECT COUNT(*) AS payment_count FROM uploaded_data.{dim} d "
+        f"INNER JOIN uploaded_data.{fact} f ON f.key=d.value"
+    )
+    gateway, embedder = Mock(), Mock()
+    gateway.generate_structured.side_effect = [
+        RouteDecision(route=RouteLabel(route), reason="Synthetic aggregate refusal"),
+        SqlDraft(sql=sql),
+    ]
+    monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: gateway)
+    monkeypatch.setattr("app.dependencies.build_embedding_gateway", lambda _: embedder)
+    created = a.client.post(
+        "/api/conversations", json={"dataset_id": a.dataset.dataset_id, "model_id": model}
+    )
+    assert created.status_code == 201
+    path = "/api/conversations/" + created.json()["conversation_id"]
+    with caplog.at_level("INFO", logger="app.routing.service"):
+        sent = a.client.post(
+            path + "/messages", json={"message": "Synthetic count", "model_id": model}
+        )
+    assert sent.status_code == 200
+    response = sent.json()["assistant_message"]["response"]
+    assert response["route"] == "UNSUPPORTED" and response["error"] is None
+    assert response["used_model"] == model and response["fallback_used"] is False
+    assert response["sql"] is None and response["rows"] == [] and response["sources"] == []
+    history = a.client.get(path)
+    assert history.status_code == 200
+    assert history.json()["messages"][-1]["response"] == response
+    assert "join_aggregate (count_star_alias)" in caplog.text
+    for private in (sql, dim, fact):
+        assert private not in caplog.text
+    for private in (sql, dim, fact, "join_aggregate", "aggregate_reason", "count_star_alias"):
+        assert private not in sent.text and private not in history.text
+    assert gateway.generate_structured.call_count == 2
+    gateway.generate_text.assert_not_called()
+    embedder.embed_query.assert_not_called()

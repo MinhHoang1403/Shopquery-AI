@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import Connection, column, func, select, table
 from sqlalchemy.sql.elements import ColumnClause
 
@@ -52,7 +52,14 @@ class RelationshipPreview(RelationshipInput):
 
 class RelationshipRecord(RelationshipPreview):
     relationship_id: str
-    confirmed: Literal[True] = True
+    confirmed: bool = True
+    origin: Literal["manual", "automatic"] = "manual"
+
+    @model_validator(mode="after")
+    def confirmation_origin(self) -> "RelationshipRecord":
+        if self.confirmed != (self.origin == "manual"):
+            raise ValueError("Automatic verification is not a user's confirmation")
+        return self
 
 
 @dataclass(frozen=True)
@@ -62,6 +69,7 @@ class RelationshipTable:
     columns: tuple[ColumnSpec, ...]
     row_count: int
     schema: str = "uploaded_data"
+    display_name: str = ""
 
 
 def relationship_revision(
