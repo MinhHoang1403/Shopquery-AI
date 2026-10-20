@@ -16,6 +16,7 @@ class DatasetSqlContext:
     dataset_id: int | None = None
     has_documents: bool = False
     owner_user_id: UUID | None = None
+    routing_context: str | None = None
     approved_joins: tuple[ApprovedJoin, ...] = ()
     column_types: dict[str, dict[str, str]] = field(default_factory=dict)
 
@@ -100,7 +101,13 @@ PostgreSQL dataset workspace:
                 f"Approved INNER relation: {schema_name}."
                 f"{relation.source_table}.{relation.source_column} "
                 f"= {schema_name}.{relation.target_table}.{relation.target_column}; "
-                "direction fact -> dimension; verified N:1 or 1:1."
+                "direction fact -> dimension; verified N:1 or 1:1.\n"
+                "Required FROM/JOIN fragment (physical identifiers, copy exactly): "
+                f"FROM {schema_name}.{relation.source_table} AS f "
+                f"INNER JOIN {schema_name}.{relation.target_table} AS d "
+                f"ON f.{relation.source_column} = d.{relation.target_column}\n"
+                "Do not reverse FROM and JOIN, even when the question names the dimension first. "
+                "Use f for fact measures/counts and d for dimension attributes."
             )
         source_context += "\n" + "\n".join(relations)
         join_rules = """
@@ -124,7 +131,10 @@ Rules:
 - This uploaded workspace may describe any domain; do not assume it is a store or sales data.
 - Interpret fields from their source headers and types. Do not invent missing fields or rules.
 - Never import default-store completed-order, revenue, shipping or category rules here.
+- The following restrictions apply to SQL statements only, not the final HYBRID answer.
 {join_rules}
+- Comparing one table's aggregate with a retrieved document rule is not a JOIN.
+  HYBRID may combine those two evidence types without a table-to-table relationship.
 - Use source-header mappings only to understand wording; use physical names in SQL.
 - In FROM, copy the fully qualified SQL table identifier above exactly, including {schema_name}.
 - Display labels, worksheet names and file names are never SQL table identifiers.
@@ -141,6 +151,7 @@ Rules:
         dataset_id=dataset.dataset_id,
         has_documents=dataset.document_count > 0,
         owner_user_id=dataset.owner_user_id,
+        routing_context=source_context,
         approved_joins=approved_joins,
         column_types={
             table.physical_table_name: {c.name: c.data_type for c in table.columns}

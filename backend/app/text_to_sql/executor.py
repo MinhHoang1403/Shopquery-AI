@@ -51,6 +51,8 @@ class SqlExecutor:
 
 
 def _json_safe(value: Any) -> Any:
+    if isinstance(value, int) and abs(value) > 9_007_199_254_740_991:
+        return str(value)
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, (datetime, date)):

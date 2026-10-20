@@ -138,7 +138,7 @@ class SqlValidator:
         if self._max_tables == 1 and root.find(exp.Join) is not None:
             if self._join_v1_enabled:
                 raise SqlUnsupportedError(
-                    "Hãy khai báo và xác nhận quan hệ tại Quản lý dữ liệu → Liên kết bảng."
+                    "A JOIN requires a confirmed relationship", reason="relationship"
                 )
             raise SqlValidationError("JOIN is not supported without declared relationship metadata")
         if self._max_tables is not None and len(tables) > self._max_tables:

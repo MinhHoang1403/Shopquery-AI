@@ -89,9 +89,12 @@ def validate_uploaded_join(
         None,
     )
     if relationship is None:
+        known_pair = any(
+            {source, target} == {item.source_table, item.target_table} for item in relationships
+        )
         raise SqlUnsupportedError(
-            "Chưa có liên kết phù hợp. Hãy khai báo và xác nhận trong "
-            "Quản lý dữ liệu → Liên kết bảng."
+            "JOIN direction or key does not match an approved relationship",
+            reason="calculation" if known_pair else "relationship",
         )
     output_names = {item.alias.lower() for item in root.expressions if item.alias}
     input_names = set().union(*(table_columns[name] for name in aliases.values()))
@@ -108,19 +111,21 @@ def validate_uploaded_join(
         if col.name.lower() not in output_names or not (order_alias or group_alias):
             raise SqlValidationError("JOIN v1 requires qualified source columns")
     if root.find(exp.Filter) is not None:
-        raise SqlUnsupportedError("JOIN v1 chưa hỗ trợ FILTER trong phép tổng hợp.")
+        raise SqlUnsupportedError("JOIN aggregates cannot use FILTER", reason="calculation")
     for projection in root.expressions:
         expression = projection.this if isinstance(projection, exp.Alias) else projection
         if expression.is_star:
             raise SqlValidationError("Select explicit columns in JOIN v1")
         if expression.find(exp.AggFunc) and not isinstance(expression, exp.AggFunc):
             raise SqlUnsupportedError(
-                "JOIN v1 chỉ tổng hợp trực tiếp trên fact, không ghép biểu thức."
+                "JOIN projections require direct fact aggregates", reason="calculation"
             )
     for aggregate in root.find_all(exp.AggFunc):
         argument = aggregate.this
         if aggregate.expressions:
-            raise SqlUnsupportedError("JOIN v1 chỉ tổng hợp một cột trực tiếp.")
+            raise SqlUnsupportedError(
+                "JOIN aggregates require one direct column", reason="calculation"
+            )
         if isinstance(aggregate, exp.Count) and isinstance(argument, exp.Star):
             output = aggregate.parent
             if not isinstance(output, exp.Alias) or output.alias.lower() not in {
@@ -128,7 +133,7 @@ def validate_uploaded_join(
                 "matched_row_count",
             }:
                 raise SqlUnsupportedError(
-                    "COUNT(*) của JOIN phải mang nghĩa fact_row_count/matched_row_count."
+                    "JOIN COUNT(*) requires a fact-row alias", reason="calculation"
                 )
             continue
         if (
@@ -136,13 +141,17 @@ def validate_uploaded_join(
             or aliases.get(argument.table.lower()) != relationship.source_table
             or aggregate.expressions
         ):
-            raise SqlUnsupportedError("Không tổng hợp dimension hoặc biểu thức qua JOIN v1.")
+            raise SqlUnsupportedError(
+                "Cannot aggregate dimension or expressions", reason="calculation"
+            )
         if isinstance(aggregate, exp.Count):
             output = aggregate.parent
             if not isinstance(output, exp.Alias) or output.alias.lower() != "fact_value_count":
-                raise SqlUnsupportedError("COUNT(fact.column) cần alias fact_value_count.")
+                raise SqlUnsupportedError(
+                    "COUNT(column) requires fact_value_count", reason="calculation"
+                )
         elif not isinstance(aggregate, (exp.Sum, exp.Avg)) or column_types.get(source, {}).get(
             argument.name.lower()
         ) not in {"BIGINT", "NUMERIC"}:
-            raise SqlUnsupportedError("JOIN v1 chỉ SUM/AVG trực tiếp fact NUMERIC/BIGINT.")
+            raise SqlUnsupportedError("SUM/AVG require a numeric fact column", reason="calculation")
     return relationship

@@ -10,6 +10,27 @@ function renderAnswer(text: string) {
 }
 
 describe("Assistant content", () => {
+  it("renders the old generic refusal kindly without rewriting restored history", () => {
+    const text = "Bộ dữ liệu không có đủ loại nguồn để trả lời câu hỏi này. Nếu cần ghép hai bảng, hãy kiểm tra Quản lý dữ liệu → Liên kết bảng. JOIN v1 chỉ hỗ trợ hai bảng với quan hệ đã xác nhận và tổng hợp fact an toàn.";
+    const entry = { id: "legacy", role: "assistant" as const, text,
+      response: { answer: text, route: "UNSUPPORTED" as const, sql: null, rows: [], sources: [], error: null } };
+    render(<ChatMessage entry={entry} />);
+    expect(screen.queryByText(text)).not.toBeInTheDocument();
+    expect(screen.getByText("Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé.")).toBeVisible();
+    expect(entry.text).toBe(text);
+    expect(entry.response.answer).toBe(text);
+  });
+
+  it("labels a persisted unsupported data answer without claiming it is out of scope", () => {
+    const answer = "Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé.";
+    render(<ChatMessage entry={{ id: "restored", role: "assistant", text: answer,
+      response: { answer, route: "UNSUPPORTED", sql: null, rows: [], sources: [], error: null } }} />);
+    expect(screen.getByText("Chưa thể trả lời")).toBeVisible();
+    expect(screen.queryByText("Ngoài phạm vi")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Bằng chứng hỗ trợ" })).not.toBeInTheDocument();
+    expect(screen.getByText(answer)).toBeVisible();
+  });
+
   it("renders paragraphs, lists, emphasis and code without changing their content", () => {
     const { container } = renderAnswer("Tóm tắt **doanh số**.\n\n1. Áo linen\n2. Túi vải\n\n- Đổi trả\n- Vận chuyển\n\nCột `quantity`.\n\n```sql\nSELECT name FROM products;\n```");
     expect(container.querySelector("strong")?.textContent).toBe("ShopQuery AI");

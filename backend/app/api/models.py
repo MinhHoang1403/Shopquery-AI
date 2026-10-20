@@ -41,7 +41,8 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description=(
             "NUMERIC values are lossless decimal strings; "
-            "INTEGER/COUNT remain integers; NULL remains null."
+            "browser-safe INTEGER/COUNT remain integers, larger integers are exact digit strings; "
+            "NULL remains null."
         ),
     )
     sources: list[SourceResponse] = Field(default_factory=list)

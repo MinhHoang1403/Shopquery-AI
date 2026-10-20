@@ -68,8 +68,5 @@ Question: {question}
 """.strip()
         draft = self._gateway.generate_structured(prompt, SqlDraft)
         if draft.unsupported_reason:
-            raise SqlUnsupportedError(
-                "Chưa đủ quan hệ/grain an toàn. Hãy kiểm tra Quản lý dữ liệu → Liên kết bảng. "
-                "V1 chỉ INNER JOIN hai bảng đã xác nhận, tổng hợp trên fact."
-            )
+            raise SqlUnsupportedError("The generator could not produce a supported query")
         return draft.sql.strip()

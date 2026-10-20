@@ -29,6 +29,8 @@ pytestmark = pytest.mark.integration
         ("products", "transactions"),
         ("departments", "employees"),
         ("classes", "enrollments"),
+        ("routes", "shipments"),
+        ("meters", "readings"),
     ],
 )
 def test_join_totals_counts_average_and_calendar_match_fact_oracle(

@@ -41,6 +41,7 @@ class GuestGateway:
 
     def generate_structured(self, prompt, schema):
         if schema is RouteDecision:
+            assert "Never JOIN tables" not in prompt
             return RouteDecision(route=self.route, reason="Fake gateway, real isolated sources")
         if schema is SqlDraft:
             return SqlDraft(

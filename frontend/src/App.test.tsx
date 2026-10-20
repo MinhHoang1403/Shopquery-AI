@@ -578,7 +578,7 @@ describe("ShopQuery workspace", () => {
     installApi({ response: chatResponse({ route: "UNSUPPORTED", sql: null, rows: [], sources: [] }) });
     const third = render(<App />);
     await user.click(await screen.findByRole("button", { name: /Phân tích bán hàng/ }));
-    expect(await screen.findByText("Ngoài phạm vi")).toBeInTheDocument();
+    expect(await screen.findByText("Chưa thể trả lời")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Bằng chứng hỗ trợ" })).not.toBeInTheDocument();
     third.unmount();
 

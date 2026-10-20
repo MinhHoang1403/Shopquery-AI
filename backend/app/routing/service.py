@@ -9,6 +9,11 @@ from app.routing.hybrid import HybridPipeline
 from app.routing.router import QueryRouter, RouteLabel
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
+INSUFFICIENT_INFORMATION = (
+    "Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. "
+    "Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé."
+)
+
 
 @dataclass
 class ChatResult:
@@ -21,6 +26,20 @@ class ChatResult:
     used_model: str | None = None
     fallback_used: bool = False
     fallback_reason: str | None = None
+
+
+def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
+    messages = {
+        "relationship": (
+            "Mình chưa tìm thấy liên kết phù hợp giữa các bảng. "
+            "Bạn có thể thiết lập trong Quản lý dữ liệu → Liên kết bảng."
+        ),
+        "calculation": (
+            "Mình chưa thể tính chính xác kết quả này từ dữ liệu hiện có. "
+            "Bạn thử hỏi theo cách khác nhé."
+        ),
+    }
+    return ChatResult(messages.get(exc.reason, INSUFFICIENT_INFORMATION), RouteLabel.UNSUPPORTED)
 
 
 class ChatService:
@@ -48,10 +67,7 @@ class ChatService:
             result = self._hybrid_pipeline.run(question)
             return ChatResult(result.answer, route, result.sql, result.rows, result.sources)
         return ChatResult(
-            answer=(
-                "ShopQuery AI không hỗ trợ yêu cầu này vì nó nằm ngoài dữ liệu bán hàng "
-                "và tài liệu cửa hàng hiện có."
-            ),
+            answer=INSUFFICIENT_INFORMATION,
             route=RouteLabel.UNSUPPORTED,
         )
 
@@ -83,7 +99,8 @@ class DatasetChatService:
             allowed.add(RouteLabel.HYBRID)
         if len(allowed) == 1 or self._router is None:
             return ChatResult(
-                "Bộ dữ liệu chưa có bảng hoặc tài liệu để trả lời câu hỏi.",
+                "Chưa có đủ dữ liệu để trả lời câu hỏi này. "
+                "Bạn hãy kiểm tra các tệp đã tải lên nhé.",
                 RouteLabel.UNSUPPORTED,
                 requested_model=self._requested_model,
             )
@@ -92,7 +109,7 @@ class DatasetChatService:
             try:
                 result = self._sql_pipeline.run(question)
             except SqlUnsupportedError as exc:
-                return ChatResult(str(exc), RouteLabel.UNSUPPORTED)
+                return _sql_refusal(exc)
             return ChatResult(result.answer, route, result.sql, result.rows)
         if route == RouteLabel.RAG and self._rag_pipeline is not None:
             result = self._rag_pipeline.run(question)
@@ -101,11 +118,9 @@ class DatasetChatService:
             try:
                 result = self._hybrid_pipeline.run(question)
             except SqlUnsupportedError as exc:
-                return ChatResult(str(exc), RouteLabel.UNSUPPORTED)
+                return _sql_refusal(exc)
             return ChatResult(result.answer, route, result.sql, result.rows, result.sources)
         return ChatResult(
-            "Bộ dữ liệu không có đủ loại nguồn để trả lời câu hỏi này. "
-            "Nếu cần ghép hai bảng, hãy kiểm tra Quản lý dữ liệu → Liên kết bảng. "
-            "JOIN v1 chỉ hỗ trợ hai bảng với quan hệ đã xác nhận và tổng hợp fact an toàn.",
+            INSUFFICIENT_INFORMATION,
             RouteLabel.UNSUPPORTED,
         )

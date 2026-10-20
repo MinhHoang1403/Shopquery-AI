@@ -266,3 +266,44 @@ def test_valid_alias_queries_match_postgres_name_precedence() -> None:
             assert executor.execute(validated) == expected
     finally:
         repository.delete(dataset.dataset_id)
+
+
+def test_large_integer_db_preview_and_history_remain_exact() -> None:
+    from app.api.models import ChatResponse
+
+    engine = get_setup_engine()
+    repository = DatasetRepository(engine, get_readonly_engine(), TEST_OWNER)
+    dataset = repository.create(
+        f"Integer precision {uuid4()}",
+        parse(
+            "integers.csv", b"Record id,Amount\n9007199254740993,10.25\n-9007199254740993,0.00\n"
+        ),
+    )
+    conversations = ConversationRepository(engine, TEST_OWNER)
+    conversation = conversations.create(dataset.dataset_id)
+    try:
+        context = build_dataset_sql_context(dataset)
+        validator = SqlValidator(context.table_columns, context.allowed_schemas, max_tables=1)
+        sql = validator.validate(
+            f"SELECT record_id FROM uploaded_data.{dataset.table.physical_table_name} "
+            "ORDER BY record_id"
+        )
+        rows = SqlExecutor(get_readonly_engine(), 5000, 100).execute(sql)
+        assert rows == [{"record_id": "-9007199254740993"}, {"record_id": "9007199254740993"}]
+        assert repository.preview_rows(dataset.dataset_id)[0]["Record id"] == "9007199254740993"
+        payload = ChatResponse(
+            answer="Synthetic", route=RouteLabel.SQL, sql=sql.statement, rows=rows
+        ).model_dump()
+        conversations.add_response_message(
+            conversation.conversation_id,
+            content="Synthetic",
+            response_metadata=payload,
+            is_error=False,
+        )
+        assert (
+            conversations.get(conversation.conversation_id).messages[0].response_metadata["rows"]
+            == rows
+        )
+    finally:
+        conversations.delete(conversation.conversation_id)
+        repository.delete(dataset.dataset_id)

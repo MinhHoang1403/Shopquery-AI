@@ -1,7 +1,7 @@
 export type RouteLabel = "SQL" | "RAG" | "HYBRID" | "UNSUPPORTED";
 export type ModelId = "inetcloud-knowledge" | "gemini";
 
-// NUMERIC cells are exact decimal strings. Render unchanged, without Number()/parseFloat().
+// NUMERIC and browser-unsafe integers are exact strings; never coerce cells to Number().
 export type ResultRow = Record<string, unknown>;
 
 export interface RelationshipInput {

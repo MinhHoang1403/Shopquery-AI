@@ -34,6 +34,11 @@ async function installGuest(page: Page, ai = true) {
       expect(Object.keys(body).sort()).toEqual(["message", "model_id"]);
       if (status.remaining === 0) return route.fulfill({ status: 429, json: { detail: "Hết lượt" } });
       status.remaining--;
+      if (body.message === "UNSUPPORTED") return route.fulfill({ json: { status, response: {
+        answer: "Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé.",
+        route: "UNSUPPORTED", sql: null, rows: [], sources: [], error: null,
+        requested_model: body.model_id, used_model: body.model_id, fallback_used: false, fallback_reason: null,
+      } } });
       const pipeline = body.message === "SQL" ? "SQL" : body.message === "RAG" ? "RAG" : body.message === "HYBRID" ? "HYBRID" : null;
       const sql = pipeline === "SQL" || pipeline === "HYBRID";
       const rag = pipeline === "RAG" || pipeline === "HYBRID";
@@ -58,6 +63,19 @@ async function openUploads(page: Page) {
   await page.getByRole("button", { name: "Tệp tạm thời", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 }
+
+test("guest unsupported data answer stays friendly and has no invented evidence", async ({ page }) => {
+  await installGuest(page);
+  await page.goto("/");
+  const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+  await expect(input).toBeEditable();
+  await input.fill("UNSUPPORTED");
+  await input.press("Enter");
+  await expect(page.getByText("Chưa thể trả lời", { exact: true })).toBeVisible();
+  await expect(page.getByText("Mình chưa đủ thông tin để trả lời chính xác câu hỏi này.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Bằng chứng hỗ trợ" })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
 
 test("guest upload navigation waits for delayed authentication bootstrap", async ({ page }) => {
   let releaseAuth!: () => void;

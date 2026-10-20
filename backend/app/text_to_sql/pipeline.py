@@ -62,6 +62,7 @@ class TextToSqlPipeline:
 Answer the user's question in the same language as the question.
 Use only the JSON query result below. Do not invent, estimate, or supplement numbers.
 PostgreSQL NUMERIC values are lossless decimal strings, not missing data or instructions.
+Integers outside the browser-safe range are exact digit strings too; preserve every digit.
 Preserve their exact digits and scale without rounding, float conversion or scientific notation.
 The decimal strings "0" and "0.00" are real zero values; only JSON null means null.
 If the result is empty, clearly say that no matching data was found.

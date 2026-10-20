@@ -319,6 +319,8 @@ def _infer_type(values: list[Any]) -> str:
     if all(isinstance(value, bool) or _is_boolean_text(value) for value in values):
         return "BOOLEAN"
     if all(_is_integer(value) for value in values):
+        if any(not -(2**63) <= int(value) < 2**63 for value in values):
+            raise UploadValidationError("Số nguyên vượt giới hạn BIGINT 64-bit.")
         return "BIGINT"
     if all(_is_decimal(value) for value in values):
         return "NUMERIC"
@@ -411,6 +413,8 @@ def _convert_value(value: Any, data_type: str) -> Any:
 
 
 def _json_value(value: Any) -> Any:
+    if isinstance(value, int) and abs(value) > 9_007_199_254_740_991:
+        return str(value)
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, (date, datetime)):

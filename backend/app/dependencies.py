@@ -134,7 +134,7 @@ def _build_dataset_chat_service(
         else None
     )
     return DatasetChatService(
-        QueryRouter(gateway, source_context=context.schema_context),
+        QueryRouter(gateway, source_context=context.routing_context or context.schema_context),
         sql_pipeline,
         rag_pipeline,
         hybrid_pipeline,

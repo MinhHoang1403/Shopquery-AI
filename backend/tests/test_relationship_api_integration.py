@@ -196,3 +196,53 @@ def test_join_api_pipelines_and_persisted_history(
     detail = a.client.get(path).json()
     assert len(detail["messages"]) == 2
     assert detail["messages"][-1]["response"] == response
+
+
+@pytest.mark.parametrize("pipeline", ["SQL", "RAG", "HYBRID"])
+def test_invalid_sql_or_citation_never_persists_invented_success(
+    relationship_accounts, monkeypatch, pipeline: str
+) -> None:
+    from app.rag.pipeline import RagAnswerDraft
+    from app.routing.hybrid import HybridAnswerDraft
+    from app.routing.router import RouteDecision, RouteLabel
+    from app.text_to_sql.generator import SqlDraft
+    from tests.test_guest_integration import OfflineEmbedder
+
+    a = relationship_accounts.a
+    fact = a.dataset.tables[1].physical_table_name
+
+    class Gateway:
+        def generate_structured(self, prompt, schema):
+            if schema is RouteDecision:
+                return RouteDecision(route=RouteLabel(pipeline), reason="Negative synthetic case")
+            if schema is SqlDraft:
+                return SqlDraft(
+                    sql="SELECT * FROM public.users"
+                    if pipeline == "SQL"
+                    else f"SELECT SUM(amount) AS total FROM uploaded_data.{fact}"
+                )
+            if schema is RagAnswerDraft:
+                return RagAnswerDraft(
+                    answer="Must not be persisted as success", used_chunk_ids=[-1]
+                )
+            if schema is HybridAnswerDraft:
+                return HybridAnswerDraft(
+                    answer="Must not be persisted as success", used_chunk_ids=[-1]
+                )
+            raise AssertionError(schema)
+
+        def generate_text(self, prompt):
+            assert pipeline == "HYBRID"
+            return "Synthetic total 5"
+
+    monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
+    monkeypatch.setattr("app.dependencies.build_embedding_gateway", lambda _: OfflineEmbedder())
+    created = a.client.post("/api/conversations", json={"dataset_id": a.dataset.dataset_id})
+    path = "/api/conversations/" + created.json()["conversation_id"]
+    sent = a.client.post(path + "/messages", json={"message": "Synthetic negative"})
+    assert sent.status_code == 200
+    response = sent.json()["assistant_message"]["response"]
+    assert response["error"]
+    assert response["sql"] is None and response["rows"] == [] and response["sources"] == []
+    assert "Must not be persisted as success" not in sent.text
+    assert a.client.get(path).json()["messages"][-1]["response"] == response

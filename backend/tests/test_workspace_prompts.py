@@ -69,9 +69,35 @@ def tuition_context(document_count: int = 0) -> DatasetSqlContext:
 def test_router_context_reports_actual_uploaded_document_availability(count):
     context = tuition_context(count)
     gateway = RecordingGateway()
-    QueryRouter(gateway, context.schema_context).route("Tra cứu tài liệu")
+    QueryRouter(gateway, context.routing_context).route("Tra cứu tài liệu")
     assert f"Uploaded document count in this workspace: {count}" in gateway.prompt
     assert context.has_documents is bool(count)
+
+
+def test_workspace_sql_constraints_do_not_forbid_table_document_comparisons() -> None:
+    context = tuition_context(document_count=1)
+
+    assert "Never JOIN tables" in context.schema_context
+    assert context.routing_context is not None
+    assert "SQL columns:" in context.routing_context
+    assert "Uploaded document count in this workspace: 1" in context.routing_context
+    assert "Never JOIN tables" not in context.routing_context
+    assert "Choose exactly one allowed table" not in context.routing_context
+
+
+def test_router_distinguishes_hybrid_aggregation_from_an_unsupported_table_join() -> None:
+    gateway = RecordingGateway(RouteLabel.HYBRID)
+    context = tuition_context(document_count=1)
+    question = "Tổng học phí đã đóng có đạt ngưỡng quy định trong tài liệu không?"
+
+    decision = QueryRouter(gateway, context.routing_context).route(question)
+
+    assert decision.route == RouteLabel.HYBRID
+    assert "single-table SQL result or aggregate with a rule retrieved from a document" in (
+        gateway.prompt
+    )
+    assert "does not require a SQL JOIN or table-to-table relationship metadata" in gateway.prompt
+    assert "Never invent a missing threshold" in gateway.prompt
 
 
 @pytest.mark.parametrize(
@@ -93,10 +119,10 @@ def test_router_prompt_uses_selected_source_not_commerce_only(
     gateway = RecordingGateway(route)
     context = tuition_context()
 
-    decision = QueryRouter(gateway, context.schema_context).route(question)
+    decision = QueryRouter(gateway, context.routing_context).route(question)
 
     assert decision.route == route  # The stub verifies the contract, not live LLM accuracy.
-    assert context.schema_context in gateway.prompt
+    assert context.routing_context in gateway.prompt
     assert "Do not reject a question merely because" in gateway.prompt
     assert "Available routes for the selected data source: HYBRID, RAG, SQL, UNSUPPORTED" in (
         gateway.prompt
@@ -137,7 +163,8 @@ def test_uploaded_router_receives_schema_through_dependency_construction(monkeyp
     result = service.chat("Trường bị thiếu?")
 
     assert result.route == RouteLabel.UNSUPPORTED
-    assert context.schema_context in gateway.prompt
+    assert context.routing_context in gateway.prompt
+    assert "Never JOIN tables" not in gateway.prompt
 
 
 @pytest.mark.parametrize(

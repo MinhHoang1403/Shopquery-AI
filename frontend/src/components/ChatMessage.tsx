@@ -7,14 +7,18 @@ const ROUTE_LABELS: Record<RouteLabel, string> = {
   SQL: "SQL",
   RAG: "Tài liệu",
   HYBRID: "SQL + Tài liệu",
-  UNSUPPORTED: "Ngoài phạm vi",
+  UNSUPPORTED: "Chưa thể trả lời",
 };
 
 const MODEL_LABELS = { "inetcloud-knowledge": "iNetCloud Knowledge", gemini: "Gemini" };
+const LEGACY_GENERIC_REFUSAL = "Bộ dữ liệu không có đủ loại nguồn để trả lời câu hỏi này. Nếu cần ghép hai bảng, hãy kiểm tra Quản lý dữ liệu → Liên kết bảng. JOIN v1 chỉ hỗ trợ hai bảng với quan hệ đã xác nhận và tổng hợp fact an toàn.";
+const GENERIC_REFUSAL = "Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé.";
 
 export function ChatMessage({ entry }: { entry: ConversationEntry }) {
   const isUser = entry.role === "user";
   const isError = entry.role === "error";
+  const text = !isUser && !isError && entry.response?.route === "UNSUPPORTED"
+    && entry.text === LEGACY_GENERIC_REFUSAL ? GENERIC_REFUSAL : entry.text;
 
   return (
     <article className={`message message--${entry.role}`}>
@@ -35,7 +39,7 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
             ) : null}
           </div>
         ) : null}
-        {isUser || isError ? <p className="message-text">{entry.text}</p> : <AssistantContent text={entry.text} />}
+        {isUser || isError ? <p className="message-text">{text}</p> : <AssistantContent text={text} />}
         {isError && entry.response?.error ? (
           <p className="fallback-notice" role="alert">{entry.response.error}</p>
         ) : null}

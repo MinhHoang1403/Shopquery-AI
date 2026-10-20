@@ -1,5 +1,7 @@
 """Domain errors safe to translate into API responses."""
 
+from typing import Literal
+
 
 class ShopQueryError(Exception):
     """Base class for expected application errors."""
@@ -42,6 +44,15 @@ class SqlExecutionError(ShopQueryError):
 
 class SqlUnsupportedError(SqlValidationError):
     """An unsupported relationship/grain must not become a partial numeric answer."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: Literal["unknown", "relationship", "calculation"] = "unknown",
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 class RetrievalError(ShopQueryError):

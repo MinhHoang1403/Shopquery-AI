@@ -130,7 +130,7 @@ function responseFor(question: string) {
   if (normalized.includes("đổi trả")) return ragResponse;
   if (normalized.includes("miễn phí vận chuyển")) return hybridResponse;
   if (normalized.includes("thời tiết")) {
-    return { answer: "Yêu cầu nằm ngoài phạm vi dữ liệu cửa hàng.", route: "UNSUPPORTED", sql: null, rows: [], sources: [], error: null };
+    return { answer: "Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé.", route: "UNSUPPORTED", sql: null, rows: [], sources: [], error: null };
   }
   return sqlResponse;
 }
@@ -543,7 +543,10 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await waitForDrawerClosed(page);
   await input.fill("Thời tiết ngày mai?");
   await input.press("Enter");
-  await expect(page.getByText("Ngoài phạm vi", { exact: true })).toBeVisible();
+  await expect(page.getByText("Chưa thể trả lời", { exact: true })).toBeVisible();
+  await expect(page.getByText("Mình chưa đủ thông tin để trả lời chính xác câu hỏi này.", { exact: false })).toBeVisible();
+  await openApp(page);
+  await expect(page.getByText("Chưa thể trả lời", { exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Bằng chứng hỗ trợ" })).toHaveCount(0);
   await expectNoPageOverflow(page);
 });

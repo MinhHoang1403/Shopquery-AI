@@ -252,7 +252,7 @@ def run_guest_chat(
             )
             hybrid = HybridPipeline(sql_pipeline, rag, selected) if sql_pipeline and rag else None
             return DatasetChatService(
-                QueryRouter(selected, context.schema_context),
+                QueryRouter(selected, context.routing_context),
                 sql_pipeline,
                 rag,
                 hybrid,

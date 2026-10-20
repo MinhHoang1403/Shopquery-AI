@@ -51,6 +51,11 @@ Do not reject a question merely because it is not about shopping or commerce.
 Choose the evidence type, not the topic or a keyword. A numeric threshold explicitly given
 in the question can be applied with SQL alone. A threshold defined only in a document needs
 RAG to explain it, or HYBRID to apply it to table records. Never invent a missing threshold.
+Comparing a single-table SQL result or aggregate with a rule retrieved from a document
+is HYBRID when both capabilities are available.
+This does not require a SQL JOIN or table-to-table relationship metadata.
+Single-table/no-JOIN restrictions in the source context constrain the SQL part only;
+the final HYBRID answer can combine that SQL evidence with retrieved document evidence.
 
 Available routes for the selected data source: {route_names}.
 These capabilities have already been checked by the application. Downstream pipelines will

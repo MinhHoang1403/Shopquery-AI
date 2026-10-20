@@ -37,6 +37,11 @@ from tests.test_text_to_sql_pipeline import (
         (None, None),
         (0, 0),
         (12, 12),
+        (9_007_199_254_740_991, 9_007_199_254_740_991),
+        (9_007_199_254_740_992, "9007199254740992"),
+        (9_007_199_254_740_993, "9007199254740993"),
+        (-9_007_199_254_740_993, "-9007199254740993"),
+        (True, True),
     ],
 )
 def test_numeric_json_contract(value: object, expected: object) -> None:
@@ -45,17 +50,34 @@ def test_numeric_json_contract(value: object, expected: object) -> None:
     assert type(result) is type(expected)
 
 
+def test_parser_preview_keeps_native_large_integer_exact() -> None:
+    from app.datasets.parser import _json_value
+
+    assert _json_value(9_007_199_254_740_993) == "9007199254740993"
+
+
+@pytest.mark.parametrize("value", [2**63, -(2**63) - 1])
+def test_integer_outside_postgres_bigint_is_rejected_before_import(value: int) -> None:
+    from app.core.errors import UploadValidationError
+    from tests.test_dataset_parser import parse
+
+    with pytest.raises(UploadValidationError, match="BIGINT"):
+        parse("overflow.csv", f"Mã\n{value}\n".encode())
+
+
 @pytest.mark.usefixtures("contract_session")
 def test_executor_to_http_and_grounding_preserve_decimal_strings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     raw = {
+        "large_id": 9_007_199_254_740_993,
         "total": Decimal("12345678901234567890.12"),
         "zero": Decimal("0.00"),
         "missing": None,
         "matched_row_count": 2,
     }
     expected = {
+        "large_id": "9007199254740993",
         "total": "12345678901234567890.12",
         "zero": "0.00",
         "missing": None,
