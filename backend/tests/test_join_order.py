@@ -196,3 +196,57 @@ def test_internal_code_logs_no_sql_or_detail_and_does_not_change_frontend_copy(c
         "Bạn thử hỏi theo cách khác nhé."
     )
     assert response.sql is None and not response.rows and not response.sources
+
+
+@pytest.mark.parametrize(
+    "question,projection,joined",
+    [
+        ("Có bao nhiêu khoản thanh toán của mỗi sinh viên?", "COUNT(*) AS fact_row_count", True),
+        ("Đếm số lần thanh toán theo sinh viên.", "COUNT(*) AS fact_row_count", True),
+        ("Tổng tiền từng sinh viên đã đóng?", "SUM(p.amount) AS total_amount", True),
+        (
+            "Số giá trị học phí không bị thiếu của mỗi sinh viên?",
+            "COUNT(p.amount) AS fact_value_count",
+            True,
+        ),
+        ("Giá trị trung bình mỗi khoản thanh toán?", "AVG(amount) AS average_amount", False),
+        ("Có bao nhiêu sinh viên?", "COUNT(*) AS entity_count", False),
+        ("Có bao nhiêu đơn hàng?", None, False),
+        ("Đếm bao nhiêu dòng dữ liệu?", "COUNT(*) AS fact_row_count", False),
+    ],
+)
+def test_assembled_aggregate_contract_and_structured_intent_drafts(
+    question: str, projection: str | None, joined: bool
+) -> None:
+    """Intent labels/drafts are fixtures, not a claim about live model accuracy."""
+    context = authenticated_context()
+    source = DIMENSION if "sinh viên?" in question else FACT
+    sql = (
+        f"SELECT s.name, {projection} {FORWARD} GROUP BY s.name"
+        if joined
+        else f"SELECT {projection} FROM uploaded_data.{source}"
+    )
+
+    class Gateway:
+        def generate_structured(self, prompt, schema):
+            assert schema is SqlDraft and context.schema_context in prompt
+            assert "COUNT(*) AS fact_row_count" in prompt
+            assert "COUNT(f.column) AS fact_value_count" in prompt
+            assert "Never infer NOT NULL from a column named id" in prompt
+            assert "Never swap these aliases" in prompt
+            assert "Do not change the requested metric to fit the supported subset" in prompt
+            assert "Prefer one table when it suffices" in prompt
+            assert "Question: " + question in prompt
+            return SqlDraft(
+                sql=sql if projection else "",
+                unsupported_reason=None if projection else "No order source",
+            )
+
+    generator = SqlGenerator(Gateway(), "2026-10-20", context.schema_context)
+    if projection is None:
+        with pytest.raises(SqlUnsupportedError):
+            generator.generate(question)
+    else:
+        validated = validator().validate(generator.generate(question))
+        assert len(validated.tables) == (2 if joined else 1)
+        assert (validated.fact_table == FACT) is joined

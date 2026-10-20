@@ -48,7 +48,8 @@ class HybridPipeline:
         )
         grain = (
             f"JOIN grain is fact rows from {sql_result.fact_table}; "
-            "counts are not dimension entities."
+            "fact_row_count/matched_row_count count rows; fact_value_count counts non-NULL "
+            "fact values, not rows. Neither counts dimension entities. Do not interchange them."
             if sql_result.fact_table
             else ""
         )

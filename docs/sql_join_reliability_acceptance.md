@@ -1,7 +1,9 @@
 # Text-to-SQL và JOIN — nghiệm thu độ tin cậy, 20/10/2026
 
-> Mục A–M ghi kết quả lượt baseline `eeaffd4`. Bản sửa offline mới cho JOIN đảo
-> thứ tự được ghi ở mục N; chưa gọi provider hoặc triển khai bản sửa đó lên main.
+> Mục A–M ghi kết quả lượt baseline `eeaffd4`; mục N ghi bản sửa offline.
+> Kết quả live mới nhất ở mục O: probe 1 FAIL do COUNT alias, dừng trước probe 2
+> và trước deployment. Chưa nghiệm thu Gemini JOIN trên authenticated UI.
+> Mục P cập nhật aggregation contract offline; không thay thế kết luận live ở O.
 
 ## A. Kết luận
 
@@ -364,3 +366,201 @@ Cơ sở: [PostgreSQL INNER JOIN/ON semantics](https://www.postgresql.org/docs/1
 và [SQLGlot AST API](https://sqlglot.com/sqlglot/expressions.html). Tính tương
 đương chỉ áp dụng cho cặp bindings/predicate đã qua các điều kiện hẹp ở trên,
 không phải phép rewrite JOIN tổng quát.
+
+## O. Hai probe được phê duyệt — dừng sau probe 1
+
+Source chạy đúng `2a8c113d4dea8c248a81421d82363246204fe5ed`, working tree sạch
+trước thử. Chỉ Gemini `gemini-3.5-flash-lite`, không Knowledge/Hybrid/fallback.
+Ngân sách được duyệt tối đa hai chat probes, sáu logical generation, zero embedding.
+
+### Probe 1: FAIL CLOSED, đã xác định đúng lỗi
+
+PostgreSQL test cô lập `shopquery_test_join_final` trên localhost15437, không
+kết nối main trong pipeline. Dùng đúng physical table identifiers, headers/types,
+table IDs 9/10 và dataset ID5 của workspace synthetic 5; owner test riêng,
+students 2 dòng, payments 3 dòng, approved relation qua repository thật.
+Context và service dùng đường authenticated `build_workspace_context()` /
+`build_dataset_chat_service()`; không tạo Google session giả.
+
+| Tầng | Kết quả |
+| --- | --- |
+| Router | PASS, SQL |
+| Gemini structured SqlDraft | PASS về JSON/fields, có đúng hai bảng synthetic |
+| FROM/JOIN/ON | Fact → dimension đúng; `f.student_id = d.id` đúng approved key; không cần normalization |
+| Validation | **FAIL: `join_aggregate`**, nhánh COUNT(column) alias trong `validate_uploaded_join()` |
+| Execution guard / executor | NOT REACHED trong live turn |
+| Grounded answer | NOT RUN, không tạo answer số, rows/SQL/sources đều rỗng |
+| Response | UNSUPPORTED, used_model=gemini, fallback=false |
+
+Biểu thức gây từ chối chính xác:
+
+```sql
+COUNT(f.id) AS fact_row_count
+```
+
+V1 chỉ chấp nhận `COUNT(*) AS fact_row_count` cho đếm dòng; COUNT(fact.column)
+phải mang nghĩa non-NULL value count và alias `fact_value_count`. Không tự sửa
+key/grain hoặc đổi tên kết quả để ép PASS. Backend đã trả thông báo calculation
+thân thiện, không trả SQL/dữ liệu giả. Raw SqlDraft chỉ lưu private synthetic evidence.
+
+Mã lỗi trên được xác minh bằng **replay offline đúng raw live draft, context và
+source** sau khi service đã chuyển exception thành response UNSUPPORTED. Harness
+ban đầu kết thúc ở assertion route phải là SQL; không coi AssertionError của
+harness là nguyên nhân ứng dụng. Không bật production raw logging để tìm lỗi.
+
+Đối chiếu offline (zero provider calls thêm): thay đúng COUNT expression thành
+COUNT(*) trong bản counterfactual test riêng thì validator, execution guard và
+PostgreSQL oracle đều PASS: An 50.00/2; Binh 0.00/1. Không áp dụng thay thế đó
+trong source hoặc live pipeline. Test với `[NULL, 1]` cho COUNT(*)=2 nhưng
+COUNT(id)=1, chứng minh không được tự coi hai phép đếm luôn tương đương.
+[PostgreSQL COUNT semantics](https://www.postgresql.org/docs/17/functions-aggregate.html).
+Regression hiện có cho COUNT(column) gắn alias row-count: **1 PASS**, 24 deselected;
+không chạy lại bộ test lớn khi không sửa source.
+
+### Call budget và bằng chứng
+
+- **1 logical chat probe**, **2 logical generation calls** (router + draft),
+  **0 embedding calls**, 3.656s. Không gọi answer generation vì validation fail.
+- Instrument private harness quan sát **2 HTTP requests**, cả hai HTTP200,
+  không thấy request thêm do SDK retry; retry settings không đổi.
+- Private evidence: `probe1.json` giữ raw synthetic draft; `probe1-analysis.json`
+  giữ refusal code/stage, counterfactual và oracle. Không đưa raw evidence,
+  credentials, cookies, prompts thật hoặc dữ liệu người dùng lên Git.
+
+### Probe 2 và runtime
+
+**Probe 2 NOT RUN theo điều kiện dừng khi probe 1 fail.** Không dùng lượt còn lại
+để thử may rủi. Không gọi provider lần ba, không chủ động rerun probe 1.
+Không build/recreate API/web/DB, không migration, restore/reset hoặc thay env,
+OAuth/provider gates/model/fallback/quotas. Main API/web/DB vẫn healthy, container
+DB main `511c4f5aaccc` và volume `shopquery-ai_postgres_auth_20261019` giữ nguyên.
+Workspace/history main không bị ghi trong lượt này. PostgreSQL test riêng còn
+giữ để phục vụ replay offline; chưa dọn database hoặc chạy prune.
+
+### Blocker và đề xuất offline tiếp theo
+
+Blocker hiện đã có bằng chứng: generator dùng COUNT(f.id) nhưng gắn alias đếm
+dòng. Đề xuất tiếp theo là test nhỏ cho generation contract và làm rõ prompt:
+đếm dòng luôn dùng COUNT(*) AS fact_row_count, dù bảng có cột id; COUNT(column)
+chỉ dùng khi người dùng hỏi số giá trị non-NULL. Giữ mọi negative tests và
+không thêm SQL repair/retry hoặc cho COUNT(nullable_column) giả làm row count.
+
+Chưa sửa prompt/validator thêm trong lượt phê duyệt này. Cần quyết định riêng
+cho bước sửa offline tiếp theo; mọi live nghiệm thu sau đó cần phê duyệt mới.
+Chỉ cập nhật báo cáo local; chưa commit/push vì điều kiện cả hai probes PASS
+để chốt báo cáo chưa đạt. Không gắn CI cũ cho thay đổi tài liệu chưa commit.
+
+## P. Aggregation contract hardening — offline, 20/10/2026
+
+Baseline `2a8c113d4dea8c248a81421d82363246204fe5ed`, origin/main trùng HEAD
+trước sửa. Chỉ báo cáo mục O còn uncommitted; giữ nguyên bằng chứng đó.
+Đã đọc AGENTS, source liên quan và private synthetic draft. Không audit lại
+hệ thống, migration, backup/restore hay gọi provider.
+
+### Contract thống nhất, không mở rộng validator
+
+| Ý nghĩa câu hỏi | JOIN v1 canonical expression |
+| --- | --- |
+| Số dòng fact sau lọc/group | `COUNT(*) AS fact_row_count` |
+| Chẩn đoán scalar SUM/AVG: empty hay all-NULL | `COUNT(*) AS matched_row_count` |
+| Số giá trị không NULL của một cột fact, chỉ khi được hỏi | `COUNT(f.column) AS fact_value_count` |
+| Tổng/trung bình measure | Direct `SUM(f.numeric_column)` / `AVG(f.numeric_column)`, kiểu NUMERIC/BIGINT |
+| Số entity dimension | Single-table khi đủ; không gọi fact count là dimension count |
+
+Không đổi alias để đổi nghĩa metric. COUNT(column) loại NULL; COUNT(*) đếm
+dòng; SUM/AVG bỏ qua NULL nhưng empty/all-NULL vẫn NULL, không phải zero.
+NUMERIC/BIGINT giữ serialization chính xác hiện có. Không float casts,
+DISTINCT, FILTER, aggregate arithmetic hoặc dimension aggregates trong JOIN.
+Câu hỏi cần grain/nguồn ngoài subset phải từ chối, không trả SQL một phần.
+Quy tắc dựa trên [PostgreSQL aggregates](https://www.postgresql.org/docs/17/functions-aggregate.html).
+
+- `datasets/context.py` là nơi chứa chi tiết JOIN contract, không hardcode
+  bảng/lĩnh vực. Nêu rõ không suy đoán id NOT NULL, không hoán đổi COUNT aliases,
+  direct fact measures, NULL/zero, entity grain và ưu tiên single-table.
+- `generator.py` giữ common rules ngắn, trỏ tới contract của selected schema;
+  arithmetic chỉ trong subset được phép, không đổi metric để vừa validator.
+  Cùng generator cho Knowledge/Gemini; không thay gateways/models/retry/fallback.
+- `text_to_sql/pipeline.py`, `routing/hybrid.py`: grounding phân biệt row-count
+  aliases với non-NULL value count; không diễn giải thành dimension entities.
+- Validator, execution guard, SQL executor, routing và API/FE contract không đổi.
+
+### Quyết định AST
+
+Không thêm COUNT normalizer. Metadata generator hiện không có trusted NOT NULL
+contract; tên id/sample không chứng minh được. Test PostgreSQL cho 5 dòng:
+COUNT(*)=5 nhưng COUNT(nullable id)=4. Khi ALTER id NOT NULL **chỉ trong test DB**,
+COUNT(id)=5, nhưng validator vẫn yêu cầu dạng canonical cho row-count;
+COUNT(id) AS fact_value_count được phép, không tự rewrite.
+
+COUNT(f.join_key) tương đương COUNT(*) trên các matched rows của INNER equality
+đã duyệt vì SQL equality không TRUE với NULL. Tương tự cột DB NOT NULL.
+Đây là tương đương có điều kiện về schema/SQL semantics, không áp dụng cho cột
+tùy ý. Chọn giữ tập cú pháp nhỏ: ngay cả hai dạng tương đương này với alias
+fact_row_count vẫn bị từ chối, không bổ sung logic chứng minh/repair mới.
+[PostgreSQL INNER JOIN semantics](https://www.postgresql.org/docs/17/queries-table-expressions.html#QUERIES-JOIN).
+
+Giữ nguyên normalization đảo thứ tự INNER JOIN ở mục N: chỉ swap hai bindings
+đã chứng minh đúng một approved equality, chạy lại đầy đủ validator, rồi guard
+và read-only executor. Không sửa ON/key/aggregate/alias/filter theo phỏng đoán.
+
+### Test matrix và replay
+
+- `test_join_order.py`: 8 câu hỏi nguyên văn yêu cầu, assembled schema + generator
+  prompt + structured fake drafts + validation. Hai cách hỏi số lần thanh toán
+  dùng fact row count; học phí không thiếu dùng value count; tổng theo entity
+  dùng fact SUM; AVG khoản thanh toán dùng fact single-table; số sinh viên dùng
+  dimension single-table; số đơn hàng thiếu nguồn → UNSUPPORTED; đếm dòng của
+  bảng fact được fixture chọn dùng single-table. Không ép mọi COUNT thành JOIN.
+  Intent/draft là expected fixtures, **không đo độ chính xác LLM**.
+- `test_join_order_integration.py`: 27 aggregate variants × hai thứ tự JOIN =
+  **54 cases: 28 accepted, 26 rejected trước executor**. COUNT bao phủ cả 12 nhóm
+  yêu cầu, gồm nullable id, cột units được
+  pg_attribute xác nhận NOT NULL, approved join key, swapped aliases, dimension,
+  DISTINCT, all-NULL và mixed NULL/zero. Thêm riêng id DB-proven NOT NULL.
+- SUM/AVG NUMERIC/BIGINT, nhóm/scalar, zero/all-NULL/empty, matched_row_count,
+  Decimal lớn `12345678901234567890.12`, BIGINT `9007199254740993`, nhiều projections,
+  dimension fan-out, arithmetic/cast/FILTER negatives. Expected là truy vấn
+  fact-only độc lập, không lấy output AI/JOIN SQL làm oracle; so sánh exact
+  Decimal text/scale, NULL và chữ số integer browser-unsafe.
+- Replay sáu dạng × hai fixture = **12 cases: 4 accepted, 8 rejected**: reverse, captured COUNT(id) alias
+  sai, canonical COUNT(*), wrong key, dimension SUM, missing relation. Giữ hình
+  dạng SQL synthetic đã quan sát; physical identifiers sinh mới trong DB test,
+  không commit private raw evidence. Code từ chối lần lượt join_aggregate,
+  join_key, join_aggregate, join_relationship cho bốn negatives; guard/executor/
+  answer không được gọi. Hai positives đi qua parse/normalization/validation/
+  guard/read-only PG và khớp oracle An/Binh, thêm NULL/Decimal/BIGINT fixture.
+- SQL grounding và Hybrid prompt được kiểm tra rõ ý nghĩa aliases. Regressions
+  hiện có cho Knowledge/Gemini selections fake, SQL một bảng, SQL/RAG/Hybrid,
+  Guest capability, A/B owner/workspace, CSRF/Origin/session, revoked/revision
+  relation, sai alias/ON AND/OR/third table, SELECT-only, timeout và row cap
+  giữ nguyên assertions. Không giảm hoặc xóa security tests.
+
+Test chạy trên database disposable mới `shopquery_test_aggregation`, localhost
+15437 trong container tmpfs test có sẵn; không destructive fixtures trên main.
+Process pytest không đọc .env, provider credentials rỗng, không gọi AI/embedding.
+8 prompt contract tests FAIL trước sửa, PASS sau sửa; replay COUNT(id) vẫn
+REJECT đúng semantics thay vì sửa validator để xanh.
+
+### Kết quả và deployment
+
+Ruff PASS; targeted SQL/JOIN/golden/authenticated/domain/RAG/Hybrid: **261 PASS**.
+Full backend offline `pytest -m 'not live'`: **719 PASS, 16 live deselected**,
+102.29s; **449 unit + 270 PostgreSQL integration**, không skipped offline tests.
+CI exact SHA và API-only deployment đang chờ hoàn tất;
+chưa gắn CI baseline cho source mới. Không đổi frontend/API shape nên không
+chạy lại full frontend local; CI vẫn phải chạy đủ backend/PG/frontend.
+
+Preflight runtime: actual Compose gồm compose.yaml + hai private overrides
+`.env.compose-ui.yaml` và `.env.join-v1.yaml`; toàn bộ planned API environment
+trùng runtime. API đang source cũ; DB `511c4f5aaccc`, web `dbc51b8bcb4a`, main
+volume `shopquery-ai_postgres_auth_20261019`. Không recreate DB/web hoặc migration.
+Fingerprint read-only trước deployment lưu private, 26 bảng; backup cũ còn
+SHA-256 `a9b458a5ee1c21966f9407e659075d2eadf6e071b4e244b9e07a2c9f18078138`.
+
+**0 live generation, 0 embedding calls trong nhiệm vụ này.** Chưa có bằng chứng
+Gemini sẽ tuân thủ prompt mới qua UI; không tuyên bố live PASS. Sau khi offline/
+CI/runtime đạt, đề xuất **một synthetic authenticated UI Gemini SQL JOIN probe**
+trên workspace 5, oracle An 50.00/2 và Binh 0.00/1; tối đa 1 logical chat,
+dự kiến 3 logical generation (router/draft/answer), 0 embedding. SDK retries
+giữ nguyên có thể tăng HTTP requests; không retry probe/fallback chủ động.
+Phải chờ phê duyệt mới và session Google hợp lệ, không sử dụng lượt cũ còn dư.

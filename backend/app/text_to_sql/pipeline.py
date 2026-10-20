@@ -53,8 +53,9 @@ class TextToSqlPipeline:
         fact_table: str | None = None,
     ) -> str:
         grain = (
-            f"JOIN grain is one fact row from {fact_table}. Counts describe fact rows/values, "
-            "never dimension entities. Do not rename a fact count into a dimension count."
+            f"JOIN grain is one fact row from {fact_table}. fact_row_count/matched_row_count "
+            "count rows; fact_value_count counts non-NULL values of the selected fact column, "
+            "not rows. Neither counts dimension entities. Do not rename or interchange counts."
             if fact_table
             else ""
         )

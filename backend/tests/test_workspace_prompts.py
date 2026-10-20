@@ -199,9 +199,16 @@ class TuitionRagPipeline:
         return [RetrievedChunk(41, "tuition_policy.md", "Nhắc phí", "Nợ trên 1000000.", 0.1)]
 
 
-def test_hybrid_prompt_grounds_non_product_entities_in_rows_and_documents() -> None:
+@pytest.mark.parametrize("joined", [False, True])
+def test_hybrid_prompt_grounds_non_product_entities_in_rows_and_documents(joined: bool) -> None:
+    class SqlPipeline(TuitionSqlPipeline):
+        def run(self, question: str) -> SqlResult:
+            result = super().run(question)
+            result.fact_table = "synthetic_fact" if joined else None
+            return result
+
     gateway = RecordingGateway()
-    result = HybridPipeline(TuitionSqlPipeline(), TuitionRagPipeline(), gateway).run(
+    result = HybridPipeline(SqlPipeline(), TuitionRagPipeline(), gateway).run(
         "Học viên nào vượt ngưỡng nhắc phí trong tài liệu?"
     )
 
@@ -211,6 +218,9 @@ def test_hybrid_prompt_grounds_non_product_entities_in_rows_and_documents() -> N
     assert "HV02" in gateway.prompt
     assert "Nợ trên 1000000" in gateway.prompt
     assert "Cover each requested record or group separately" in gateway.prompt
+    assert ("fact_value_count counts non-NULL" in gateway.prompt) is joined
+    if joined:
+        assert "Neither counts dimension entities" in gateway.prompt
 
 
 def test_rag_prompt_accepts_non_commerce_document_evidence() -> None:

@@ -115,8 +115,16 @@ PostgreSQL dataset workspace:
 - Only INNER JOIN from fact to approved dimension; exact equality on the approved key pair.
 - Use explicit distinct aliases and qualified columns for joins; never invent a relationship.
 - SUM/AVG only direct fact NUMERIC/BIGINT columns. Never aggregate dimension measures/entities.
-- COUNT(*) AS fact_row_count or matched_row_count counts fact rows, not dimension entities.
-- COUNT(fact.column) AS fact_value_count. No DISTINCT counts or complex aggregate expressions.
+- Row-count requests require COUNT(*) AS fact_row_count, never COUNT(f.id) or another column.
+  COUNT(*) AS matched_row_count is the separate scalar SUM/AVG missing-match diagnostic.
+- Only a request for non-NULL fact values uses COUNT(f.column) AS fact_value_count.
+  Never swap these aliases: COUNT(column) is not a row count; COUNT(*) is not a value count.
+  Never infer NOT NULL from a column named id or from observed sample values.
+- SUM/AVG ignore NULL; COUNT(column) excludes NULL; COUNT(*) includes every matched fact row.
+  Zero is not NULL. Empty/all-NULL SUM/AVG remain NULL, never COALESCE to zero.
+- Fact counts are not dimension entity counts. Count dimension entities in that table alone
+  when it suffices; otherwise unsupported grain must return unsupported_reason.
+- No DISTINCT, aggregate arithmetic, FILTER, numeric-to-float casts or complex aggregates.
 - No LEFT/RIGHT/FULL/CROSS/NATURAL/USING/self/multi-hop/composite-key joins, CTEs or subqueries.
 - Missing relationships, >2 tables, unsafe grain: return unsupported_reason, not partial SQL."""
     elif join_v1_enabled:
