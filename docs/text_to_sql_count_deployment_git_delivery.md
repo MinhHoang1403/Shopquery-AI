@@ -2,7 +2,7 @@
 
 Ngày 21/10/2026, Asia/Ho_Chi_Minh. Workspace ShopQuery AI.
 
-**DEPLOYED TO 8080 — GIT DELIVERY IN PROGRESS — LIVE HYBRID NOT VERIFIED.**
+**DEPLOYED TO 8080 — COMMITTED AND PUSHED — LIVE HYBRID NOT VERIFIED.**
 
 Báo cáo này là trạng thái deployment mới; các reports/handoff trước là checkpoints
 lịch sử, không ghi đè kết quả cũ thành PASS. Không có production source patch thêm
@@ -88,6 +88,10 @@ lock chống mọi request mới hoặc bằng chứng Guest idle files không t
 graceful shutdown và cửa sổ quiescent được dùng như procedure đã duyệt.
 Không hứa Guest RAM files/history tồn tại sau recreate.
 
+Postflight API mới cũng kết nối thật main và đọc lại operational counts bằng
+transaction READ ONLY: current_database=shopquery, cả hai active counts=0.
+Không lấy health endpoint không truy cập DB làm bằng chứng kết nối PostgreSQL.
+
 Sau deploy: GET /api/health trực tiếp8001 và Nginx8080 đều HTTP200/status ok,
 ba services healthy. Startup log chỉ có server/application startup complete,
 không startup/import errors. Web DNS api resolve đúng IP API mới; nginx -t PASS.
@@ -154,8 +158,11 @@ Public delivery scan dùng công cụ local: so exact current Gemini/OAuth/priva
 endpoint/allowlist values trong memory và high-confidence Google/GitHub/private-key
 patterns; kiểm candidate files và toàn reachable Git patch history. Không in
 matching values. Scan đầu:37 reviewed files,0 blocking findings,0 email/credential-
-URL review locations,0 reachable-history secret matches. Sẽ kiểm lại staged blobs
-trước commit. Đây không phải chứng nhận mọi secret không thể phát hiện.
+URL review locations,0 reachable-history secret matches. Final trước code commit:
+38/38 staged blobs được scan,72 staged app modules khớp tested/deployed source,
+0 blocking findings hoặc manual email/credential-URL findings. Không thấy current
+private values/high-confidence secret patterns trong reachable Git patch history.
+Đây không phải chứng nhận mọi secret không thể phát hiện.
 
 Baseline HEAD/main `e2151a3d6b37f3a11e83f68553e5985bbe087deb`; repo GitHub xác minh
 **PUBLIC**, default main; remote đúng MinhHoang1403/Shopquery-AI.
@@ -164,9 +171,35 @@ Không git add . / -A, không reset/clean/rebase/force push.
 Stage explicit reviewed paths; không .env/private backups/raw responses/screenshots/
 logs/JUnit/cache/venv hoặc credentials.
 
-Commit/push/remote SHA và CI: **PENDING**, chỉ ghi PASS sau kết quả thật.
-Không lấy CI cũ hoặc test local làm CI SHA mới. Báo cáo sẽ được bổ sung kết quả
-delivery; không đổi app source để xử lý CI pending.
+Code commit local:
+`273895d63193a7d05903dd0236045532cc4ef2b1`.
+Push **SUCCESS** tới `origin/main`; `git ls-remote` xác nhận remote SHA bằng chính
+SHA này. Fast-forward từ e2151a3, không force, không sửa history hoặc branch khác.
+GitHub recursive commit tree không truncated:72 app modules, count_contract.py và
+cả hai central conformance tests đều có mặt. Staged source đã so exact manifest
+trước commit; commit tree được xác minh qua remote SHA, không thiếu new imports.
+Không có file ngoài phạm vi/private nào bị stage; ignored .env/private evidence/
+logs/JUnit/cache/venv không được đưa lên Git. Working tree sạch sau code push.
+
+**CI PASS đúng code SHA trên**, attempt1, workflow CI, run39575139845:
+[GitHub Actions](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39575139845).
+Workflow conclusion=success, cả Backend quality/PostgreSQL integration/Frontend
+quality đều completed/success, không rerun hoặc bỏ tests.
+
+| CI job / bước | Kết quả log |
+|---|---|
+| Backend quality | Ruff PASS;770 unit PASS,698 deselected,16.29s |
+| PostgreSQL integration | 682 PASS,786 deselected,103.01s; job2m17s |
+| Frontend quality | ESLint/typecheck/build PASS;67 unit PASS;105 UI mock PASS,2.9m; job3m48s |
+
+16 live opt-in tests không chạy; integration dùng disposable CI database/service,
+không cần API key/main DB. Annotation Ubuntu runner migration là thông báo runner,
+không phải failed check. Lần đọc logs đầu bị gh CLI chặn terminal escape sequences;
+đã đọc vào memory và strip ANSI trước khi chỉ xuất summary, không raw logs/secrets.
+
+Commit tài liệu tiếp theo chỉ chốt kết quả delivery trong file này; không đổi
+72-module source hoặc triển khai lại. CI trên code SHA không tự được gán cho một
+SHA khác: run của docs-only follow-up được kiểm riêng trong bàn giao cuối.
 
 ## F. Limits và next acceptance — KHÔNG THỰC HIỆN
 
@@ -260,4 +293,52 @@ text_to_sql/join_policy.py a3fbbdf0f34840eb9247e06ae3a5f34f111d8d299668c416a9c71
 text_to_sql/pipeline.py 057d6a5adada9383bfb083129043424d1b247a00effb40057e32506fdcb30818
 text_to_sql/schema_context.py 800c26da1ef69abaa9bf30c9ab6c797a3449acc9b978631e738813b71bb6f575
 text_to_sql/validator.py b83b28e856ae430f35d04f8ac74c51d636002e511d7238cd39a022149e753e12
+```
+
+## H. Exact reviewed delivery inventory
+
+Code commit có38 files:9 app modules,19 backend test/fixture files,1 frontend
+test và9 Markdown files (gồm handoff). Tất cả là ShopQuery changes đã review;
+không bỏ dirty Hybrid/generator/context hoặc reports từ các lượt trước. Danh sách
+đúng từ git show --name-only, không có excluded untracked files còn treo:
+
+```text
+backend/app/core/diagnostics.py
+backend/app/core/errors.py
+backend/app/datasets/context.py
+backend/app/routing/hybrid.py
+backend/app/text_to_sql/count_contract.py
+backend/app/text_to_sql/generator.py
+backend/app/text_to_sql/join_policy.py
+backend/app/text_to_sql/pipeline.py
+backend/app/text_to_sql/validator.py
+backend/tests/count_conformance.py
+backend/tests/gate_d_fixture.py
+backend/tests/test_aggregate_diagnostics.py
+backend/tests/test_context_permutations_integration.py
+backend/tests/test_count_conformance.py
+backend/tests/test_count_conformance_integration.py
+backend/tests/test_count_key_order_integration.py
+backend/tests/test_count_order_edges_integration.py
+backend/tests/test_count_order_integration.py
+backend/tests/test_gate_d_replay_integration.py
+backend/tests/test_hybrid_policy_domains_integration.py
+backend/tests/test_join_order.py
+backend/tests/test_join_order_integration.py
+backend/tests/test_join_policy.py
+backend/tests/test_relationship_api_integration.py
+backend/tests/test_sql_draft_adapters.py
+backend/tests/test_sql_generation_contract.py
+backend/tests/test_three_table_join.py
+backend/tests/test_workspace_prompts.py
+docs/sql_join_root_cause_audit.md
+docs/text_to_sql_batch_a_live_and_generalization.md
+docs/text_to_sql_batch_b_hybrid_live_acceptance.md
+docs/text_to_sql_count_deployment_git_delivery.md
+docs/text_to_sql_count_semantic_contract_redesign.md
+docs/text_to_sql_hybrid_count_root_cause_fix.md
+docs/text_to_sql_reliability_investigation.md
+docs/text_to_sql_verification_and_acceptance.md
+frontend/src/components/ResultTable.test.tsx
+handoff.md
 ```
