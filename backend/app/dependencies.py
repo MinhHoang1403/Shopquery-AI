@@ -8,6 +8,7 @@ from app.ai.gemini import GenerationGateway
 from app.ai.providers import build_embedding_gateway
 from app.conversations.repository import ConversationRepository
 from app.core.config import Settings
+from app.core.diagnostics import diagnostic_stage, record_facts
 from app.database.session import get_readonly_engine, get_setup_engine
 from app.datasets.context import DatasetSqlContext, build_dataset_sql_context
 from app.datasets.relationship_repository import RelationshipRepository
@@ -64,6 +65,7 @@ def build_dataset_chat_service(
     )
 
 
+@diagnostic_stage("schema_metadata")
 def build_workspace_context(
     settings: Settings,
     dataset: DatasetInfo,
@@ -71,9 +73,10 @@ def build_workspace_context(
 ) -> DatasetSqlContext:
     joins = ()
     if settings.sql_join_v1_enabled:
-        joins = RelationshipRepository(get_setup_engine(), dataset.owner_user_id).approved(
-            dataset.dataset_id
-        )
+        with diagnostic_stage("relationship_approval"):
+            joins = RelationshipRepository(get_setup_engine(), dataset.owner_user_id).approved(
+                dataset.dataset_id
+            )
     return build_dataset_sql_context(
         dataset,
         repository.categorical_values(dataset),
@@ -86,6 +89,10 @@ def _build_dataset_chat_service(
     settings: Settings, context: DatasetSqlContext, gateway: GenerationGateway
 ) -> DatasetChatService:
     """Build request-local pipelines scoped to one uploaded workspace."""
+
+    record_facts(
+        allowed_tables=len(context.table_columns), approved_edges=len(context.approved_joins)
+    )
 
     sql_pipeline = None
     joins = context.approved_joins if settings.sql_join_v1_enabled else ()

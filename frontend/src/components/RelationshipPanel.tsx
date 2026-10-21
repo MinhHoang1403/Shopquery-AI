@@ -82,7 +82,7 @@ export function RelationshipPanel({ tables, client, disabled = false }: {
         </> : <div role="alert">{preview.reasons.map((reason) => <p key={reason}>{reason}</p>)}<p>Không được sử dụng trong v1.</p></div>}
       </section> : null}
       <h4>Liên kết đang hoạt động</h4>
-      {records.length === 0 ? <p>Chưa có liên kết hợp lệ. Hãy kiểm tra và xác nhận nếu hệ thống chưa tự nhận diện được.</p> : <ul>
+      {records.length === 0 ? <p>Chưa có liên kết hợp lệ. Hãy kiểm tra và xác nhận nếu hệ thống chưa tự nhận diện được. Tên mô tả hoặc khác ngôn ngữ với khóa cần bạn xác nhận ý nghĩa nghiệp vụ; trùng giá trị không đủ để tự liên kết.</p> : <ul>
         {records.map((item) => <li key={item.relationship_id}>
           <p>{tableName(item.source_table_id)}.{item.source_column} → {tableName(item.target_table_id)}.{item.target_column} · {item.valid ? item.cardinality : "Không còn hợp lệ"}</p>
           <p>{item.origin === "automatic" ? "Tự động kiểm chứng từ tên khóa và toàn bộ dữ liệu" : "Bạn đã xác nhận"}</p>

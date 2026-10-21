@@ -84,7 +84,7 @@ test("live local guest relationship lifecycle and capability security without AI
   await page.getByText("Liên kết bảng", { exact: true }).click();
   await remove.click();
   await page.getByRole("button", { name: "Xác nhận xóa liên kết", exact: true }).click();
-  await expect(page.getByText("Chưa có liên kết hợp lệ. Hãy kiểm tra và xác nhận nếu hệ thống chưa tự nhận diện được.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Chưa có liên kết hợp lệ. Hãy kiểm tra và xác nhận nếu hệ thống chưa tự nhận diện được. Tên mô tả hoặc khác ngôn ngữ với khóa cần bạn xác nhận ý nghĩa nghiệp vụ; trùng giá trị không đủ để tự liên kết.", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Bảng chi tiết (fact)").locator("option")).toHaveCount(3);
   expect((await (await request.get("/api/guest/limits", { headers })).json()).files).toHaveLength(2);
   expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);

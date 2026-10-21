@@ -2,11 +2,12 @@
 
 import json
 from collections.abc import Callable
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, ExitStack, nullcontext
 from dataclasses import dataclass
 from typing import Any
 
 from app.ai.gemini import GenerationGateway
+from app.core.diagnostics import diagnostic_stage, record_facts
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.generator import SqlGenerator
 from app.text_to_sql.validator import SqlValidator, ValidatedSql
@@ -36,12 +37,20 @@ class TextToSqlPipeline:
         self._execution_guard = execution_guard
 
     def run(self, question: str) -> SqlResult:
-        sql = self._generator.generate(question)
+        with diagnostic_stage("generator_unsupported"):
+            sql = self._generator.generate(question)
         validated = self._validator.validate(sql)
+        record_facts(sql_validated=True)
         guard = self._execution_guard(validated) if self._execution_guard else nullcontext()
-        with guard:
-            rows = self._executor.execute(validated)
-        answer = self._ground_answer(question, rows, validated.fact_table)
+        with ExitStack() as stack:
+            with diagnostic_stage("execution_guard"):
+                stack.enter_context(guard)
+            with diagnostic_stage("sql_execution"):
+                record_facts(execution_reached=True)
+                rows = self._executor.execute(validated)
+                record_facts(result_rows=len(rows))
+        with diagnostic_stage("answer_grounding"):
+            answer = self._ground_answer(question, rows, validated.fact_table)
         return SqlResult(
             answer=answer, sql=validated.statement, rows=rows, fact_table=validated.fact_table
         )

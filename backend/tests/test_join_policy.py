@@ -44,7 +44,9 @@ def test_approved_fact_aggregates(projection: str, reverse: bool) -> None:
         if reverse
         else BASE
     )
-    validated = join_validator().validate(f"SELECT {projection} {suffix} GROUP BY s.name")
+    validated = join_validator().validate(
+        f"SELECT {projection} {suffix} GROUP BY s.student_id,s.name"
+    )
     assert validated.relationship_id == "approved"
     assert validated.fact_table == "payments"
 

@@ -14,6 +14,7 @@ from app.api.models import ChatResponse
 from app.auth.repository import csrf_token
 from app.core.client_ip import client_ip
 from app.core.config import get_settings
+from app.core.diagnostics import diagnosed
 from app.database.session import get_setup_engine
 from app.datasets.relationships import MAX_RELATIONSHIPS, RelationshipRecord
 from app.guest.limits import GuestControl
@@ -219,6 +220,7 @@ async def add_file(request: Request, guest: CurrentGuest, options: Annotated[Fil
 
 
 @router.post("/chat")
+@diagnosed
 def chat(request: Request, guest: CurrentGuest, body: GuestChatRequest) -> dict:
     settings = get_settings()
     if not settings.beta_provider_data_enabled or not settings.guest_ai_enabled:

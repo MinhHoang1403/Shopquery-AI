@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from sqlalchemy import Connection
 
+from app.core.diagnostics import diagnostic_stage
 from app.datasets.relationships import (
     MAX_RELATIONSHIPS,
     RelationshipInput,
@@ -18,6 +19,7 @@ from app.datasets.relationships import (
 def _entity_name(label: str) -> str:
     value = unicodedata.normalize("NFKD", label.lower().replace("đ", "d"))
     value = re.sub(r"[^a-z0-9]+", "_", value.encode("ascii", "ignore").decode()).strip("_")
+    value = re.sub(r"^\d+_", "", value)
     if value.endswith("ies"):
         return value[:-3] + "y"
     return value[:-1] if value.endswith("s") and not value.endswith("ss") else value
@@ -35,10 +37,9 @@ def relationship_candidates(
             if key.data_type not in {"TEXT", "BIGINT"}:
                 continue
             for target in tables.values():
-                if (
-                    source.table_id == target.table_id
-                    or _entity_name(target.display_name) != prefix
-                ):
+                if source.table_id == target.table_id:
+                    continue
+                if _entity_name(target.display_name) != prefix:
                     continue
                 for column in target.columns:
                     if column.name not in {key.name, suffix} or column.data_type != key.data_type:
@@ -64,6 +65,7 @@ def relationship_candidates(
     return result if len(result) <= MAX_RELATIONSHIPS else []
 
 
+@diagnostic_stage("relationship_discovery")
 def detect_relationships(
     connection: Connection,
     tables: dict[str, RelationshipTable],

@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.ai.gemini import GenerationGateway
+from app.core.diagnostics import diagnostic_stage
 from app.core.errors import ModelResponseError
 from app.rag.pipeline import RagPipeline, Source
 from app.text_to_sql.pipeline import TextToSqlPipeline
@@ -77,19 +78,20 @@ SQL rows: {json.dumps(sql_result.rows, ensure_ascii=False)}
 Document evidence:
 {evidence}
 """.strip()
-        draft = self._gateway.generate_structured(prompt, HybridAnswerDraft)
-        by_id = {chunk.chunk_id: chunk for chunk in chunks}
-        if not draft.used_chunk_ids or any(
-            chunk_id not in by_id for chunk_id in draft.used_chunk_ids
-        ):
-            raise ModelResponseError("Hybrid answer contains invalid citations")
-        sources = [
-            Source(
-                chunk_id=by_id[chunk_id].chunk_id,
-                source_file=by_id[chunk_id].source_file,
-                section_title=by_id[chunk_id].section_title,
-                content=by_id[chunk_id].content,
-            )
-            for chunk_id in dict.fromkeys(draft.used_chunk_ids)
-        ]
+        with diagnostic_stage("answer_grounding"):
+            draft = self._gateway.generate_structured(prompt, HybridAnswerDraft)
+            by_id = {chunk.chunk_id: chunk for chunk in chunks}
+            if not draft.used_chunk_ids or any(
+                chunk_id not in by_id for chunk_id in draft.used_chunk_ids
+            ):
+                raise ModelResponseError("Hybrid answer contains invalid citations")
+            sources = [
+                Source(
+                    chunk_id=by_id[chunk_id].chunk_id,
+                    source_file=by_id[chunk_id].source_file,
+                    section_title=by_id[chunk_id].section_title,
+                    content=by_id[chunk_id].content,
+                )
+                for chunk_id in dict.fromkeys(draft.used_chunk_ids)
+            ]
         return HybridResult(draft.answer, sql_result.sql, sql_result.rows, sources)

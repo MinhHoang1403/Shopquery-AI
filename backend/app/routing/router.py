@@ -5,6 +5,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from app.ai.gemini import GenerationGateway
+from app.core.diagnostics import diagnostic_stage, record_facts, record_refusal
 
 
 class RouteLabel(StrEnum):
@@ -20,9 +21,7 @@ class RouteDecision(BaseModel):
 
 
 class QueryRouter:
-    def __init__(
-        self, gateway: GenerationGateway, source_context: str | None = None
-    ) -> None:
+    def __init__(self, gateway: GenerationGateway, source_context: str | None = None) -> None:
         self._gateway = gateway
         self._source_context = source_context
 
@@ -83,4 +82,9 @@ Examples:
 
 Question: {question}
 """.strip()
-        return self._gateway.generate_structured(prompt, RouteDecision)
+        with diagnostic_stage("router_unsupported"):
+            decision = self._gateway.generate_structured(prompt, RouteDecision)
+        record_facts(route=decision.route)
+        if decision.route == RouteLabel.UNSUPPORTED:
+            record_refusal("router_unsupported")
+        return decision

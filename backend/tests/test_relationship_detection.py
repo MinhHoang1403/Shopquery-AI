@@ -105,3 +105,51 @@ def test_automatic_provenance_cannot_pretend_to_be_a_manual_confirmation():
         RelationshipRecord(**values, origin="automatic", confirmed=True)
     with pytest.raises(ValidationError):
         RelationshipRecord(**values, origin="manual", confirmed=False)
+
+
+@pytest.mark.parametrize(
+    "label,key",
+    [
+        ("02_tai_xe", "tai_xe_id"),
+        ("02_customers", "customer_code"),
+    ],
+)
+def test_numbered_exact_entity_labels_keep_explicit_key_evidence(label, key):
+    tables = {
+        "1": table("1", label, [(key, "TEXT"), ("name", "TEXT")]),
+        "2": table("2", "03_events", [(key, "TEXT"), ("amount", "NUMERIC")]),
+    }
+    candidates = relationship_candidates(tables, "2")
+    assert len(candidates) == 1
+    assert candidates[0].target_table_id == "1"
+    assert candidates[0].target_column == key
+
+
+@pytest.mark.parametrize(
+    "label,columns",
+    [
+        ("01_kho_dieu_phoi", [("id", "TEXT")]),
+        ("01_kho_dieu_phoi", [("kho_id", "TEXT")]),
+        ("01. Kho điều phối", [("kho_id", "TEXT")]),
+        ("01_kho_dieu_phoi", [("kho_id", "TEXT"), ("event_id", "TEXT")]),
+        ("01_luu_kho", [("kho_id", "TEXT")]),
+        ("01_khoa_hoc", [("kho_id", "TEXT")]),
+    ],
+)
+def test_descriptive_labels_require_exact_entity_boundary_and_one_explicit_identifier(
+    label, columns
+):
+    tables = {
+        "1": table("1", label, columns),
+        "2": table("2", "events", [("kho_id", "TEXT")]),
+    }
+    assert relationship_candidates(tables, "2") == []
+
+
+def test_numbered_descriptive_targets_cannot_choose_between_two_matching_tables():
+    tables = {
+        "1": table("1", "01_kho_dieu_phoi", [("kho_id", "TEXT")]),
+        "2": table("2", "02_kho_du_phong", [("kho_id", "TEXT")]),
+        "3": table("3", "events", [("kho_id", "TEXT")]),
+    }
+    assert relationship_candidates(tables, "3") == []

@@ -17,6 +17,7 @@ from xml.etree.ElementTree import ParseError
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_boundaries
 
+from app.core.diagnostics import diagnostic_stage
 from app.core.errors import UploadValidationError
 
 SUPPORTED_EXTENSIONS = {".csv", ".xlsx"}
@@ -83,6 +84,7 @@ class ParsedTable:
         ]
 
 
+@diagnostic_stage("schema_metadata")
 def parse_tabular_file(
     filename: str,
     content: bytes,

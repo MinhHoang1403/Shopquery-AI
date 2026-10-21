@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlglot import exp, parse
 from sqlglot.errors import ParseError
 
+from app.core.diagnostics import diagnostic_stage
 from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.text_to_sql.join_policy import (
     ApprovedJoin,
@@ -83,39 +84,43 @@ class SqlValidator:
         self._join_v1_enabled = join_v1_enabled
 
     def validate(self, sql: str) -> ValidatedSql:
-        if not sql.strip():
-            raise SqlValidationError("SQL is empty")
-        try:
-            statements = parse(sql, read="postgres")
-        except ParseError as exc:
-            raise SqlValidationError("SQL syntax is invalid") from exc
-        if len(statements) != 1:
-            raise SqlValidationError("Exactly one SQL statement is required")
-        root = statements[0]
-        if not isinstance(root, exp.Select):
-            raise SqlValidationError("Only SELECT statements are supported")
-        if any(root.find(node_type) is not None for node_type in PROHIBITED_NODES):
-            raise SqlValidationError("SQL contains an unsupported or unsafe construct")
-        if root.args.get("locks"):
-            raise SqlValidationError("Row locking is not supported")
+        with diagnostic_stage("sql_parse_error"):
+            if not sql.strip():
+                raise SqlValidationError("SQL is empty")
+            try:
+                statements = parse(sql, read="postgres")
+            except ParseError as exc:
+                raise SqlValidationError("SQL syntax is invalid") from exc
+            if len(statements) != 1:
+                raise SqlValidationError("Exactly one SQL statement is required")
+            root = statements[0]
+            if not isinstance(root, exp.Select):
+                raise SqlValidationError("Only SELECT statements are supported")
+            if any(root.find(node_type) is not None for node_type in PROHIBITED_NODES):
+                raise SqlValidationError("SQL contains an unsupported or unsafe construct")
+            if root.args.get("locks"):
+                raise SqlValidationError("Row locking is not supported")
 
-        tables, aliases = self._validate_tables(root)
-        self._validate_functions(root)
-        self._validate_columns(root, aliases)
+        with diagnostic_stage("schema_metadata"):
+            tables, aliases = self._validate_tables(root)
+            self._validate_functions(root)
+        with diagnostic_stage("column_resolution"):
+            self._validate_columns(root, aliases)
         relation = None
         tree = None
-        if self._max_tables is not None and root.find(exp.Join) is not None:
-            if not self._join_v1_enabled:
-                raise SqlValidationError("Uploaded JOIN v1 is disabled")
-            if len(tables) == 3:
-                tree = validate_uploaded_join_tree(
-                    root, aliases, self._approved_joins, self._column_types, self._table_columns
-                )
-                tables, aliases = self._validate_tables(root)
-                self._validate_functions(root)
-                self._validate_columns(root, aliases)
-            else:
-                relation = self._validate_two_table_join(root, aliases)
+        with diagnostic_stage("join_graph"):
+            if self._max_tables is not None and root.find(exp.Join) is not None:
+                if not self._join_v1_enabled:
+                    raise SqlValidationError("Uploaded JOIN v1 is disabled")
+                if len(tables) == 3:
+                    tree = validate_uploaded_join_tree(
+                        root, aliases, self._approved_joins, self._column_types, self._table_columns
+                    )
+                    tables, aliases = self._validate_tables(root)
+                    self._validate_functions(root)
+                    self._validate_columns(root, aliases)
+                else:
+                    relation = self._validate_two_table_join(root, aliases)
         return ValidatedSql(
             statement=root.sql(dialect="postgres"),
             tables=frozenset(tables),

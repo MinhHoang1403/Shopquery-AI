@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.diagnostics import record_facts
 from app.core.errors import SqlUnsupportedError
 from app.rag.pipeline import RagPipeline, Source
 from app.routing.hybrid import HybridPipeline
@@ -31,6 +32,7 @@ class ChatResult:
 
 
 def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
+    record_facts(route="UNSUPPORTED")
     if exc.code == "join_aggregate" and exc.aggregate_reason is not None:
         logger.info("SQL request refused: %s (%s)", exc.code, exc.aggregate_reason)
     else:

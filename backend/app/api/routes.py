@@ -33,6 +33,7 @@ from app.auth.dependencies import CurrentUser
 from app.auth.limits import allow_provider_data, resource_control
 from app.conversations.repository import ConversationRecord, ConversationRepository, MessageRecord
 from app.core.config import get_settings
+from app.core.diagnostics import diagnosed, diagnostic_stage, record_facts
 from app.core.errors import (
     ChatTurnError,
     ResourceConflictError,
@@ -102,15 +103,18 @@ def upload_limits(user: CurrentUser) -> dict:
 
 
 @router.post("/chat", response_model=ChatResponse)
+@diagnosed
 def chat(user: CurrentUser, request: ChatRequest) -> ChatResponse:
     settings = get_settings()
     if request.model_id is not None:
         settings = settings.model_copy(update={"ai_default_model": request.model_id})
+    record_facts(model=settings.ai_default_model)
     try:
         dataset = None
         if request.dataset_id is not None:
             repository = build_dataset_repository(user.user_id)
-            dataset = repository.get(request.dataset_id)
+            with diagnostic_stage("workspace_binding"):
+                dataset = repository.get(request.dataset_id)
         allow_provider_data()
         if dataset is None:
             _require_demo_data(user.user_id)
@@ -218,6 +222,7 @@ def send_conversation_message(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@diagnosed
 def _persist_chat_turn(
     repository: ConversationRepository,
     conversation: ConversationRecord,
@@ -226,6 +231,7 @@ def _persist_chat_turn(
 ) -> ConversationSendResponse:
     conversation_id = conversation.conversation_id
     selected_model = request.model_id or conversation.model_id
+    record_facts(model=selected_model)
     settings = get_settings().model_copy(update={"ai_default_model": selected_model})
     if request.model_id is not None:
         repository.set_model(conversation_id, selected_model)
@@ -235,7 +241,8 @@ def _persist_chat_turn(
             service = build_chat_service(settings)
         else:
             dataset_repository = build_dataset_repository(user_id)
-            dataset = dataset_repository.get(conversation.dataset_id)
+            with diagnostic_stage("workspace_binding"):
+                dataset = dataset_repository.get(conversation.dataset_id)
             service = build_dataset_chat_service(
                 settings,
                 build_workspace_context(settings, dataset, dataset_repository),
@@ -549,6 +556,7 @@ def _chat_response(result: ChatResult) -> ChatResponse:
 
 
 def _chat_error(exc: ShopQueryError, requested_model: str | None = None) -> ChatResponse:
+    record_facts(final_status="failure")
     logger.warning("Chat request could not be completed: %s", type(exc).__name__)
     return ChatResponse(
         answer="Không thể hoàn tất câu hỏi bằng dữ liệu hiện có.",

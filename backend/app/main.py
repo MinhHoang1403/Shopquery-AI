@@ -12,6 +12,7 @@ from app.api.relationship_routes import router as relationship_router
 from app.api.routes import router
 from app.auth.routes import router as auth_router
 from app.core.config import get_settings
+from app.core.diagnostics import diagnostic_request, record_facts
 from app.core.logging import configure_logging
 from app.guest.middleware import GuestBodyLimit
 from app.guest.relationship_routes import router as guest_relationship_router
@@ -90,3 +91,19 @@ async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResp
             "error": "internal_error",
         },
     )
+
+
+@app.middleware("http")
+async def request_diagnostics(request: Request, call_next):
+    if (
+        request.method != "POST"
+        or not request.url.path.startswith("/api/")
+        or request.url.path.startswith("/api/auth/")
+    ):
+        return await call_next(request)
+    with diagnostic_request() as trace:
+        response = await call_next(request)
+        if response.status_code >= 400:
+            record_facts(final_status="failure")
+        response.headers["X-Request-ID"] = trace.correlation_id
+        return response

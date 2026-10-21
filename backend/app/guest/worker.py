@@ -14,6 +14,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.core.config import Settings
+from app.core.diagnostics import current_correlation_id, diagnostic_request, relay_events
 from app.core.errors import ResourceNotFoundError, UploadValidationError
 from app.datasets.parser import parse_tabular_file
 from app.guest.store import GuestFile
@@ -45,7 +46,14 @@ def parse_guest_file(
     return GuestFile(uuid4().hex, document.document.source_file, len(content), size, chunks=chunks)
 
 
-def _worker_main(connection: Connection, action: str, payload: tuple, settings: Settings) -> None:
+def _worker_main(
+    connection: Connection,
+    action: str,
+    payload: tuple,
+    settings: Settings,
+    correlation_id: str | None = None,
+) -> None:
+    trace = None
     try:
         logging.disable(logging.CRITICAL)
         try:
@@ -79,10 +87,13 @@ def _worker_main(connection: Connection, action: str, payload: tuple, settings: 
         elif action == "chat":
             from app.guest.pipeline import run_guest_chat
 
-            if len(payload) == 3:
-                result = run_guest_chat(payload[0], payload[1], settings, relationships=payload[2])
-            else:
-                result = run_guest_chat(*payload, settings)
+            with diagnostic_request(correlation_id) as trace:
+                if len(payload) == 3:
+                    result = run_guest_chat(
+                        payload[0], payload[1], settings, relationships=payload[2]
+                    )
+                else:
+                    result = run_guest_chat(*payload, settings)
         elif action in {"relationship", "detect_relationships"}:
             from app.datasets.relationship_detection import detect_relationships
             from app.datasets.relationships import verify_relationship
@@ -105,14 +116,18 @@ def _worker_main(connection: Connection, action: str, payload: tuple, settings: 
                 database.close()
         else:
             raise ValueError("Unsupported internal operation")
-        connection.send((True, result))
+        connection.send((True, result, trace.events if trace else []))
     except UploadValidationError as exc:
-        connection.send((False, (422, str(exc))))
+        connection.send((False, (422, str(exc)), trace.events if trace else []))
     except ResourceNotFoundError as exc:
-        connection.send((False, (404, str(exc))))
+        connection.send((False, (404, str(exc)), trace.events if trace else []))
     except BaseException:
         connection.send(
-            (False, (502, "Không thể hoàn tất xử lý dữ liệu tạm. Không tạo kết quả giả."))
+            (
+                False,
+                (502, "Không thể hoàn tất xử lý dữ liệu tạm. Không tạo kết quả giả."),
+                trace.events if trace else [],
+            )
         )
     finally:
         connection.close()
@@ -142,7 +157,10 @@ def run_isolated(
             }
         )
     receive, send = context.Pipe(duplex=False)
-    process = context.Process(target=target, args=(send, action, payload, settings), daemon=True)
+    arguments = (send, action, payload, settings)
+    if target is _worker_main:
+        arguments += (current_correlation_id(),)
+    process = context.Process(target=target, args=arguments, daemon=True)
     timeout = (
         settings.guest_parse_timeout_seconds
         if action in {"parse", "relationship", "detect_relationships"}
@@ -157,7 +175,10 @@ def run_isolated(
                 raise HTTPException(410, "Phiên khách đã được giải phóng.")
             if receive.poll(0.05):
                 try:
-                    ok, result = receive.recv()
+                    packet = receive.recv()
+                    ok, result = packet[:2]
+                    if len(packet) == 3:
+                        relay_events(packet[2])
                 except EOFError as exc:
                     raise HTTPException(
                         502, "Tác vụ tạm đã dừng an toàn, không có kết quả."

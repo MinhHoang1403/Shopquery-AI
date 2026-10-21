@@ -12,6 +12,8 @@ JoinAggregateReason = Literal[
     "count_column_alias",
     "unsupported_function",
     "non_numeric_fact",
+    "identifier_measure",
+    "count_semantics",
 ]
 
 
@@ -25,6 +27,12 @@ class ConfigurationError(ShopQueryError):
 
 class ModelResponseError(ShopQueryError):
     """Raised when a model response cannot be validated."""
+
+
+class StructuredResponseError(ModelResponseError):
+    """A response failed the requested schema, not a transport or SQL check."""
+
+    structured_output_invalid = True
 
 
 class ProviderError(ModelResponseError):
@@ -63,7 +71,13 @@ class SqlUnsupportedError(SqlValidationError):
         *,
         reason: Literal["unknown", "relationship", "calculation"] = "unknown",
         code: Literal[
-            "join_direction", "join_key", "join_aggregate", "join_relationship", "join_graph"
+            "join_direction",
+            "join_key",
+            "join_aggregate",
+            "join_relationship",
+            "join_graph",
+            "join_grain",
+            "generator_unsupported",
         ]
         | None = None,
         aggregate_reason: JoinAggregateReason | None = None,

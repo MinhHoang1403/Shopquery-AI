@@ -1321,3 +1321,82 @@ không sao chép JOIN của model làm oracle. Kết quả không phụ thuộc 
 và Gemini**, kết quả và grounded answer khớp PostgreSQL. Tự kiểm chứng hai quan hệ
 khi upload PASS. Chỉ nghiệm thu fixture/câu hỏi này; không cam kết JOIN tùy ý,
 mọi câu hỏi hoặc mọi trường hợp dữ liệu đều chính xác.
+
+## X. Khắc phục tên bảng logistics và metadata thiếu — 2026-10-20
+
+### Bằng chứng nguyên nhân, không suy luận từ thông báo frontend
+
+- Người dùng báo SQL một bảng chạy được nhưng câu hỏi theo tài xế/kho đều bị từ
+  chối. Kiểm tra chỉ đọc workspace được báo lỗi (ID 12): có ba bảng đánh số
+  `01_kho_dieu_phoi`, `02_tai_xe`, `03_don_giao_hang` nhưng **0 quan hệ**.
+  Schema context của code hiện hành vì thế phát biểu `Never JOIN tables` và
+  `No approved table-to-table relationships`; router/generator không được phép
+  đoán equality dù dữ liệu có cột khóa trùng tên.
+- Bộ nhận diện cũ yêu cầu label đích sau normalize khớp chính xác prefix của
+  khóa: `02_tai_xe` khác `tai_xe`; `01_kho_dieu_phoi` khác `kho`. Đây là lỗ hổng
+  coverage thực tế: live fixture tiếng Anh students/payments/courses ở W không
+  chứng minh nhận diện được bảng có số thứ tự/tên mô tả tiếng Việt.
+- Bốn positive unit cases tái hiện FAIL trước sửa. Log gần thời điểm báo lỗi
+  còn có `unspecified`, `join_relationship`, `join_aggregate (count_star_alias)`.
+  Không có correlation ID đủ để gắn từng log với từng câu hỏi; không kết luận
+  mọi lỗi đều do alias hoặc đã sửa alias bằng cách nới validator.
+
+### Thay đổi hẹp và bảo mật giữ nguyên
+
+- `relationship_detection.py`: bỏ tiền tố số thứ tự trong label; label đích
+  đúng thực thể vẫn theo quy tắc cũ. Với label mô tả bắt đầu bằng thực thể + `_`,
+  yêu cầu đúng tên khóa đầy đủ, đúng một identifier `_id`/`_code` TEXT/BIGINT ở
+  đích, không suy diễn generic `id`. Không có danh sách dịch kho/tài xế hardcode,
+  fuzzy similarity, suy luận chỉ từ trùng giá trị hoặc LLM relationship guessing.
+- Vẫn kiểm chứng toàn bộ dữ liệu: nonempty, exact type, no NULL, target unique,
+  orphan=0, N:1; ambiguous candidates/multiple keys ở cùng pair bị từ chối.
+  Owner/workspace locks, revision guard, aggregate grain, COUNT aliases,
+  SELECT-only, hai/ba bảng tối đa và các negative security assertions không đổi.
+- Tests thêm numbered/descriptive labels, ranh giới thực thể (kho không khớp
+  khoa_hoc), generic id, competing keys, ambiguous targets; integration synthetic
+  logistics tiếng Việt, hai thứ tự upload, hai model selections và JOIN 2/3 bảng.
+  Gateway giả, SQL PostgreSQL thật, independent fact-only oracle, CSRF/foreign
+  owner refusals và reload conversation API phải giữ nguyên response/model/rows.
+
+### Kết quả kiểm thử
+
+- Sau sửa: **207 targeted PASS** (144 unit + 63 PostgreSQL), 28.63 giây;
+  **560 full unit PASS**, 377 deselected, 14.50 giây; Ruff và diff check PASS.
+  PostgreSQL target riêng `shopquery_test_logistics_labels` trong container test
+  tmpfs 682e6264b33a, port 15437. Không chạy integration trên main.
+- Không chạy lại toàn frontend hoặc full integration suite trong lượt này;
+  không có frontend logic change. Hai model trong integration là fake gateway,
+  không phải nghiệm thu AI live.
+
+### Áp dụng main sau phê duyệt cụ thể
+
+- Người dùng duyệt thêm đúng hai quan hệ trong workspace 12 và triển khai API.
+  Rebuild/recreate **chỉ api** bằng đúng ba Compose files đang chạy; xác minh
+  environment trước/sau khớp toàn bộ. Không sửa model/gates/quota/OAuth/.env.
+  DB ID 511c4f5aaccc, volume shopquery-ai_postgres_auth_20261019 và web ID
+  a27d03924b65 giữ nguyên. API mới 4f28dddb243a; cả ba healthy, 8080 health HTTP 200.
+- Chỉ bổ sung metadata `27.tai_xe_id → 26.tai_xe_id`, `26.kho_id → 25.kho_id`:
+  kiểm tra đúng dataset và đúng ba table IDs/labels, metadata cũ phải rỗng,
+  lấy owner và khóa workspace qua repository, timeout hiện hữu. Trong một
+  transaction, detector phải trả **chính xác** hai cạnh đã duyệt và full-data
+  verification PASS trước insert. Sau insert phải đúng hai records automatic,
+  valid, confirmed=false; không giả thành người dùng đã xác nhận thủ công.
+- Sau sửa, build_workspace_context thật có hai approved joins, có safe three-table
+  root fragment và không còn no-relationship prohibition. Tệp helper kiểm chứng
+  private nằm ngoài repository tại
+  `C:\Work\ShopQuery-Backups\logistics-label-fix-20261020\verify.py`.
+- Exact row counts/SHA-256 của **25 bảng user/business/upload/chat** (bao gồm owner
+  fields) trước/sau bằng nhau; hash toàn bộ quan hệ workspace khác cũng bằng nhau.
+  Chỉ metadata workspace 12 tăng từ 0 lên 2. Không reset session/tài khoản, sửa
+  timestamps/dữ liệu, migration, restore, seed hoặc xóa volume.
+- Read-only smoke trên main qua validator + owner/revision execution guard +
+  executor thật: JOIN hai bảng theo tài xế cho 15 nhóm, JOIN ba bảng theo kho cho
+  5 nhóm. Cả hai tổng counts = **50**, tổng phí = **2472500.00**, khớp fact-only
+  PostgreSQL oracle, không lọc trạng thái, không mất/nhân đôi đơn. Không log tên
+  tài xế/kho, raw prompt hoặc dữ liệu tài khoản vào repository.
+
+**Giới hạn X:** live generation/embedding **0**. Chưa nghiệm thu lại Knowledge/
+Gemini qua Google UI sau bản sửa; không tuyên bố đã giải quyết mọi khả năng model
+chọn sai alias/key/grain. Người dùng cần tải lại UI để thấy hai quan hệ và gửi
+lượt hỏi mới; câu trả lời UNSUPPORTED cũ trong lịch sử không bị viết lại.
+Bản sửa source/tests/docs còn uncommitted; chưa push hoặc có CI SHA mới trong X.

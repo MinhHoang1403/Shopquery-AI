@@ -72,5 +72,7 @@ Question: {question}
 """.strip()
         draft = self._gateway.generate_structured(prompt, SqlDraft)
         if draft.unsupported_reason:
-            raise SqlUnsupportedError("The generator could not produce a supported query")
+            raise SqlUnsupportedError(
+                "The generator could not produce a supported query", code="generator_unsupported"
+            )
         return draft.sql.strip()

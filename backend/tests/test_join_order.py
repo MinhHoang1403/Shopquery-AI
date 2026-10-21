@@ -113,7 +113,7 @@ def test_policy_distinguishes_direction_key_aggregate_and_missing_relation(
 def test_equivalent_inner_join_draft_is_canonicalized_without_changing_aliases(suffix: str) -> None:
     draft = SqlDraft(
         sql="SELECT s.name, SUM(p.amount) AS total, AVG(p.amount) AS average, "
-        "COUNT(*) AS fact_row_count " + suffix + " GROUP BY s.name ORDER BY s.name"
+        "COUNT(*) AS fact_row_count " + suffix + " GROUP BY s.id,s.name ORDER BY s.name"
     )
     gateway = Mock()
     gateway.generate_structured.return_value = draft
@@ -126,7 +126,7 @@ def test_equivalent_inner_join_draft_is_canonicalized_without_changing_aliases(s
     assert validated.fact_table == FACT and validated.relationship_id == RELATION.relationship_id
     assert validated.tables == frozenset({FACT, DIMENSION})
     assert validator().validate(validated.statement) == validated
-    assert draft.sql.endswith("GROUP BY s.name ORDER BY s.name")
+    assert draft.sql.endswith("GROUP BY s.id,s.name ORDER BY s.name")
 
 
 def test_fact_identity_does_not_depend_on_alias_spelling() -> None:
@@ -233,7 +233,7 @@ def test_assembled_aggregate_contract_and_structured_intent_drafts(
     context = authenticated_context()
     source = DIMENSION if "sinh viên?" in question else FACT
     sql = (
-        f"SELECT s.name, {projection} {FORWARD} GROUP BY s.name"
+        f"SELECT s.name, {projection} {FORWARD} GROUP BY s.id,s.name"
         if joined
         else f"SELECT {projection} FROM uploaded_data.{source}"
     )

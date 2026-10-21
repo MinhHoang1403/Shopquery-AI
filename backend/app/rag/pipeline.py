@@ -6,6 +6,7 @@ from typing import Protocol
 from pydantic import BaseModel, Field
 
 from app.ai.gemini import EmbeddingGateway, GenerationGateway
+from app.core.diagnostics import diagnostic_stage
 from app.core.errors import ModelResponseError, RetrievalError
 from app.rag.repository import RetrievedChunk
 
@@ -51,6 +52,7 @@ class RagPipeline:
         self._repository = repository
         self._dataset_id = dataset_id
 
+    @diagnostic_stage("document_retrieval")
     def retrieve(self, question: str, top_k: int = 3) -> list[RetrievedChunk]:
         vector = self._embedder.embed_query(question)
         if self._dataset_id is None:
@@ -61,6 +63,7 @@ class RagPipeline:
             raise RetrievalError("No policy evidence is available")
         return chunks
 
+    @diagnostic_stage("answer_grounding")
     def answer_from_chunks(self, question: str, chunks: list[RetrievedChunk]) -> RagResult:
         evidence = "\n\n".join(
             f"[chunk_id={chunk.chunk_id}; file={chunk.source_file}; "

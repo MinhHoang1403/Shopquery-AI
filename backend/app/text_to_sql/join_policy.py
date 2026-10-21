@@ -43,6 +43,7 @@ def validate_uploaded_join(
         column_types,
         table_columns,
     )
+    _validate_entity_groups(root, aliases, (relationship,))
     return relationship
 
 
@@ -128,6 +129,7 @@ def validate_uploaded_join_tree(
         column_types,
         table_columns,
     )
+    _validate_entity_groups(root, aliases, plan.relationships)
     return plan
 
 
@@ -305,12 +307,30 @@ def _validate_join_aggregates(
                     aggregate_reason="count_column_alias",
                 )
         else:
+            if isinstance(aggregate.parent, exp.Alias) and aggregate.parent.alias.lower() in {
+                "fact_row_count",
+                "matched_row_count",
+                "fact_value_count",
+            }:
+                raise SqlUnsupportedError(
+                    "Count aliases cannot describe a SUM/AVG measure",
+                    reason="calculation",
+                    code="join_aggregate",
+                    aggregate_reason="count_semantics",
+                )
             if not isinstance(aggregate, (exp.Sum, exp.Avg)):
                 raise SqlUnsupportedError(
                     "Only COUNT/SUM/AVG are supported in uploaded JOIN v1",
                     reason="calculation",
                     code="join_aggregate",
                     aggregate_reason="unsupported_function",
+                )
+            if argument.name.lower() in fact_join_keys:
+                raise SqlUnsupportedError(
+                    "A verified fact identifier is not a numeric measure",
+                    reason="calculation",
+                    code="join_aggregate",
+                    aggregate_reason="identifier_measure",
                 )
             if column_types.get(fact_table, {}).get(argument.name.lower()) not in {
                 "BIGINT",
@@ -322,3 +342,53 @@ def _validate_join_aggregates(
                     code="join_aggregate",
                     aggregate_reason="non_numeric_fact",
                 )
+
+
+def _validate_entity_groups(
+    root: exp.Select, aliases: dict[str, str], relationships: tuple[ApprovedJoin, ...]
+) -> None:
+    if root.find(exp.AggFunc) is None:
+        return
+    keys = {r.target_table: r.target_column for r in relationships}
+    projections = {item.alias.lower(): item.this for item in root.expressions if item.alias}
+    grouped: set[tuple[str | None, str]] = set()
+    dimensions: set[str] = set()
+    group = root.args.get("group")
+    if group and any(value for name, value in group.args.items() if name != "expressions"):
+        raise SqlUnsupportedError(
+            "Entity aggregation does not support subtotal grouping sets",
+            reason="calculation",
+            code="join_grain",
+        )
+    for expression in group.expressions if group else ():
+        if isinstance(expression, exp.Literal) and expression.is_int:
+            position = int(expression.this) - 1
+            expression = (
+                root.expressions[position] if 0 <= position < len(root.expressions) else expression
+            )
+            if isinstance(expression, exp.Alias):
+                expression = expression.this
+        elif isinstance(expression, exp.Column) and not expression.table:
+            expression = projections.get(expression.name.lower(), expression)
+        for column in expression.find_all(exp.Column):
+            table = aliases.get(column.table.lower())
+            if table in keys:
+                dimensions.add(table)
+        if isinstance(expression, exp.Column) and expression.table:
+            table = aliases.get(expression.table.lower())
+            grouped.add((table, expression.name.lower()))
+            if table in keys:
+                dimensions.add(table)
+    for projection in root.expressions:
+        if projection.find(exp.AggFunc):
+            continue
+        for column in projection.find_all(exp.Column):
+            table = aliases.get(column.table.lower())
+            if table in keys:
+                dimensions.add(table)
+    if any((table, keys[table]) not in grouped for table in dimensions):
+        raise SqlUnsupportedError(
+            "Dimension aggregates require the verified entity key in GROUP BY",
+            reason="calculation",
+            code="join_grain",
+        )

@@ -12,6 +12,7 @@ from app.ai.chat import ModelChatService
 from app.ai.gemini import EmbeddingGateway, GenerationGateway
 from app.ai.providers import build_embedding_gateway
 from app.core.config import Settings
+from app.core.diagnostics import diagnosed, record_facts
 from app.core.errors import ConfigurationError, ModelResponseError, ResourceConflictError
 from app.datasets.context import build_dataset_sql_context
 from app.datasets.relationships import (
@@ -171,6 +172,7 @@ class GeneralChat:
         return ChatResult(draft.answer, None)
 
 
+@diagnosed
 def run_guest_chat(
     files: list[GuestFile],
     question: str,
@@ -180,6 +182,7 @@ def run_guest_chat(
     embedder: EmbeddingGateway | None = None,
     relationships: tuple[RelationshipRecord, ...] = (),
 ) -> ChatResult:
+    record_facts(model=settings.ai_default_model)
     sql = GuestSqlDatabase(settings, files) if any(file.table for file in files) else None
     try:
         joins = []

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from itertools import combinations
 from uuid import UUID
 
+from app.core.diagnostics import record_facts
 from app.core.errors import SqlUnsupportedError
 from app.datasets.repository import UPLOADED_SCHEMA, DatasetInfo
 from app.text_to_sql.join_policy import ApprovedJoin, resolve_join_tree
@@ -34,6 +35,9 @@ def build_dataset_sql_context(
     join_v1_enabled: bool = False,
 ) -> DatasetSqlContext:
     tables = dataset.tables or (() if dataset.table is None else (dataset.table,))
+    record_facts(
+        allowed_tables=len(tables), approved_edges=len(approved_joins) if join_v1_enabled else 0
+    )
     nested_values: dict[str, dict[str, tuple[str, ...]]]
     if categorical_values and all(
         isinstance(value, tuple) for value in categorical_values.values()
@@ -175,7 +179,11 @@ PostgreSQL dataset workspace:
 - Use explicit distinct aliases and qualified columns for joins; never invent a relationship.
 - For per-entity results, group by the dimension identifier as well as requested display fields;
   names alone may refer to different entities. This does not introduce unrequested grouping.
+- JOIN grouping by dimension attributes requires that dimension's approved target key in GROUP BY.
+  Label-only or shared-category grouping without the key is unsupported; never silently add an ID
+  to change the user's requested category grouping. Return unsupported_reason for that case.
 - SUM/AVG only direct fact NUMERIC/BIGINT columns. Never aggregate dimension measures/entities.
+- A fact column used as a verified JOIN key is an identifier, never a SUM/AVG measure.
 - Row-count requests require COUNT(*) AS fact_row_count, never COUNT(f.id) or another column.
   COUNT(*) AS matched_row_count is the separate scalar SUM/AVG missing-match diagnostic.
 - Only a request for non-NULL fact values uses COUNT(f.column) AS fact_value_count.

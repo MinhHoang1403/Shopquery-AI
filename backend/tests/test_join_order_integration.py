@@ -427,7 +427,7 @@ def test_recorded_synthetic_draft_replay(authenticated_workspace, case: str, cod
             "SELECT d.name AS name, SUM(f.amount) AS total, COUNT(f.id) AS fact_row_count "
             f"FROM uploaded_data.{fact.physical_table_name} AS f "
             f"INNER JOIN uploaded_data.{dimension.physical_table_name} AS d "
-            "ON f.student_id = d.id GROUP BY d.name ORDER BY d.name"
+            "ON f.student_id = d.id GROUP BY d.id,d.name ORDER BY d.name"
         )
     elif case == "wrong-key":
         draft = draft.replace("p.student_id=s.id", "p.id=s.id")

@@ -18,6 +18,8 @@ TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 class StructuredOutputError(ProviderError):
     """The server returned JSON that failed the requested response schema."""
 
+    structured_output_invalid = True
+
 
 class InetCloudGateway:
     def __init__(self, settings: Settings) -> None:
@@ -58,7 +60,7 @@ class InetCloudGateway:
                 return response_model.model_validate(response["parsed"])
             except ValidationError:
                 continue
-        raise ProviderError("Knowledge trả JSON sai schema.", fallback_allowed=True)
+        raise StructuredOutputError("Knowledge trả JSON sai schema.", fallback_allowed=True)
 
     @staticmethod
     def _invoke(client: Runnable, prompt: str) -> Any:

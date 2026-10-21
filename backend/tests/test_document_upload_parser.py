@@ -34,11 +34,7 @@ def _pdf_bytes(text: str | None = None, *, encrypted: bool = False) -> bytes:
         )
         font_ref = writer._add_object(font)
         page[NameObject("/Resources")] = DictionaryObject(
-            {
-                NameObject("/Font"): DictionaryObject(
-                    {NameObject("/F1"): font_ref}
-                )
-            }
+            {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font_ref})}
         )
         stream = StreamObject()
         stream.set_data(f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode())
@@ -63,9 +59,7 @@ def test_parses_utf8_text_and_sanitizes_filename(extension: str) -> None:
 
 
 def test_parses_docx_without_extracting_archive_to_disk() -> None:
-    parsed = parse_document_file(
-        "quy-dinh.docx", _docx_bytes("Miễn phí vận chuyển từ 500.000đ.")
-    )
+    parsed = parse_document_file("quy-dinh.docx", _docx_bytes("Miễn phí vận chuyển từ 500.000đ."))
 
     assert parsed.file_type == "docx"
     assert parsed.document.title == "Chính sách"
@@ -110,3 +104,49 @@ def test_rejects_oversized_and_zip_bomb_metadata() -> None:
         archive.writestr("word/document.xml", b"x" * 100_000)
     with pytest.raises(UploadValidationError, match="tỷ lệ nén"):
         parse_document_file("bomb.docx", output.getvalue())
+
+
+def test_docx_table_rules_are_extracted_in_document_order():
+    import io
+
+    from docx import Document
+
+    document = Document()
+    document.add_heading("Warehouse KPI", level=1)
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Rule"
+    table.cell(0, 1).text = "Threshold"
+    table.cell(1, 0).text = "GV-KPI-KHO-08"
+    table.cell(1, 1).text = "At least 8 delivered orders, not all statuses"
+    document.add_paragraph("End of warehouse rule")
+    stream = io.BytesIO()
+    document.save(stream)
+    parsed = parse_document_file("kpi.docx", stream.getvalue()).document.content
+    assert "GV-KPI-KHO-08" in parsed
+    assert "At least 8 delivered orders, not all statuses" in parsed
+    assert parsed.index("Warehouse KPI") < parsed.index("Rule | Threshold")
+    assert parsed.index("GV-KPI-KHO-08") < parsed.index("End of warehouse rule")
+
+
+def test_docx_table_content_is_subject_to_extraction_limit(monkeypatch):
+    import io
+
+    from docx import Document
+
+    document = Document()
+    document.add_table(rows=1, cols=1).cell(0, 0).text = "x" * 101
+    stream = io.BytesIO()
+    document.save(stream)
+    monkeypatch.setattr("app.rag.upload_parser.MAX_EXTRACTED_CHARACTERS", 100)
+    with pytest.raises(UploadValidationError, match="giới hạn"):
+        parse_document_file("bounded.docx", stream.getvalue())
+
+
+def test_docx_nested_table_is_refused_instead_of_silently_losing_rules():
+    document = Document()
+    cell = document.add_table(rows=1, cols=1).cell(0, 0)
+    cell.add_table(rows=1, cols=1).cell(0, 0).text = "Hidden rule"
+    output = BytesIO()
+    document.save(output)
+    with pytest.raises(UploadValidationError, match="bảng lồng"):
+        parse_document_file("nested.docx", output.getvalue())

@@ -7,7 +7,7 @@ from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import Settings
-from app.core.errors import ConfigurationError, ModelResponseError
+from app.core.errors import ConfigurationError, ModelResponseError, StructuredResponseError
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 TRANSIENT_HTTP_STATUS_CODES = [408, 429, 500, 502, 503, 504]
@@ -63,7 +63,7 @@ class GeminiGateway:
             )
             return response_model.model_validate_json(response.text)
         except (ValidationError, ValueError, TypeError) as exc:
-            raise ModelResponseError("Gemini returned an invalid structured response") from exc
+            raise StructuredResponseError("Gemini returned an invalid structured response") from exc
         except errors.APIError as exc:
             self._raise_api_error("generation", exc)
         except Exception as exc:

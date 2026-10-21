@@ -6,6 +6,7 @@ from typing import Protocol
 from app.ai.gemini import GenerationGateway
 from app.ai.providers import build_generation_gateway
 from app.core.config import Settings
+from app.core.diagnostics import diagnosed, record_facts
 from app.core.errors import ChatTurnError, ProviderError, ShopQueryError
 from app.routing.service import ChatResult
 
@@ -30,8 +31,10 @@ class ModelChatService:
             if close:
                 close()
 
+    @diagnosed
     def chat(self, question: str) -> ChatResult:
         requested = self._settings.ai_default_model
+        record_facts(model=requested)
         fallback = False
         try:
             try:

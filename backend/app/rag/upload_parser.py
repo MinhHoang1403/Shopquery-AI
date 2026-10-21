@@ -10,6 +10,7 @@ from pathlib import PurePath, PurePosixPath
 
 from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
+from docx.table import Table
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
@@ -55,8 +56,7 @@ def parse_document_file(
     if not normalized:
         raise UploadValidationError("Tài liệu không có nội dung văn bản có thể đọc.")
     if not any(
-        line.strip() and not line.lstrip().startswith("#")
-        for line in normalized.splitlines()
+        line.strip() and not line.lstrip().startswith("#") for line in normalized.splitlines()
     ):
         raise UploadValidationError("Tài liệu chỉ có tiêu đề, không có nội dung để hỏi đáp.")
     if len(normalized) > MAX_EXTRACTED_CHARACTERS:
@@ -126,7 +126,20 @@ def _parse_docx(content: bytes, fallback_title: str) -> tuple[str, str]:
     lines: list[str] = []
     title = fallback_title
     extracted_size = 0
-    for paragraph in document.paragraphs:
+    for paragraph in document.iter_inner_content():
+        if isinstance(paragraph, Table):
+            for row in paragraph.rows:
+                if any(cell.tables for cell in row.cells):
+                    raise UploadValidationError("DOCX có bảng lồng nhau chưa được hỗ trợ.")
+                value = " | ".join(cell.text.strip().replace("\n", " ") for cell in row.cells)
+                extracted_size += len(value)
+                if extracted_size > MAX_EXTRACTED_CHARACTERS:
+                    raise UploadValidationError(
+                        "Nội dung DOCX trích xuất vượt quá giới hạn xử lý an toàn."
+                    )
+                if value.strip(" |"):
+                    lines.append(value)
+            continue
         value = paragraph.text.strip()
         if not value:
             continue
