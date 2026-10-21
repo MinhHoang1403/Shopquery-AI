@@ -57,7 +57,7 @@ def test_approved_fact_aggregates(projection: str, reverse: bool) -> None:
         f"SELECT SUM(s.fee) {BASE}",
         f"SELECT AVG(s.fee) {BASE}",
         f"SELECT COUNT(s.student_id) {BASE}",
-        f"SELECT COUNT(*) AS students {BASE}",
+        f"SELECT COUNT(*) AS fact_value_count {BASE}",
         f"SELECT SUM(p.amount+s.fee) {BASE}",
         f"SELECT SUM(CAST(p.amount AS REAL)) {BASE}",
         f"SELECT SUM(p.amount) + 1 {BASE}",

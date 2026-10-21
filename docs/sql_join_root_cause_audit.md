@@ -1,8 +1,10 @@
 # SQL/JOIN root-cause audit — 20–21/10/2026
 
-Kết luận hiện tại: **PARTIALLY VERIFIED**. Gate A/B PASS trong deterministic
-contract; source CI và local deployment đạt, UI quản lý dữ liệu/lịch sử đã kiểm
-tra. Gate D live AI trên hợp đồng mới **NOT RUN**, phải duyệt ngân sách riêng.
+Kết luận hiện tại: **PARTIALLY VERIFIED — chưa nghiệm thu JOIN/Hybrid live**.
+Gate A/B PASS trong deterministic contract; source CI và local deployment đạt.
+Gate D được duyệt và chạy ngày 21/10: **3/8 PASS, 5/8 FAIL** trên bộ synthetic
+cố định, không thử lại. Single-table cả hai model và Gemini hai-table đạt;
+Knowledge JOIN, Gemini ba-table và cả hai Hybrid chưa đạt. Chi tiết cuối báo cáo.
 Trạng thái lúc bắt đầu là NOT READY do các counterexamples entity aggregation.
 
 ## Baseline và ranh giới
@@ -199,7 +201,8 @@ SUCCESS tại đúng SHA, ba jobs success. Logs xác nhận Ruff + 594 unit,
 lint/typecheck/build PASS. Golden 144 là tập con trong 513, không cộng lần nữa.
 47 targeted cases trong bốn file audit/diagnostics/counterexamples/logistics
 cũng là tập con. Không loại hay giảm security assertions.
-D NOT RUN: 0 live generation và 0 live embedding calls.
+D tại thời điểm chốt CI: NOT RUN. Kết quả live sau phê duyệt được ghi riêng ở cuối;
+không dùng CI offline để thay thế nghiệm thu provider thật.
 
 ## Local deployment và bảo toàn dữ liệu
 
@@ -282,15 +285,130 @@ phải duyệt riêng đúng nguồn, phương án giữ lịch sử và embeddi
 gợi ý bypass dedup hoặc sửa file chỉ để vượt kiểm tra. Workspace 13 được để lại
 cho kiểm thử tiếp, không tự xóa dữ liệu/lịch sử. Không VPS/Langfuse/framework mới.
 
-## Kế hoạch Gate D (chưa được duyệt, không thực hiện)
+## Kế hoạch Gate D (đã được duyệt và thực hiện 21/10)
 
 Chỉ synthetic dataset: một fact, hai dimensions, một policy chunk. Knowledge
 hiện cấu hình và Gemini `gemini-3.5-flash-lite`, fallback hiện hành giữ nguyên.
 Mỗi model: single-table, two-table, three-table SQL, một Hybrid = 8 logical chat
-probes. Dự kiến 26 logical generation calls (6 SQL × 3 + 2 Hybrid × 4), 3 logical
+probes. Trần được duyệt: 26 logical generation calls (6 SQL × 3 + 2 Hybrid × 4), 3 logical
 embedding calls (một policy chunk ingest + hai Hybrid queries), nếu chưa có vector
 fixture phù hợp. SDK retries giữ cấu hình, HTTP requests có thể cao hơn logical
-calls. Cần chủ dự án phê duyệt trước khi gọi. So từng row với PostgreSQL oracle,
+calls. Chủ dự án đã phê duyệt trước khi gọi. So từng row với PostgreSQL oracle,
 stable IDs/Decimal/NULL/zero, actual model/no silent fallback, citations và history
 reload. Một pass/probe không chứng minh độ ổn định mọi câu hỏi; báo pass rate
 đúng số lượt được duyệt, không tự retry/probe thêm.
+
+## Gate D — kết quả live authenticated UI 21/10/2026
+
+### Phạm vi và ngân sách thực tế
+
+Chạy 09:32–09:43 giờ Việt Nam trên tab Google đã đăng nhập tại 8080, chỉ workspace
+**13 — Root audit synthetic · 21-10-2026**. Không đọc/gửi dữ liệu workspace khác
+vào provider. Source ứng dụng `50d7bac4e1f6af8adffeb8f317a458f637de7bb0`, HEAD báo
+cáo trước lượt này `e2151a3d6b37f3a11e83f68553e5985bbe087deb`. Không sửa code,
+validator, prompt, model, gates, fallback, quotas hoặc runtime trong lượt live.
+
+Đúng **8/8 logical chat probes**, mỗi câu chỉ gửi một lần, **19/26 logical
+generation method calls**, **1/3 logical embedding calls**. Sáu SQL chạy khi
+workspace chưa có tài liệu, sau đó mới ingest `live_gate_d_kpi.md` thành đúng một
+chunk/vector 768 dimensions. Cả hai Hybrid dừng trong nhánh SQL trước
+`document_retrieval`, nên **0 query embedding**, không gọi synthesis/grounding
+Hybrid. Không dùng phần ngân sách còn dư để thử lại hoặc thêm câu hỏi.
+
+19 calls là số lần gọi gateway ở router/draft/answer được đối chiếu diagnostics,
+không phải số HTTP requests. Gemini SDK attempts=3, timeout=30 giây; Knowledge
+HTTP attempts=1, timeout=60 giây và vòng structured-schema tối đa hai lần sẵn có
+đều giữ nguyên. Không có HTTP attempt instrumentation cho lượt này; **không xác
+định chính xác số HTTP requests hoặc khẳng định không retry**. Không bật logging
+raw prompt/SQL/credentials để đo requests.
+
+### Oracle độc lập và kết quả
+
+Oracle được chốt bằng SELECT PostgreSQL tự viết **trước** khi gọi model, không
+lấy SQL do model sinh làm đáp án chuẩn: 50 orders, 15 tài xế, 5 kho; tổng phí
+`2472500.00`. Bốn phí NULL và ba phí zero được kiểm tra riêng. Hai approved edges
+đủ trong schema context của cả tám requests: 3 allowed tables, 2 approved edges.
+
+| Probe | Model | Yêu cầu | Kết quả thực tế | Generation / query embedding |
+| --- | --- | --- | --- | --- |
+| K1 | Knowledge | Một bảng: 50 đơn, phí, trạng thái | PASS: từng row và answer đúng, giữ NULL/0/Decimal | 3 / 0 |
+| K2 | Knowledge | Hai bảng: từng tài xế, SUM phí, đếm dòng | FAIL: `join_aggregate/count_star_alias`, chưa executor | 2 / 0 |
+| K3 | Knowledge | Ba bảng: từng kho, SUM phí, đếm dòng | FAIL: `join_aggregate/count_star_alias`, chưa executor | 2 / 0 |
+| G1 | Gemini | Cùng yêu cầu một bảng | PASS: từng row và answer đúng, giữ NULL/0/Decimal | 3 / 0 |
+| G2 | Gemini | Cùng yêu cầu hai bảng | PASS: 15 groups đúng ID/name/SUM/COUNT trong rows và answer | 3 / 0 |
+| G3 | Gemini | Cùng yêu cầu ba bảng | FAIL: `join_aggregate/count_column_alias`, chưa executor | 2 / 0 |
+| KH | Knowledge | Ba bảng + policy KPI | FAIL: router HYBRID, `join_aggregate/count_star_alias`; chưa retrieval | 2 / 0 |
+| GH | Gemini | Cùng yêu cầu Hybrid | FAIL: router HYBRID, `generator_unsupported`; chưa validator/executor/retrieval | 2 / 0 |
+
+Sáu câu SQL được router chọn SQL; hai câu Hybrid được chọn HYBRID. Năm câu bị
+chặn trả route cuối UNSUPPORTED, rows rỗng và thông báo ngắn; `error=null`
+**không có nghĩa là nghiệm thu PASS**. Không tạo số liệu/citation giả thay kết quả.
+Cả tám response lưu requested/used model đúng lựa chọn, `fallback_used=false`;
+config runtime là Knowledge `knowledge` và Gemini `gemini-3.5-flash-lite`.
+Ba câu thành công chỉ tham chiếu đúng tập bảng synthetic cần thiết; validator,
+execution guard và PostgreSQL execution đều thành công.
+
+Policy mới cố ý dùng KPI đơn giản **tổng phí tất cả trạng thái >= 500000.00**,
+không phải KPI 8 đơn Đã giao trong DOCX cũ. Oracle từng kho là `393500.00`,
+`598000.00`, `502000.00`, `439000.00`, `540000.00`, mỗi kho 10 dòng; KHO02,
+KHO03, KHO05 đạt. Vì hai Hybrid đều bị chặn, chưa có câu trả lời live/citation
+để đối chiếu với oracle này. Ingest một chunk PASS không chứng minh retrieval
+hoặc Hybrid live PASS. Không re-ingest hay sửa tài liệu DOCX đã có trước.
+
+### Nguyên nhân được xác minh và phần chưa biết
+
+- K2/K3/KH đi qua workspace binding, relationship approval, schema metadata,
+  router và structured draft; column resolution thành công rồi bị guard COUNT
+  từ chối. Đây **không phải thiếu approved relationship** ở workspace 13 hoặc
+  lỗi kết nối upstream quan sát được trong các câu này.
+- `count_star_alias` chứng minh COUNT(*) không có alias được contract chấp nhận
+  (`fact_row_count`/`matched_row_count`). G3 bị `count_column_alias`: COUNT(column)
+  không đáp ứng alias/semantics đang cho phép. Không suy ra cột/alias cụ thể của
+  draft bị chặn vì production không lưu raw rejected SQL. Cũng không suy ra
+  grain/những bước sau đó chắc chắn đúng chỉ từ lỗi đầu tiên này.
+- GH bị generator chủ động trả unsupported; không có raw unsupported_reason
+  trong safe diagnostics. **Chưa biết** vì sao provider từ chối tạo SQL cho
+  câu này; không quy cho guard COUNT khi chưa có bằng chứng.
+- Kết quả xác nhận generation contract chưa được model tuân thủ ổn định dù
+  offline golden/guard tests xanh. G2 PASS không chứng minh JOIN ba bảng hay
+  mọi câu hỏi đã ổn định. Pass-rate 3/8 (37,5%) chỉ của tám probes cố định này,
+  không phải ước lượng accuracy toàn hệ thống.
+
+Không nới alias/COUNT semantics, không tự sửa cột/grain và không thêm repair loop
+trong lượt nghiệm thu. Bước tiếp theo đề xuất là offline counterexamples cho
+COUNT contract và cách đưa schema/examples cho từng gateway, bảo toàn COUNT(*)
+khác COUNT(nullable), identifier grain và security assertions; mọi probe live
+mới cần ngân sách/phê duyệt riêng.
+
+### History, runtime và dữ liệu bảo vệ
+
+Reload thật tab 8080, mở lại bốn conversations synthetic bằng UI: đủ tám câu trả
+lời, model attribution, ba kết quả SQL 50/50/15 dòng và năm lời từ chối còn đúng.
+Mở bảng Gemini 15 dòng sau reload và đối chiếu IDs/tên/Decimal/count. Đọc lại tám
+assistant messages chỉ trong workspace 13: content và response_metadata (SQL,
+rows, model/fallback) bằng chính bản evidence chụp lúc nhận kết quả; không gửi
+generation mới để kiểm tra history. Không xuất cookie/token/session secrets.
+
+Đối chiếu lại **26 bảng nghiệp vụ cũ**: counts và SHA-256 không đổi, aggregate
+`f73b828698b29380b28b5ae89a654df52115bef858ed7a4c246a2b11c84fa736`.
+Chỉ loại đúng workspace synthetic 13 và chat messages gắn với conversation của
+13, ba bảng auth có login bình thường, cùng counters vận hành như baseline;
+không loại lịch sử/nghiệp vụ của workspace khác. Không tuyên bố toàn DB bất biến:
+lượt test cố ý thêm 4 conversations/16 messages và 1 document/chunk cho 13.
+
+API/web/DB vẫn đúng ba services healthy, `/api/health` OK, DB container/volume
+không đổi; resolved Compose so env runtime có **0 khác biệt**. Không rebuild,
+migration, reset, restore, Docker cleanup, VPS hoặc Langfuse trong lượt này.
+Giữ nguyên synthetic workspace/lịch sử để tái kiểm tra, không tự xóa.
+
+Private evidence ngoài repository:
+`C:\Work\ShopQuery-Backups\live-gate-d-20261021` gồm ledger, oracle, tám response
+synthetic, safe stage diagnostics và ảnh UI sau reload. Oracle SHA-256:
+`bda5e5aac8a08af94713c66778b1357ac5831a306db36aa999ea834c15f587ee`.
+Không commit raw responses, logs, screenshots hay synthetic source files.
+
+Lượt này chỉ cập nhật báo cáo; không sửa source nên không chạy lại test suite lớn.
+Kết quả Ruff/1,107 backend/66 FE unit/105 browser mock và CI xanh đã ghi ở trên
+thuộc source đã triển khai, **không biến năm live failures thành PASS**. Không
+commit/push mới trong lượt phê duyệt ngân sách này. Kết luận Gate D: **FAIL**;
+hệ thống chưa sẵn sàng để cam kết JOIN/Hybrid live ổn định trên cả hai providers.

@@ -64,7 +64,8 @@ def test_chain_normalizes_order_and_fact_key_count_without_changing_grain(bindin
     root = parse_one(result.statement, read="postgres")
     assert root.args["from_"].this.name == "payments"
     assert [join.this.name for join in root.args["joins"]] == ["students", "courses"]
-    assert "COUNT(*) AS fact_row_count" in result.statement
+    assert f"{count} AS fact_row_count" in result.statement
+    assert result.count_metrics[0].kind.value == "row_count"
     assert validator().validate(result.statement) == result
 
 

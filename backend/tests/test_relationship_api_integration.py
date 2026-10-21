@@ -279,7 +279,7 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
     )
     dim, fact = a.dataset.tables[0].physical_table_name, a.dataset.tables[1].physical_table_name
     sql = (
-        f"SELECT COUNT(*) AS payment_count FROM uploaded_data.{dim} d "
+        f"SELECT COUNT(*) AS fact_value_count FROM uploaded_data.{dim} d "
         f"INNER JOIN uploaded_data.{fact} f ON f.key=d.value"
     )
     gateway, embedder = Mock(), Mock()
@@ -306,10 +306,17 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
     history = a.client.get(path)
     assert history.status_code == 200
     assert history.json()["messages"][-1]["response"] == response
-    assert "join_aggregate (count_star_alias)" in caplog.text
+    assert "join_aggregate (count_wrong_argument_semantics)" in caplog.text
     for private in (sql, dim, fact):
         assert private not in caplog.text
-    for private in (sql, dim, fact, "join_aggregate", "aggregate_reason", "count_star_alias"):
+    for private in (
+        sql,
+        dim,
+        fact,
+        "join_aggregate",
+        "aggregate_reason",
+        "count_wrong_argument_semantics",
+    ):
         assert private not in sent.text and private not in history.text
     assert gateway.generate_structured.call_count == 2
     gateway.generate_text.assert_not_called()

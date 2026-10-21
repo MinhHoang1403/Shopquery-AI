@@ -129,8 +129,8 @@ def test_reverse_draft_matches_postgres_oracle_through_authenticated_context(
         def generate_text(self, prompt):
             calls.append("answer")
             assert '"total": "0.00"' in prompt
-            assert "fact_value_count counts non-NULL values" in prompt
-            assert "Neither counts dimension entities" in prompt
+            assert "non_null_value_count counts only non-NULL" in prompt
+            assert "counts do not count dimension entities" in prompt
             return "Synthetic rows only"
 
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
@@ -402,7 +402,7 @@ def test_aggregate_drafts_guarded_execution_and_independent_fact_oracle(
             else:
                 assert actual[key] == value
     prompt = gateway.generate_text.call_args.args[0]
-    assert "fact_value_count counts non-NULL values" in prompt
+    assert "non_null_value_count counts only non-NULL" in prompt
     assert "only JSON null means null" in prompt
 
 
@@ -457,7 +457,7 @@ def test_recorded_synthetic_draft_replay(authenticated_workspace, case: str, cod
             pipeline.run("Synthetic captured draft replay")
         assert error.value.code == code
         if case == "recorded-count-id":
-            assert error.value.aggregate_reason == "count_column_alias"
+            assert error.value.aggregate_reason == "count_wrong_argument_semantics"
         elif case == "dimension-sum":
             assert error.value.aggregate_reason == "dimension_column"
         else:
@@ -530,10 +530,10 @@ def test_database_proven_not_null_id_does_not_silently_rewrite_count(aggregate_w
         ("SUM(p.amount) FILTER(WHERE p.amount>0)", "filter"),
         ("SUM(p.amount)+1", "projection_expression"),
         ("COUNT(p.id,p.amount) AS fact_value_count", "multiple_arguments"),
-        ("COUNT(*) AS payment_count", "count_star_alias"),
+        ("COUNT(*) AS fact_value_count", "count_wrong_argument_semantics"),
         ("COUNT(DISTINCT p.id) AS fact_value_count", "argument_expression"),
         ("SUM(s.fee)", "dimension_column"),
-        ("COUNT(p.id) AS fact_row_count", "count_column_alias"),
+        ("COUNT(p.id) AS fact_row_count", "count_wrong_argument_semantics"),
         ("MIN(p.amount)", "unsupported_function"),
         ("SUM(p.note)", "non_numeric_fact"),
     ],

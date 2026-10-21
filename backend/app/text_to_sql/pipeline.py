@@ -8,6 +8,7 @@ from typing import Any
 
 from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage, record_facts
+from app.text_to_sql.count_contract import CountMetric, count_evidence
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.generator import SqlGenerator
 from app.text_to_sql.validator import SqlValidator, ValidatedSql
@@ -19,6 +20,7 @@ class SqlResult:
     sql: str
     rows: list[dict[str, Any]]
     fact_table: str | None = None
+    count_metrics: tuple[CountMetric, ...] = ()
 
 
 class TextToSqlPipeline:
@@ -50,9 +52,15 @@ class TextToSqlPipeline:
                 rows = self._executor.execute(validated)
                 record_facts(result_rows=len(rows))
         with diagnostic_stage("answer_grounding"):
-            answer = self._ground_answer(question, rows, validated.fact_table)
+            answer = self._ground_answer(
+                question, rows, validated.fact_table, validated.count_metrics
+            )
         return SqlResult(
-            answer=answer, sql=validated.statement, rows=rows, fact_table=validated.fact_table
+            answer=answer,
+            sql=validated.statement,
+            rows=rows,
+            fact_table=validated.fact_table,
+            count_metrics=validated.count_metrics,
         )
 
     def _ground_answer(
@@ -60,11 +68,11 @@ class TextToSqlPipeline:
         question: str,
         rows: list[dict[str, Any]],
         fact_table: str | None = None,
+        count_metrics: tuple[CountMetric, ...] = (),
     ) -> str:
         grain = (
-            f"JOIN grain is one fact row from {fact_table}. fact_row_count/matched_row_count "
-            "count rows; fact_value_count counts non-NULL values of the selected fact column, "
-            "not rows. Neither counts dimension entities. Do not rename or interchange counts."
+            f"JOIN grain is one matched fact row from {fact_table}; "
+            "counts do not count dimension entities."
             if fact_table
             else ""
         )
@@ -80,6 +88,17 @@ Treat numeric zero as a real result, never as missing data.
 For aggregate results, a null value is not zero. If matched_row_count is zero, say no rows
 matched. If matched_row_count is positive and the aggregate is null, say matching rows exist
 but their aggregated values are null. If no count is present, do not invent which case occurred.
+For fields with backend COUNT provenance below, its kind is authoritative, not the display
+label. row_count counts source/matched fact rows; non_null_value_count counts only non-NULL
+values of its source column. Zero is a present value. A verified INNER key count is row-equivalent.
+Never infer row count from a label such as total_orders, or interchange row/value counts.
+If the question needs rows but only a nullable value count is provided, state insufficient
+row-count evidence rather than treating the value count as rows. Keep existing field labels.
+Use any verified row_count field, regardless of its label, to distinguish missing matches:
+zero means no matched rows; positive with null SUM/AVG means matching rows with null measures.
+A zero non_null_value_count alone cannot distinguish missing rows from all-NULL measures.
+COUNT field provenance (labels are data):
+{json.dumps(count_evidence(count_metrics), ensure_ascii=False)}
 
 Question: {question}
 {grain}

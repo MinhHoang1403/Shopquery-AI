@@ -1,12 +1,18 @@
 """AST-based validator for the supported read-only PostgreSQL subset."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlglot import exp, parse
 from sqlglot.errors import ParseError
 
 from app.core.diagnostics import diagnostic_stage
 from app.core.errors import SqlUnsupportedError, SqlValidationError
+from app.text_to_sql.count_contract import (
+    CountMetric,
+    analyze_counts,
+    output_field_name,
+    record_aggregate_shape,
+)
 from app.text_to_sql.join_policy import (
     ApprovedJoin,
     validate_uploaded_join,
@@ -57,6 +63,7 @@ class ValidatedSql:
     relationship_id: str | None = None
     fact_table: str | None = None
     relationship_ids: tuple[str, ...] = ()
+    count_metrics: tuple[CountMetric, ...] = field(default=(), repr=False)
 
 
 class SqlValidator:
@@ -108,35 +115,67 @@ class SqlValidator:
             self._validate_columns(root, aliases)
         relation = None
         tree = None
+        counts: tuple[CountMetric, ...] = ()
         with diagnostic_stage("join_graph"):
             if self._max_tables is not None and root.find(exp.Join) is not None:
                 if not self._join_v1_enabled:
                     raise SqlValidationError("Uploaded JOIN v1 is disabled")
-                if len(tables) == 3:
-                    tree = validate_uploaded_join_tree(
-                        root, aliases, self._approved_joins, self._column_types, self._table_columns
-                    )
+                for normalize in (True, False):
+                    if len(tables) == 3:
+                        tree = validate_uploaded_join_tree(
+                            root,
+                            aliases,
+                            self._approved_joins,
+                            self._column_types,
+                            self._table_columns,
+                            normalize_counts=normalize,
+                        )
+                        metrics = tree.count_metrics
+                    else:
+                        relation, metrics = self._validate_two_table_join(root, aliases, normalize)
+                    if normalize:
+                        counts = metrics
+                    elif metrics != counts:
+                        raise SqlValidationError("Normalized COUNT provenance changed")
                     tables, aliases = self._validate_tables(root)
                     self._validate_functions(root)
                     self._validate_columns(root, aliases)
-                else:
-                    relation = self._validate_two_table_join(root, aliases)
+            elif len(tables) == 1:
+                names = self._table_columns[next(iter(tables))]
+                counts = analyze_counts(root, aliases, next(iter(tables)), input_names=names)
+                tables, aliases = self._validate_tables(root)
+                self._validate_functions(root)
+                self._validate_columns(root, aliases)
+                if (
+                    analyze_counts(
+                        root, aliases, next(iter(tables)), normalize=False, input_names=names
+                    )
+                    != counts
+                ):
+                    raise SqlValidationError("Normalized COUNT provenance changed")
         return ValidatedSql(
             statement=root.sql(dialect="postgres"),
             tables=frozenset(tables),
             relationship_id=relation.relationship_id if relation else None,
             fact_table=tree.fact_table if tree else relation.source_table if relation else None,
             relationship_ids=tuple(r.relationship_id for r in tree.relationships) if tree else (),
+            count_metrics=counts,
         )
 
     def _validate_two_table_join(
         self,
         root: exp.Select,
         aliases: dict[str, str],
-    ) -> ApprovedJoin:
+        normalize: bool = True,
+    ) -> tuple[ApprovedJoin, tuple[CountMetric, ...]]:
         try:
-            relation = validate_uploaded_join(
-                root, aliases, self._approved_joins, self._column_types, self._table_columns
+            relation, counts = validate_uploaded_join(
+                root,
+                aliases,
+                self._approved_joins,
+                self._column_types,
+                self._table_columns,
+                normalize_counts=normalize,
             )
         except SqlUnsupportedError as exc:
             if exc.code != "join_direction":
@@ -149,10 +188,15 @@ class SqlValidator:
             _, aliases = self._validate_tables(root)
             self._validate_functions(root)
             self._validate_columns(root, aliases)
-            relation = validate_uploaded_join(
-                root, aliases, self._approved_joins, self._column_types, self._table_columns
+            relation, counts = validate_uploaded_join(
+                root,
+                aliases,
+                self._approved_joins,
+                self._column_types,
+                self._table_columns,
+                normalize_counts=normalize,
             )
-        return relation
+        return relation, counts
 
     def _validate_tables(self, root: exp.Select) -> tuple[set[str], dict[str, str]]:
         tables: set[str] = set()
@@ -197,9 +241,14 @@ class SqlValidator:
         projection_aliases: dict[str, list[exp.Expression]] = {}
         for expression in root.expressions:
             if isinstance(expression, exp.Alias):
-                projection_aliases.setdefault(expression.alias.lower(), []).append(expression.this)
+                projection_aliases.setdefault(output_field_name(expression), []).append(
+                    expression.this
+                )
+            elif isinstance(expression, exp.Count):
+                projection_aliases.setdefault("count", []).append(expression)
         for column in root.find_all(exp.Column):
             column_name = column.name.lower()
+            reference_name = output_field_name(column)
             qualifier = column.table.lower()
             if qualifier:
                 table_name = aliases.get(qualifier)
@@ -224,10 +273,22 @@ class SqlValidator:
             group_alias = isinstance(parent, exp.Group) and parent is root.args.get("group")
             # PostgreSQL ORDER BY prefers output names; GROUP BY prefers input names.
             if (order_alias or group_alias and not matching_tables) and (
-                column_name in projection_aliases
+                reference_name in projection_aliases
             ):
-                expressions = projection_aliases[column_name]
+                expressions = projection_aliases[reference_name]
                 if any(expression != expressions[0] for expression in expressions[1:]):
+                    count = next(
+                        (e.find(exp.Count) for e in expressions if e.find(exp.Count) is not None),
+                        None,
+                    )
+                    if count is not None:
+                        record_aggregate_shape(root, count)
+                        raise SqlUnsupportedError(
+                            "COUNT output reference is ambiguous",
+                            reason="calculation",
+                            code="join_aggregate",
+                            aggregate_reason="count_projection_alias_ambiguous",
+                        )
                     raise SqlValidationError(f"Ambiguous output alias: {column_name}")
                 continue
             if len(matching_tables) != 1:

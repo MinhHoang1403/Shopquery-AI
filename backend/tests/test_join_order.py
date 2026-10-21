@@ -144,7 +144,8 @@ def test_fact_identity_does_not_depend_on_alias_spelling() -> None:
 @pytest.mark.parametrize("alias", ["fact_row_count", "matched_row_count"])
 def test_count_verified_fact_join_key_has_row_semantics(bindings, alias):
     result = validator().validate(f"SELECT COUNT(p.student_id) AS {alias} {bindings}")
-    assert f"COUNT(*) AS {alias}" in result.statement
+    assert f"COUNT(p.student_id) AS {alias}" in result.statement
+    assert result.count_metrics[0].kind.value == "row_count"
     assert result.relationship_id == RELATION.relationship_id
     assert validator().validate(result.statement) == result
     assert result.fact_table == FACT
@@ -271,9 +272,13 @@ def test_assembled_aggregate_contract_and_structured_intent_drafts(
         ("SUM(p.amount)+1", "NUMERIC", "projection_expression"),
         ("COALESCE(SUM(p.amount),0)", "NUMERIC", "projection_expression"),
         ("COUNT(p.id,p.amount) AS fact_value_count", "NUMERIC", "multiple_arguments"),
-        ("COUNT(*) AS payment_count", "NUMERIC", "count_star_alias"),
-        ("COUNT(*) AS fact_value_count", "NUMERIC", "count_star_alias"),
-        ("COUNT(*)", "NUMERIC", "count_star_alias"),
+        ("COUNT(p.amount) AS fact_row_count", "NUMERIC", "count_wrong_argument_semantics"),
+        ("COUNT(*) AS fact_value_count", "NUMERIC", "count_wrong_argument_semantics"),
+        (
+            "COUNT(*) AS clash,COUNT(p.amount) AS clash",
+            "NUMERIC",
+            "count_projection_alias_ambiguous",
+        ),
         ("SUM(p.amount*2)", "NUMERIC", "argument_expression"),
         ("SUM(CAST(p.amount AS DOUBLE PRECISION))", "NUMERIC", "argument_expression"),
         ("COUNT(1) AS fact_row_count", "NUMERIC", "argument_expression"),
@@ -282,8 +287,8 @@ def test_assembled_aggregate_contract_and_structured_intent_drafts(
         ("SUM(s.id)", "NUMERIC", "dimension_column"),
         ("AVG(s.id)", "NUMERIC", "dimension_column"),
         ("COUNT(s.id) AS fact_row_count", "NUMERIC", "dimension_column"),
-        ("COUNT(p.id) AS fact_row_count", "NUMERIC", "count_column_alias"),
-        ("COUNT(p.amount) AS matched_row_count", "NUMERIC", "count_column_alias"),
+        ("COUNT(p.id) AS fact_row_count", "NUMERIC", "count_wrong_argument_semantics"),
+        ("COUNT(p.amount) AS matched_row_count", "NUMERIC", "count_wrong_argument_semantics"),
         ("MIN(p.amount)", "NUMERIC", "unsupported_function"),
         ("MAX(p.amount)", "NUMERIC", "unsupported_function"),
         ("SUM(p.amount)", "TEXT", "non_numeric_fact"),
@@ -363,7 +368,7 @@ def test_aggregate_diagnosis_never_continues_to_rag_or_hybrid_answer(route, capl
         ).chat("Synthetic refusal")
     assert result.route == RouteLabel.UNSUPPORTED
     assert result.sql is None and result.rows == [] and result.sources == []
-    assert "join_aggregate (count_column_alias)" in caplog.text
+    assert "join_aggregate (count_wrong_argument_semantics)" in caplog.text
     rag.retrieve.assert_not_called()
     executor.execute.assert_not_called()
     answer_gateway.generate_text.assert_not_called()

@@ -14,6 +14,13 @@ JoinAggregateReason = Literal[
     "non_numeric_fact",
     "identifier_measure",
     "count_semantics",
+    "count_wrong_argument_semantics",
+    "count_projection_alias_ambiguous",
+    "count_order_unprojected",
+    "count_order_non_equivalent",
+    "count_having_unsupported",
+    "count_clause_unsupported",
+    "count_group_reference",
 ]
 
 

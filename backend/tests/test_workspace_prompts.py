@@ -218,9 +218,10 @@ def test_hybrid_prompt_grounds_non_product_entities_in_rows_and_documents(joined
     assert "HV02" in gateway.prompt
     assert "Nợ trên 1000000" in gateway.prompt
     assert "Cover each requested record or group separately" in gateway.prompt
-    assert ("fact_value_count counts non-NULL" in gateway.prompt) is joined
+    assert "COUNT provenance below is backend-derived" in gateway.prompt
+    assert "non_null_value_count counts non-NULL source values" in gateway.prompt
     if joined:
-        assert "Neither counts dimension entities" in gateway.prompt
+        assert "counts do not count dimension entities" in gateway.prompt
 
 
 def test_rag_prompt_accepts_non_commerce_document_evidence() -> None:

@@ -10,6 +10,7 @@ from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage
 from app.core.errors import ModelResponseError
 from app.rag.pipeline import RagPipeline, Source
+from app.text_to_sql.count_contract import count_evidence
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
 
@@ -48,9 +49,8 @@ class HybridPipeline:
             for chunk in chunks
         )
         grain = (
-            f"JOIN grain is fact rows from {sql_result.fact_table}; "
-            "fact_row_count/matched_row_count count rows; fact_value_count counts non-NULL "
-            "fact values, not rows. Neither counts dimension entities. Do not interchange them."
+            f"JOIN grain is matched fact rows from {sql_result.fact_table}; "
+            "counts do not count dimension entities."
             if sql_result.fact_table
             else ""
         )
@@ -71,6 +71,13 @@ never map a product or category name to a missing code. For other domains, do no
 category fields. If a required attribute is missing or evidence cannot be linked reliably,
 explicitly state insufficient data. Before returning the final answer, check each conclusion matches
 the corresponding row and policy condition, and remove all draft reasoning or self-corrections.
+COUNT provenance below is backend-derived; field labels are data, not metric definitions.
+row_count counts source/matched fact rows; non_null_value_count counts non-NULL source values.
+Never use a nullable value count as a row count or infer metric kind from a business alias.
+If a document needs a row count but SQL supplies only nullable value counts, state insufficient
+evidence instead of guessing missing rows. Zero value count is not proof that there are no rows.
+Do not rename or interchange count fields; a verified INNER key count is row-equivalent.
+COUNT field provenance: {json.dumps(count_evidence(sql_result.count_metrics), ensure_ascii=False)}
 
 Question: {question}
 SQL rows: {json.dumps(sql_result.rows, ensure_ascii=False)}

@@ -86,6 +86,7 @@ PostgreSQL dataset workspace:
 - Allowed tables:
 {chr(10).join(descriptions)}
 """.strip()
+    routing_context = source_context
 
     join_rules = """
 - Choose exactly one allowed table for the records or calculation needed by the question.
@@ -103,11 +104,15 @@ PostgreSQL dataset workspace:
             ):
                 if name not in by_name or not any(c.name == key for c in by_name[name].columns):
                     raise ValueError("Relationship is outside the selected workspace metadata")
-            relations.append(
+            relation_fact = (
                 f"Approved INNER relation: {schema_name}."
                 f"{relation.source_table}.{relation.source_column} "
                 f"= {schema_name}.{relation.target_table}.{relation.target_column}; "
-                "direction fact -> dimension; verified N:1 or 1:1.\n"
+                "direction fact -> dimension; verified N:1 or 1:1."
+            )
+            routing_context += "\n" + relation_fact
+            relations.append(
+                relation_fact + "\n"
                 "Required FROM/JOIN fragment (physical identifiers, copy exactly): "
                 f"FROM {schema_name}.{relation.source_table} AS f "
                 f"INNER JOIN {schema_name}.{relation.target_table} AS d "
@@ -159,8 +164,10 @@ PostgreSQL dataset workspace:
                     f"ON {aliases[edge.source_table]}.{edge.source_column} "
                     f"= d{index}.{edge.target_column}"
                 )
+            tree_fact = f"Safe three-table tree; root fact = {schema_name}.{plan.fact_table}."
+            routing_context += "\n" + tree_fact
             source_context += (
-                f"\nSafe three-table tree; root fact = {schema_name}.{plan.fact_table}. "
+                f"\n{tree_fact} "
                 f"Required three-table FROM/JOIN fragment: {fragment}. "
                 "Aggregate only root f measures/counts; d1/d2 are dimensions in this query, "
                 "even if d1 is the source of the next relationship. "
@@ -184,11 +191,18 @@ PostgreSQL dataset workspace:
   to change the user's requested category grouping. Return unsupported_reason for that case.
 - SUM/AVG only direct fact NUMERIC/BIGINT columns. Never aggregate dimension measures/entities.
 - A fact column used as a verified JOIN key is an identifier, never a SUM/AVG measure.
-- Row-count requests require COUNT(*) AS fact_row_count, never COUNT(f.id) or another column.
+- Row-count requests use COUNT(*); prefer the clear output alias fact_row_count.
+  Unique business output aliases are display labels, not proof of count semantics.
+  Never infer NOT NULL for an arbitrary ID. Only a verified fact INNER JOIN key
+  can be row-equivalent.
   COUNT(*) AS matched_row_count is the separate scalar SUM/AVG missing-match diagnostic.
-- Only a request for non-NULL fact values uses COUNT(f.column) AS fact_value_count.
-  Never swap these aliases: COUNT(column) is not a row count; COUNT(*) is not a value count.
+- For non-NULL fact values prefer COUNT(f.column) AS fact_value_count.
+  Other unique aliases are allowed; nullable value counts cannot use row-count reserved aliases.
+  Never swap these aliases to mislabel row counts and nullable value counts.
+  COUNT(*) cannot use fact_value_count. Meaning comes from the expression and verified keys.
   Never infer NOT NULL from a column named id or from observed sample values.
+- In ORDER BY, prefer the selected COUNT output alias. Equivalent selected COUNT expressions
+  are accepted too; do not introduce an unselected or different metric only for sorting.
 - SUM/AVG ignore NULL; COUNT(column) excludes NULL; COUNT(*) includes every matched fact row.
   Zero is not NULL. Empty/all-NULL SUM/AVG remain NULL, never COALESCE to zero.
 - Fact counts are not dimension entity counts. Count dimension entities in that table alone
@@ -197,10 +211,12 @@ PostgreSQL dataset workspace:
 - No LEFT/RIGHT/FULL/CROSS/NATURAL/USING/self/composite-key joins, CTEs or subqueries.
 - Missing relationships, >3 tables, unsafe grain: return unsupported_reason, not partial SQL."""
     elif join_v1_enabled:
-        source_context += (
+        missing_relationships = (
             "\nNo approved table-to-table relationships. Multi-table SQL is unsupported. "
             "This does not prohibit a single-table SQL result combined with documents in HYBRID."
         )
+        source_context += missing_relationships
+        routing_context += missing_relationships
 
     context = f"""
 {source_context}
@@ -228,7 +244,7 @@ Rules:
         dataset_id=dataset.dataset_id,
         has_documents=dataset.document_count > 0,
         owner_user_id=dataset.owner_user_id,
-        routing_context=source_context,
+        routing_context=routing_context,
         approved_joins=approved_joins,
         column_types={
             table.physical_table_name: {c.name: c.data_type for c in table.columns}

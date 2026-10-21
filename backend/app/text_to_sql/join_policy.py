@@ -5,6 +5,14 @@ from dataclasses import dataclass
 from sqlglot import exp
 
 from app.core.errors import SqlUnsupportedError, SqlValidationError
+from app.text_to_sql.count_contract import (
+    CountMetric,
+    analyze_counts,
+    output_field_name,
+)
+from app.text_to_sql.count_contract import (
+    record_aggregate_shape as _record_aggregate_shape,
+)
 
 
 @dataclass(frozen=True)
@@ -23,7 +31,9 @@ def validate_uploaded_join(
     relationships: tuple[ApprovedJoin, ...],
     column_types: dict[str, dict[str, str]],
     table_columns: dict[str, set[str]],
-) -> ApprovedJoin:
+    *,
+    normalize_counts: bool = True,
+) -> tuple[ApprovedJoin, tuple[CountMetric, ...]]:
     joins, _ = _validate_binding_shape(root, aliases, 2)
     relationship = _approved_equality(joins[0], aliases, relationships)
     if (
@@ -35,22 +45,25 @@ def validate_uploaded_join(
             reason="calculation",
             code="join_direction",
         )
-    _validate_join_aggregates(
+    _validate_entity_groups(root, aliases, (relationship,))
+    counts = _validate_join_aggregates(
         root,
         aliases,
         relationship.source_table,
         {relationship.source_column},
         column_types,
         table_columns,
+        (relationship,),
+        normalize_counts,
     )
-    _validate_entity_groups(root, aliases, (relationship,))
-    return relationship
+    return relationship, counts
 
 
 @dataclass(frozen=True)
 class JoinTree:
     fact_table: str
     relationships: tuple[ApprovedJoin, ...]
+    count_metrics: tuple[CountMetric, ...] = ()
 
 
 def resolve_join_tree(relationships: tuple[ApprovedJoin, ...]) -> JoinTree:
@@ -93,6 +106,8 @@ def validate_uploaded_join_tree(
     relationships: tuple[ApprovedJoin, ...],
     column_types: dict[str, dict[str, str]],
     table_columns: dict[str, set[str]],
+    *,
+    normalize_counts: bool = True,
 ) -> JoinTree:
     joins, bindings = _validate_binding_shape(root, aliases, 3)
     names = set(aliases.values())
@@ -121,16 +136,18 @@ def validate_uploaded_join_tree(
         normalized.append(join)
     root.set("joins", normalized)
     _validate_binding_shape(root, aliases, 3)
-    _validate_join_aggregates(
+    _validate_entity_groups(root, aliases, plan.relationships)
+    counts = _validate_join_aggregates(
         root,
         aliases,
         plan.fact_table,
         {r.source_column for r in plan.relationships if r.source_table == plan.fact_table},
         column_types,
         table_columns,
+        plan.relationships,
+        normalize_counts,
     )
-    _validate_entity_groups(root, aliases, plan.relationships)
-    return plan
+    return JoinTree(plan.fact_table, plan.relationships, counts)
 
 
 def _validate_binding_shape(
@@ -220,8 +237,12 @@ def _validate_join_aggregates(
     fact_join_keys: set[str],
     column_types: dict[str, dict[str, str]],
     table_columns: dict[str, set[str]],
-) -> None:
-    output_names = {item.alias.lower() for item in root.expressions if item.alias}
+    relationships: tuple[ApprovedJoin, ...],
+    normalize_counts: bool,
+) -> tuple[CountMetric, ...]:
+    output_names = {output_field_name(item) for item in root.expressions if item.alias}
+    if any(isinstance(item, exp.Count) for item in root.expressions):
+        output_names.add("count")
     input_names = set().union(*(table_columns[name] for name in aliases.values()))
     for col in root.find_all(exp.Column):
         if col.table:
@@ -233,9 +254,13 @@ def _validate_join_aggregates(
             and parent is root.args.get("group")
             and col.name.lower() not in input_names
         )
-        if col.name.lower() not in output_names or not (order_alias or group_alias):
+        if output_field_name(col) not in output_names or not (order_alias or group_alias):
             raise SqlValidationError("JOIN v1 requires qualified source columns")
-    if root.find(exp.Filter) is not None:
+    filtered = root.find(exp.Filter)
+    if filtered is not None:
+        aggregate = filtered.find(exp.AggFunc)
+        if aggregate is not None:
+            _record_aggregate_shape(root, aggregate)
         raise SqlUnsupportedError(
             "JOIN aggregates cannot use FILTER",
             reason="calculation",
@@ -246,14 +271,27 @@ def _validate_join_aggregates(
         expression = projection.this if isinstance(projection, exp.Alias) else projection
         if expression.is_star:
             raise SqlValidationError("Select explicit columns in JOIN v1")
-        if expression.find(exp.AggFunc) and not isinstance(expression, exp.AggFunc):
+        aggregate = expression.find(exp.AggFunc)
+        if aggregate is not None and not isinstance(expression, exp.AggFunc):
+            _record_aggregate_shape(root, aggregate)
             raise SqlUnsupportedError(
                 "JOIN projections require direct fact aggregates",
                 reason="calculation",
                 code="join_aggregate",
                 aggregate_reason="projection_expression",
             )
+    counts = analyze_counts(
+        root,
+        aliases,
+        fact_table,
+        relationships,
+        normalize=normalize_counts,
+        input_names=input_names,
+    )
     for aggregate in root.find_all(exp.AggFunc):
+        if isinstance(aggregate, exp.Count):
+            continue
+        _record_aggregate_shape(root, aggregate)
         argument = aggregate.this
         if aggregate.expressions:
             raise SqlUnsupportedError(
@@ -262,19 +300,6 @@ def _validate_join_aggregates(
                 code="join_aggregate",
                 aggregate_reason="multiple_arguments",
             )
-        if isinstance(aggregate, exp.Count) and isinstance(argument, exp.Star):
-            output = aggregate.parent
-            if not isinstance(output, exp.Alias) or output.alias.lower() not in {
-                "fact_row_count",
-                "matched_row_count",
-            }:
-                raise SqlUnsupportedError(
-                    "JOIN COUNT(*) requires a fact-row alias",
-                    reason="calculation",
-                    code="join_aggregate",
-                    aggregate_reason="count_star_alias",
-                )
-            continue
         if not isinstance(argument, exp.Column):
             raise SqlUnsupportedError(
                 "JOIN aggregates require a direct fact column",
@@ -289,59 +314,42 @@ def _validate_join_aggregates(
                 code="join_aggregate",
                 aggregate_reason="dimension_column",
             )
-        if isinstance(aggregate, exp.Count):
-            output = aggregate.parent
-            if (
-                argument.name.lower() in fact_join_keys
-                and isinstance(output, exp.Alias)
-                and output.alias.lower() in {"fact_row_count", "matched_row_count"}
-            ):
-                # Equality in this verified INNER JOIN excludes NULL keys from matched rows.
-                aggregate.set("this", exp.Star())
-                continue
-            if not isinstance(output, exp.Alias) or output.alias.lower() != "fact_value_count":
-                raise SqlUnsupportedError(
-                    "COUNT(column) requires fact_value_count",
-                    reason="calculation",
-                    code="join_aggregate",
-                    aggregate_reason="count_column_alias",
-                )
-        else:
-            if isinstance(aggregate.parent, exp.Alias) and aggregate.parent.alias.lower() in {
-                "fact_row_count",
-                "matched_row_count",
-                "fact_value_count",
-            }:
-                raise SqlUnsupportedError(
-                    "Count aliases cannot describe a SUM/AVG measure",
-                    reason="calculation",
-                    code="join_aggregate",
-                    aggregate_reason="count_semantics",
-                )
-            if not isinstance(aggregate, (exp.Sum, exp.Avg)):
-                raise SqlUnsupportedError(
-                    "Only COUNT/SUM/AVG are supported in uploaded JOIN v1",
-                    reason="calculation",
-                    code="join_aggregate",
-                    aggregate_reason="unsupported_function",
-                )
-            if argument.name.lower() in fact_join_keys:
-                raise SqlUnsupportedError(
-                    "A verified fact identifier is not a numeric measure",
-                    reason="calculation",
-                    code="join_aggregate",
-                    aggregate_reason="identifier_measure",
-                )
-            if column_types.get(fact_table, {}).get(argument.name.lower()) not in {
-                "BIGINT",
-                "NUMERIC",
-            }:
-                raise SqlUnsupportedError(
-                    "SUM/AVG require a numeric fact column",
-                    reason="calculation",
-                    code="join_aggregate",
-                    aggregate_reason="non_numeric_fact",
-                )
+        if isinstance(aggregate.parent, exp.Alias) and aggregate.parent.alias.lower() in {
+            "fact_row_count",
+            "matched_row_count",
+            "fact_value_count",
+        }:
+            raise SqlUnsupportedError(
+                "Count aliases cannot describe a SUM/AVG measure",
+                reason="calculation",
+                code="join_aggregate",
+                aggregate_reason="count_semantics",
+            )
+        if not isinstance(aggregate, (exp.Sum, exp.Avg)):
+            raise SqlUnsupportedError(
+                "Only COUNT/SUM/AVG are supported in uploaded JOIN v1",
+                reason="calculation",
+                code="join_aggregate",
+                aggregate_reason="unsupported_function",
+            )
+        if argument.name.lower() in fact_join_keys:
+            raise SqlUnsupportedError(
+                "A verified fact identifier is not a numeric measure",
+                reason="calculation",
+                code="join_aggregate",
+                aggregate_reason="identifier_measure",
+            )
+        if column_types.get(fact_table, {}).get(argument.name.lower()) not in {
+            "BIGINT",
+            "NUMERIC",
+        }:
+            raise SqlUnsupportedError(
+                "SUM/AVG require a numeric fact column",
+                reason="calculation",
+                code="join_aggregate",
+                aggregate_reason="non_numeric_fact",
+            )
+    return counts
 
 
 def _validate_entity_groups(
@@ -350,7 +358,7 @@ def _validate_entity_groups(
     if root.find(exp.AggFunc) is None:
         return
     keys = {r.target_table: r.target_column for r in relationships}
-    projections = {item.alias.lower(): item.this for item in root.expressions if item.alias}
+    projections = {output_field_name(item): item.this for item in root.expressions if item.alias}
     grouped: set[tuple[str | None, str]] = set()
     dimensions: set[str] = set()
     group = root.args.get("group")
@@ -369,7 +377,7 @@ def _validate_entity_groups(
             if isinstance(expression, exp.Alias):
                 expression = expression.this
         elif isinstance(expression, exp.Column) and not expression.table:
-            expression = projections.get(expression.name.lower(), expression)
+            expression = projections.get(output_field_name(expression), expression)
         for column in expression.find_all(exp.Column):
             table = aliases.get(column.table.lower())
             if table in keys:

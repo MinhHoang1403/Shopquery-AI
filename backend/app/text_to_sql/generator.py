@@ -8,10 +8,12 @@ from app.text_to_sql.schema_context import BUSINESS_TIME_ZONE, SCHEMA_CONTEXT
 
 
 class SqlDraft(BaseModel):
-    sql: str = Field(description="Exactly one PostgreSQL SELECT statement")
+    sql: str = Field(
+        description="Exactly one PostgreSQL SELECT statement, or an empty string when unsupported"
+    )
     unsupported_reason: str | None = Field(
         default=None,
-        description="Reason if relationship/grain is insufficient; use empty sql",
+        description="null on success; otherwise a reason for unsupported SQL with an empty sql",
     )
 
 
@@ -29,7 +31,8 @@ class SqlGenerator:
     def generate(self, question: str) -> str:
         prompt = f"""
 You generate one read-only PostgreSQL SELECT query for ShopQuery AI.
-Return only the structured field requested by the response schema.
+Return only the structured fields requested by the response schema; use unsupported_reason=null
+for a supported query, or sql="" with a nonempty unsupported_reason for an unsupported query.
 Do not use CTEs, subqueries, comments, SELECT INTO, locks, catalog tables, or functions
 outside common aggregation and date formatting. Only use joins when relationships are
 explicitly declared and joins are allowed by the selected schema context.
@@ -44,6 +47,11 @@ Do not invent tables, columns, relationships, units, status values or business r
 Select every field needed to answer the question, including identifiers and attributes needed
 to compare records with document rules. Do not apply store revenue/completed-order rules to
 tuition, staffing, logistics, energy or other uploaded datasets.
+Produce SQL evidence only. When this workspace has documents and a question compares records
+with their rules, document conditions are applied after SQL execution using retrieved evidence.
+Never invent a document threshold or translate an unretrieved policy into a SQL filter.
+Do not refuse solely because document text is absent from this schema; still reject missing
+fields, relationships or unsupported grain. Preserve filters explicitly requested in the question.
 Use explicit arithmetic when the question defines a derived metric, such as amount_due minus
 amount_paid, only within the selected schema's supported SQL subset (JOIN v1 forbids aggregate
 arithmetic). Do not change the requested metric to fit the supported subset.

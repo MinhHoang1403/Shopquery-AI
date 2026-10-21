@@ -29,6 +29,7 @@ STAGES = frozenset(
         "join_relationship",
         "join_key",
         "join_aggregate",
+        "aggregate_normalization",
         "join_grain",
         "execution_guard",
         "sql_execution",
@@ -54,6 +55,48 @@ REASONS = STAGES | frozenset(
         "non_numeric_fact",
         "identifier_measure",
         "count_semantics",
+        "count_wrong_argument_semantics",
+        "count_projection_alias_ambiguous",
+        "count_order_unprojected",
+        "count_order_non_equivalent",
+        "count_having_unsupported",
+        "count_clause_unsupported",
+        "count_group_reference",
+    }
+)
+AGGREGATE_FACTS = {
+    "aggregate_function": frozenset({"count", "sum", "avg", "other"}),
+    "aggregate_clause": frozenset({"select", "order_by", "having", "other"}),
+    "aggregate_parent_type": frozenset(
+        {
+            "Alias",
+            "Select",
+            "Ordered",
+            "GT",
+            "GTE",
+            "LT",
+            "LTE",
+            "EQ",
+            "NEQ",
+            "Add",
+            "Sub",
+            "Mul",
+            "Div",
+            "Paren",
+            "Filter",
+            "Coalesce",
+            "Distinct",
+            "Other",
+        }
+    ),
+    "count_argument_shape": frozenset({"star", "column", "expression", "not_applicable"}),
+    "projection_alias_contract": frozenset({"valid", "missing", "invalid", "not_applicable"}),
+}
+AGGREGATE_FLAGS = frozenset(
+    {
+        "matching_selected_aggregate",
+        "normalization_candidate",
+        "normalization_applied",
     }
 )
 
@@ -89,7 +132,16 @@ def record_facts(**facts: Any) -> None:
     if trace is None:
         return
     for key, value in facts.items():
-        if key == "model" and isinstance(value, str) and value in {"gemini", "inetcloud-knowledge"}:
+        if (
+            key in AGGREGATE_FACTS
+            and isinstance(value, str)
+            and value in AGGREGATE_FACTS[key]
+            or key in AGGREGATE_FLAGS
+            and type(value) is bool
+            or key == "model"
+            and isinstance(value, str)
+            and value in {"gemini", "inetcloud-knowledge"}
+        ):
             trace.facts[key] = value
         elif (
             key == "route"
@@ -139,7 +191,7 @@ def _event(stage: str, status: str, reason: str, duration: float) -> None:
     }
     if len(trace.events) < 64:
         trace.events.append(event)
-    publish_events([event])
+        publish_events([event])
 
 
 @contextmanager
