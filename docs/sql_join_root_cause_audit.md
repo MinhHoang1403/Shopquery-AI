@@ -1,7 +1,9 @@
 # SQL/JOIN root-cause audit — 20–21/10/2026
 
-Trạng thái ban đầu: **NOT READY** cho hợp đồng entity aggregation; đang xử lý
-counterexamples, chưa có nghiệm thu live cho thay đổi của audit này.
+Kết luận hiện tại: **PARTIALLY VERIFIED**. Gate A/B PASS trong deterministic
+contract; source CI và local deployment đạt, UI quản lý dữ liệu/lịch sử đã kiểm
+tra. Gate D live AI trên hợp đồng mới **NOT RUN**, phải duyệt ngân sách riêng.
+Trạng thái lúc bắt đầu là NOT READY do các counterexamples entity aggregation.
 
 ## Baseline và ranh giới
 
@@ -103,14 +105,16 @@ cho cả hai lựa chọn model. 108 SQL cases (1/2/3 bảng × 6 domains × 3 s
 
 | Domain | Cases | Oracle / phạm vi |
 | --- | ---: | --- |
-| Học phí | 24 | TEXT keys, tên có dấu, duplicate labels, Decimal/zero/NULL |
-| Giao vận synthetic | 24 | 50 facts, 15 drivers, 5 warehouses; từng nhóm, không chỉ totals; DOCX table KPI |
-| Bán hàng | 24 | Đếm order lines, không giả đó là distinct orders |
-| Nhân sự | 24 | Hours SUM/AVG và entity identity |
-| Năng lượng | 24 | NUMERIC, TIMESTAMPTZ hai biên tháng theo Việt Nam |
-| Bảo trì holdout | 24 | Star graph fact → hai dimensions; không thêm prompt theo domain |
+| Học phí | 24 PASS / 0 FAIL | TEXT keys, tên có dấu, duplicate labels, Decimal/zero/NULL |
+| Giao vận synthetic | 24 PASS / 0 FAIL | 50 facts, 15 drivers, 5 warehouses; từng nhóm, không chỉ totals; DOCX table KPI |
+| Bán hàng | 24 PASS / 0 FAIL | Đếm order lines, không giả đó là distinct orders |
+| Nhân sự | 24 PASS / 0 FAIL | Hours SUM/AVG và entity identity |
+| Năng lượng | 24 PASS / 0 FAIL | NUMERIC, TIMESTAMPTZ hai biên tháng theo Việt Nam |
+| Bảo trì holdout | 24 PASS / 0 FAIL | Star graph fact → hai dimensions; không thêm prompt theo domain |
 
 Seeds 0/7/19 đổi row order, upload order, CSV/XLSX và random physical identifiers.
+Mỗi domain có 2 Unsupported đúng, 0 Unsupported sai trong fake-gateway harness.
+Không dùng các số này để tuyên bố tỷ lệ refusal thực tế của Knowledge/Gemini.
 Có duplicate names khác ID, zero, NULL measure, nhóm toàn NULL và dimension không
 có fact (INNER intentionally không trả unmatched dimensions). Oracle dùng mapping
 business fixture độc lập rồi PostgreSQL VALUES aggregation, không dùng lại JOIN
@@ -188,8 +192,95 @@ xác minh exact snapshot, không cộng targeted runs thành số test độc l�
 Security negative cases và Guest/auth/CSRF nằm trong unit/integration totals,
 không có pass-rate LLM suy ra từ hai nhãn fake model.
 
-C: source/test/docs chuẩn bị commit; CI và runtime evidence cập nhật sau khi
-xác minh đúng SHA. D NOT RUN: 0 live generation và 0 live embedding calls.
+C: source commit `50d7bac4e1f6af8adffeb8f317a458f637de7bb0` đã push main;
+[CI run 39530792010](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39530792010)
+SUCCESS tại đúng SHA, ba jobs success. Logs xác nhận Ruff + 594 unit,
+513 PostgreSQL integration (tổng backend 1,107), FE 66 unit + 105 browser mock,
+lint/typecheck/build PASS. Golden 144 là tập con trong 513, không cộng lần nữa.
+47 targeted cases trong bốn file audit/diagnostics/counterexamples/logistics
+cũng là tập con. Không loại hay giảm security assertions.
+D NOT RUN: 0 live generation và 0 live embedding calls.
+
+## Local deployment và bảo toàn dữ liệu
+
+Triển khai ngày 21/10 sau CI source xanh, đúng Compose `compose.yaml` +
+`.env.compose-ui.yaml` + `.env.join-v1.yaml`. So môi trường container trước/sau
+với resolved Compose: **0 khác biệt**. Chỉ build/recreate API/web, không recreate
+DB. DB đã dừng qua đêm, chỉ start lại container hiện có, không migration/reset.
+
+| Thành phần | Container / image digest | Trạng thái |
+| --- | --- | --- |
+| API | `ea2a3f3688ea` / `09fb41dc043ee14bf52de6baf9d0a611f28287c87e599632e03b2f7aeaabf9d7` | healthy |
+| Web | `2af67d527f2e` / `5ca6e17125f12574cf8cdf4d030b6a0a209007e9469b264e94e6d98056090146` | healthy, HTTP 200 |
+| DB | `511c4f5aaccc` (không đổi) | healthy |
+
+71 Python app modules khớp từng file với source local đã commit. SHA-256 map
+module paths/hashes: `715c5b01327e970c67930c304529c6bce5f44a38be82231512885f22c770c167`.
+JOIN ON, provider-data ON, Guest AI ON, Gemini `gemini-3.5-flash-lite`, fallback
+OFF: giữ nguyên giá trị trước deploy, không sửa .env/OAuth/quota/model.
+`/api/health` trả OK. Main volume `shopquery-ai_postgres_auth_20261019` và archived
+`shopquery-ai_postgres_data` nguyên vẹn; không prune/xóa volume.
+
+Fingerprint private trước deploy bao phủ **29 bảng**, bao gồm owner IDs,
+accounts/sessions/OIDC, relationships, toàn bộ legacy + uploaded rows; không dùng
+helper migration cũ vốn bỏ owner. Chỉ loại resource counters/leases vận hành.
+Full hash trước: `88845e877f215a7f7034f79788c7f9e7bbc71f9a0320004475afee5dbabedf93`.
+Sau deploy: `76e41b7f17b0614f7281f5b8c7197bd217f8e6a1250af1fdbc52504181f57cc0`.
+Hai hash **không bằng nhau**, không báo pass giả: đã dừng điều tra và xác định
+28 bảng không đổi, riêng `oidc_flows` từ 0 → 1 khi đăng nhập mới bắt đầu; tiếp
+tục quan sát có flow mới và Google account chooser bình thường. Không có flow
+cũ bị mất vì baseline bằng 0. Không khôi phục đè main.
+
+Sau đó chủ dự án hoàn tất Google login qua UI, có thể cập nhật user.updated_at,
+thêm/revoke session và consume flow đúng auth code hiện hành. Không tự tạo session
+giả hoặc xuất auth secrets. UI synthetic chỉ thêm workspace **13** và ba bảng,
+một auto edge/một manual edge. Đối chiếu lại **26 bảng nghiệp vụ cũ** với baseline
+(lọc đúng workspace 13 mới và loại ba bảng auth có login hợp lệ): tất cả counts
+và hashes khớp, aggregate hash `f73b828698b29380b28b5ae89a654df52115bef858ed7a4c246a2b11c84fa736`.
+Không diễn đạt kiểm tra này thành toàn bộ DB byte-for-byte bất biến sau login.
+
+### UI và API trên 8080
+
+- Google UI thật: tạo `Root audit synthetic · 21-10-2026`, ID 13; upload ba CSV
+  gốc synthetic 5/15/50 rows. UI hiển thị auto edge đơn → tài xế; preview cạnh
+  tài xế → kho là many-to-one, NULL/duplicates/orphans đều 0; confirm manual.
+  Reload, mở lại workspace: đủ ba tables và cả auto/manual relationships.
+- Context trên API runtime của synthetic 13: 3 allowed tables, 2 approved edges,
+  có safe three-table example, flag ON. Không ghi prompts/SQL/values vào log.
+- Google history reload giữ hai kết quả Knowledge cũ: 15 và 5 result rows,
+  model attribution còn đúng. **Không phải generation mới** trên guard mới,
+  không chứng minh Gemini live hoặc mọi JOIN đã ổn định.
+- Desktop 1280×900 và mobile 390×844: xem/confirm relationships được, mobile
+  page/panel không overflow; reset viewport sau test. Screenshot private chỉ
+  vùng synthetic relationship, không commit screenshot/logs/PII.
+- Guest UI thật: CSV preview kho hiển thị đúng, chưa hoàn tất file-commit trong
+  tab đó vì tab bị đóng rồi Google session được người dùng đăng nhập; không tự
+  logout để ép kiểm thử. **Không tuyên bố full Guest UI lifecycle mới đã PASS**.
+- Bù bằng Guest API thật trên 8080, không dùng Google cookie: ba CSV nhận đủ,
+  một auto edge + một manual edge; invalid CSRF/Origin 403, foreign Guest
+  preview 404, private datasets 401, phiên khác không thấy relationships.
+  Không gọi `/api/guest/chat`; files chỉ ở RAM/TEMP theo TTL sẵn có.
+- SQL/RAG/Hybrid/new conversation/history flows qua mock UI PASS; actual new
+  SQL/RAG/Hybrid answers trên cả hai providers ở current runtime còn Gate D.
+
+### Rollback và dữ liệu DOCX cũ
+
+Giữ image tags `shopquery-ai-api:rollback-root-audit-20261021` và
+`shopquery-ai-web:rollback-root-audit-20261021`. API image cũ config digest
+`9253bfdbcf852c1da486824f0dbf20db7cf6fee5478dd7f9f5f40f42af57855b`, web cũ
+`f5e708802bd3c79a992c17f0c5f068b31e3760d20b327fa6217a334a1a222354`.
+Rollback ứng dụng cần tag lại hai images rồi Compose recreate **chỉ API/web**;
+không restore DB và không dùng git reset làm mất work. Có thể tắt JOIN bằng
+override riêng `SQL_JOIN_V1_ENABLED=false` và recreate API nếu cần; không đổi
+provider gates/models. Tắt flag không phải database rollback. Không tự thực hiện
+rollback trong lượt audit khi runtime đang healthy.
+
+Parser mới chỉ sửa lần ingest mới. Tài liệu DOCX đã ingest trước sửa có thể vẫn
+thiếu table chunks; file-content duplicate protection chặn re-upload y hệt.
+Chưa xóa/re-ingest tài liệu hay embeddings main. Muốn cập nhật các tài liệu cũ
+phải duyệt riêng đúng nguồn, phương án giữ lịch sử và embedding budget; không
+gợi ý bypass dedup hoặc sửa file chỉ để vượt kiểm tra. Workspace 13 được để lại
+cho kiểm thử tiếp, không tự xóa dữ liệu/lịch sử. Không VPS/Langfuse/framework mới.
 
 ## Kế hoạch Gate D (chưa được duyệt, không thực hiện)
 
