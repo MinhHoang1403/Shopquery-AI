@@ -77,6 +77,23 @@ def verify(files: list[str]) -> dict:
                 json.dumps(remote, sort_keys=True).encode()
             ).hexdigest()
             item["source_modules"] = len(remote)
+        if service == "web" and actual.get("SHOPQUERY_DEV_CONTAINER") == "1":
+            local = source_manifest(ROOT / "frontend" / "src", (".ts", ".tsx", ".css"))
+            code = (
+                "const fs=require('fs'),path=require('path'),crypto=require('crypto');"
+                "const root='/app/src',out={};function walk(dir){"
+                "for(const entry of fs.readdirSync(dir,{withFileTypes:true})){"
+                "const p=path.join(dir,entry.name);if(entry.isDirectory())walk(p);"
+                "if(entry.isFile()&&/\\.(ts|tsx|css)$/.test(p))"
+                "out[path.relative(root,p).split(path.sep).join('/')]=''+"
+                "crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');"
+                "}}walk(root);console.log(JSON.stringify(out));"
+            )
+            remote = json.loads(command(["docker", "exec", container_id, "node", "-e", code]))
+            item["source_mismatches"] = sorted(
+                k for k in local.keys() | remote.keys() if local.get(k) != remote.get(k)
+            )
+            item["source_files"] = len(remote)
         report["services"][service] = item
     return report
 
