@@ -50,6 +50,20 @@ def test_invalid_operator_cycle_and_node_bounds(nodes):
         )
 
 
+def test_reused_boolean_nodes_cannot_expand_exponentially():
+    with pytest.raises(ValidationError, match="expansion"):
+        QueryPlan(
+            source="t0",
+            fields=[PlanField(alias="n", aggregate="row_count")],
+            expressions=[
+                PlanExpression(operation="literal", value="1", value_type="NUMERIC"),
+                PlanExpression(operation="eq", arguments=["t0.c0", "e0"]),
+                PlanExpression(operation="and", arguments=["e1"] * 100),
+                PlanExpression(operation="or", arguments=["e2"] * 100),
+            ],
+        )
+
+
 @pytest.mark.parametrize(
     "operation,arguments,value_type,value",
     [

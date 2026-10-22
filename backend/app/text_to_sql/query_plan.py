@@ -87,16 +87,24 @@ class QueryPlan(BaseModel):
     @model_validator(mode="after")
     def bounded_expressions(self) -> "QueryPlan":
         depths: dict[str, int] = {}
+        expanded_sizes: dict[str, int] = {}
         for index, expression in enumerate(self.expressions):
             depth = 1
+            expanded_size = 1
             for reference in expression.arguments:
                 if reference.startswith("e"):
                     if reference not in depths:
                         raise ValueError("Expressions must reference earlier nodes")
                     depth = max(depth, depths[reference] + 1)
+                    expanded_size += expanded_sizes[reference]
+                else:
+                    expanded_size += 1
             if depth > 8:
                 raise ValueError("Expression depth exceeds eight")
+            if expanded_size > 512:
+                raise ValueError("Expression expansion exceeds 512 nodes")
             depths[f"e{index}"] = depth
+            expanded_sizes[f"e{index}"] = expanded_size
         return self
 
 
