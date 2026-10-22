@@ -7,7 +7,13 @@ from pydantic import ValidationError
 from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.pipeline import TextToSqlPipeline
-from app.text_to_sql.query_plan import PlanDecision, PlanExpression, PlanField, QueryPlan
+from app.text_to_sql.query_plan import (
+    PlanDecision,
+    PlanExpression,
+    PlanField,
+    PlanFilter,
+    QueryPlan,
+)
 from tests.test_query_compiler import field, source
 from tests.test_three_table_join import PS, SC, TYPES
 from tests.test_workspace_prompts import tuition_context
@@ -132,3 +138,29 @@ def test_aggregate_and_group_grain_are_checked_before_postgres():
                 ],
             )
         )
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_temporal_filters_cannot_compare_formatted_strings(structured):
+    context = replace(
+        tuition_context(),
+        table_columns={"tuition_fixture": {"instant"}},
+        column_types={"tuition_fixture": {"instant": "TIMESTAMPTZ"}},
+    )
+    nodes = [PlanExpression(operation="month_label", arguments=["t0.c0"])]
+    if structured:
+        nodes += [
+            PlanExpression(operation="literal", value="2026-10", value_type="TEXT"),
+            PlanExpression(operation="gte", arguments=["e0", "e1"]),
+        ]
+    plan = QueryPlan(
+        source="t0",
+        fields=[PlanField(alias="n", aggregate="row_count")],
+        expressions=nodes,
+        where="e2" if structured else None,
+        filters=[]
+        if structured
+        else [PlanFilter(reference="e0", operator="gte", values=["2026-10"])],
+    )
+    with pytest.raises(SqlValidationError):
+        QueryCompiler(context).compile(plan)

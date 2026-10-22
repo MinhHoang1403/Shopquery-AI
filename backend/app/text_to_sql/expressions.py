@@ -21,6 +21,7 @@ class ExpressionBinding:
     aggregate: bool = False
     ungrouped: frozenset[str] = frozenset()
     constant: Any = None
+    temporal_transform: bool = False
 
 
 class ExpressionCompiler:
@@ -91,7 +92,7 @@ class ExpressionCompiler:
         ungrouped = frozenset().union(*(arg.ungrouped for arg in args))
         if op in {"sum", "avg", "min", "max", "value_count"}:
             arg = args[0]
-            if aggregate or arg.kind == "BOOLEAN":
+            if aggregate or arg.kind == "BOOLEAN" and op != "value_count":
                 raise SqlValidationError("Invalid aggregate argument or nested aggregate")
             if op in {"sum", "avg"} and arg.kind not in NUMERIC:
                 raise SqlValidationError("Numeric aggregate requires numeric values")
@@ -177,6 +178,18 @@ class ExpressionCompiler:
                     func.to_char(value, "YYYY-MM" if op == "month_label" else "YYYY-MM-DD"),
                     "TEXT",
                     ungrouped=ungrouped,
+                    temporal_transform=True,
                 )
-            return ExpressionBinding(func.date_trunc(op, value), "TIMESTAMP", ungrouped=ungrouped)
-        return ExpressionBinding(sql, "BOOLEAN", aggregate, ungrouped)
+            return ExpressionBinding(
+                func.date_trunc(op, value),
+                "TIMESTAMP",
+                ungrouped=ungrouped,
+                temporal_transform=True,
+            )
+        return ExpressionBinding(
+            sql,
+            "BOOLEAN",
+            aggregate,
+            ungrouped,
+            temporal_transform=any(arg.temporal_transform for arg in args),
+        )

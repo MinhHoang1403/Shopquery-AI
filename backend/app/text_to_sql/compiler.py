@@ -192,7 +192,11 @@ class QueryCompiler:
                 binding = expressions.resolve(field.reference)
                 expression = binding.sql
                 if field.aggregate:
-                    if binding.aggregate or binding.kind == "BOOLEAN":
+                    if (
+                        binding.aggregate
+                        or binding.kind == "BOOLEAN"
+                        and field.aggregate != "value_count"
+                    ):
                         raise SqlValidationError("Invalid nested aggregate")
                     if field.aggregate in {"sum", "avg"} and binding.kind not in {
                         "BIGINT",
@@ -252,14 +256,14 @@ class QueryCompiler:
         query = select(*outputs.values()).select_from(source)
         if plan.where:
             predicate = expressions.resolve(plan.where)
-            if predicate.kind != "BOOLEAN" or predicate.aggregate:
+            if predicate.kind != "BOOLEAN" or predicate.aggregate or predicate.temporal_transform:
                 raise SqlValidationError("WHERE requires a nonaggregate predicate")
             query = query.where(predicate.sql)
         predicates = []
         for index, condition in enumerate(plan.filters):
             binding = expressions.resolve(condition.reference)
-            if binding.aggregate:
-                raise SqlValidationError("WHERE cannot contain an aggregate")
+            if binding.aggregate or binding.temporal_transform:
+                raise SqlValidationError("WHERE requires unchanged temporal source columns")
             target = binding.sql
             if condition.operator in {"is_null", "is_not_null"}:
                 if condition.values:

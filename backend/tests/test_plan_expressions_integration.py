@@ -209,6 +209,34 @@ def test_numeric_aggregate_and_fact_expression_oracles(expression_database):
     }
 
 
+def test_count_nullable_boolean_counts_false_as_present():
+    settings = get_settings()
+    configure_guest_access(get_setup_engine())
+    file = parse_guest_file("flags.csv", b"Key,Active\na,true\nb,false\nc,\n", None, settings)
+    assert file.table.columns[1].data_type == "BOOLEAN"
+    database = GuestSqlDatabase(settings, [file])
+    context = DatasetSqlContext(
+        "",
+        {"table_1": {"active", "key"}},
+        {"table_1": "pg_temp"},
+        column_types={"table_1": {"active": "BOOLEAN", "key": "TEXT"}},
+    )
+    compiler = QueryCompiler(context)
+    plan = QueryPlan(
+        source="t0",
+        expressions=[node("value_count", "t0.c0")],
+        fields=[
+            PlanField(reference="t0.c0", aggregate="value_count", alias="present"),
+            PlanField(reference="e0", alias="also_present"),
+            PlanField(aggregate="row_count", alias="rows"),
+        ],
+    )
+    try:
+        assert run(database, compiler, plan) == [{"present": 2, "also_present": 2, "rows": 3}]
+    finally:
+        database.close()
+
+
 @pytest.mark.parametrize(
     "change",
     [
