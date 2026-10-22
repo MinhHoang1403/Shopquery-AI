@@ -1,0 +1,228 @@
+from dataclasses import dataclass, replace
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
+from operator import eq, ge, gt, le, lt, ne
+from typing import Any
+
+from sqlalchemy import Column, MetaData, Table, and_, bindparam, func, select
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql.elements import ColumnElement
+from sqlglot import parse_one
+
+from app.core.errors import SqlUnsupportedError, SqlValidationError
+from app.datasets.context import DatasetSqlContext
+from app.datasets.repository import SQL_TYPES
+from app.text_to_sql.join_policy import ApprovedJoin, resolve_join_tree
+from app.text_to_sql.query_plan import QueryPlan
+from app.text_to_sql.validator import SqlValidator, ValidatedSql
+
+
+@dataclass(frozen=True)
+class SchemaReferences:
+    tables: dict[str, str]
+    columns: dict[str, tuple[str, str]]
+    relationships: dict[str, ApprovedJoin]
+
+    @classmethod
+    def from_context(cls, context: DatasetSqlContext) -> "SchemaReferences":
+        tables = {f"t{i}": name for i, name in enumerate(sorted(context.table_columns))}
+        columns = {
+            f"{key}.c{i}": (name, column)
+            for key, name in tables.items()
+            for i, column in enumerate(sorted(context.table_columns[name]))
+        }
+        return cls(
+            tables,
+            columns,
+            {
+                f"r{i}": edge
+                for i, edge in enumerate(
+                    sorted(context.approved_joins, key=lambda edge: edge.relationship_id)
+                )
+            },
+        )
+
+
+@dataclass(frozen=True)
+class CompiledQuery:
+    validated: ValidatedSql
+    parameters: dict[str, Any]
+
+
+class QueryCompiler:
+    """Compile the bounded plan subset, then reuse all existing SQL safety checks."""
+
+    def __init__(self, context: DatasetSqlContext) -> None:
+        self._context = context
+        self.references = SchemaReferences.from_context(context)
+        self._validator = SqlValidator(
+            context.table_columns,
+            context.allowed_schemas,
+            max_tables=(
+                3 if len(context.approved_joins) >= 2 else 2 if context.approved_joins else 1
+            ),
+            approved_joins=context.approved_joins,
+            column_types=context.column_types,
+            join_v1_enabled=bool(context.approved_joins),
+        )
+
+    def compile(self, plan: QueryPlan) -> CompiledQuery:
+        try:
+            return self._compile(plan)
+        except (KeyError, ValueError, TypeError, InvalidOperation) as exc:
+            raise SqlValidationError("Query plan references or values are invalid") from exc
+
+    def _compile(self, plan: QueryPlan) -> CompiledQuery:
+        root = self.references.tables[plan.source]
+        if len(set(plan.relationships)) != len(plan.relationships):
+            raise SqlValidationError("Duplicate relationship requirements")
+        edges = tuple(self.references.relationships[key] for key in plan.relationships)
+        if edges:
+            names = {n for e in edges for n in (e.source_table, e.target_table)}
+            available = tuple(
+                e
+                for e in self._context.approved_joins
+                if e.source_table in names and e.target_table in names
+            )
+            if set(edges) != set(available):
+                raise SqlUnsupportedError("Ambiguous approved JOIN path", code="join_graph")
+            tree = resolve_join_tree(edges) if len(edges) == 2 else None
+            if root != (tree.fact_table if tree else edges[0].source_table):
+                raise SqlUnsupportedError("Plan source is not the verified fact", code="join_grain")
+            edges = tree.relationships if tree else edges
+        metadata = MetaData()
+        used_tables = {root} | {n for e in edges for n in (e.source_table, e.target_table)}
+        tables = {
+            name: Table(
+                name,
+                metadata,
+                *(
+                    Column(column, SQL_TYPES[self._context.column_types[name][column]]())
+                    for column in sorted(self._context.table_columns[name])
+                ),
+                schema=self._context.allowed_schemas[name],
+            ).alias(f"q{i}")
+            for i, name in enumerate(sorted(used_tables))
+        }
+
+        def column(reference: str) -> ColumnElement:
+            table, name = self.references.columns[reference]
+            if table not in tables:
+                raise SqlValidationError("Column is outside the selected JOIN path")
+            return tables[table].c[name]
+
+        aliases = [field.alias for field in plan.fields]
+        if len(set(aliases)) != len(aliases):
+            raise SqlValidationError("Plan output aliases must be unique")
+        outputs = {}
+        for field in plan.fields:
+            if field.aggregate == "row_count":
+                if field.reference is not None:
+                    raise SqlValidationError("Row count does not take a value column")
+                expression = func.count()
+            else:
+                if field.reference is None:
+                    raise SqlValidationError("A column reference is required")
+                expression = column(field.reference)
+                if field.aggregate:
+                    aggregate = {
+                        "sum": func.sum,
+                        "avg": func.avg,
+                        "min": func.min,
+                        "max": func.max,
+                        "value_count": func.count,
+                    }[field.aggregate]
+                    expression = aggregate(expression)
+            outputs[field.alias] = expression.label(field.alias)
+        source = tables[root]
+        for edge in edges:
+            source = source.join(
+                tables[edge.target_table],
+                tables[edge.source_table].c[edge.source_column]
+                == tables[edge.target_table].c[edge.target_column],
+            )
+        query = select(*outputs.values()).select_from(source)
+        predicates = []
+        for index, condition in enumerate(plan.filters):
+            target = column(condition.reference)
+            if condition.operator in {"is_null", "is_not_null"}:
+                if condition.values:
+                    raise SqlValidationError("NULL predicates cannot take values")
+                predicates.append(
+                    target.is_(None) if condition.operator == "is_null" else target.is_not(None)
+                )
+                continue
+            if not condition.values or (condition.operator != "in" and len(condition.values) != 1):
+                raise SqlValidationError("Filter arity is invalid")
+            table, name = self.references.columns[condition.reference]
+            kind = self._context.column_types[table][name]
+            values = [self._value(value, kind) for value in condition.values]
+            parameter = bindparam(
+                f"value_{index}",
+                values if condition.operator == "in" else values[0],
+                type_=target.type,
+                expanding=condition.operator == "in",
+            )
+            comparisons = {"eq": eq, "ne": ne, "gt": gt, "gte": ge, "lt": lt, "lte": le}
+            predicates.append(
+                target.in_(parameter)
+                if condition.operator == "in"
+                else comparisons[condition.operator](target, parameter)
+            )
+        if predicates:
+            query = query.where(and_(*predicates))
+        if plan.group_by:
+            query = query.group_by(*(column(ref) for ref in plan.group_by))
+        for sort in plan.sort:
+            expression = outputs[sort.field]
+            ordered = expression.desc() if sort.direction == "desc" else expression.asc()
+            query = query.order_by(
+                ordered.nulls_first() if sort.nulls == "first" else ordered.nulls_last()
+            )
+        if plan.limit:
+            query = query.limit(plan.limit)
+        dialect = postgresql.dialect(paramstyle="named")
+        compiled = query.compile(dialect=dialect, compile_kwargs={"render_postcompile": True})
+        # Validate a safely rendered preview so current COUNT/grain analysis sees actual AST values.
+        preview = str(query.compile(dialect=dialect, compile_kwargs={"literal_binds": True}))
+        checked = self._validator.validate(preview)
+        if checked.statement != self._validator.validate(checked.statement).statement:
+            raise SqlValidationError("Final SQL validation is not stable")
+        parameterized = self._validator.validate(str(compiled))
+        if (parameterized.tables, parameterized.fact_table, parameterized.count_metrics) != (
+            checked.tables,
+            checked.fact_table,
+            checked.count_metrics,
+        ):
+            raise SqlValidationError("Bound SQL changed validated query provenance")
+        if parse_one(str(compiled), read="postgres").sql(dialect="postgres") != (
+            parameterized.statement
+        ):
+            raise SqlValidationError("Compiled query would require AST normalization")
+        return CompiledQuery(replace(parameterized, statement=str(compiled)), dict(compiled.params))
+
+    @staticmethod
+    def _value(value: str, kind: str) -> Any:
+        if kind == "NUMERIC":
+            result = Decimal(value)
+            if not result.is_finite():
+                raise ValueError("Non-finite numeric")
+            return result
+        if kind == "BIGINT":
+            return int(value)
+        if kind == "BOOLEAN":
+            if value not in {"true", "false"}:
+                raise ValueError("Invalid boolean")
+            return value == "true"
+        if kind == "DATE":
+            return date.fromisoformat(value)
+        if kind in {"TIMESTAMP", "TIMESTAMPTZ"}:
+            result = datetime.fromisoformat(value)
+            if kind == "TIMESTAMPTZ" and result.tzinfo is None:
+                raise ValueError("A timezone is required")
+            if kind == "TIMESTAMP" and result.tzinfo is not None:
+                raise ValueError("Cannot discard a timestamp offset")
+            return result
+        if kind != "TEXT":
+            raise ValueError("Unknown registry type")
+        return value
