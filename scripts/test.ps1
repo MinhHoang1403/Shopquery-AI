@@ -7,7 +7,14 @@ $taskKeys = @('DATABASE_SETUP_URL', 'DATABASE_READONLY_URL', 'SHOPQUERY_TEST_DAT
 $taskSaved = @{}
 foreach ($taskKey in $taskKeys) { $taskSaved[$taskKey] = [Environment]::GetEnvironmentVariable($taskKey) }
 Push-Location "$taskRoot/backend"
+$taskLock = $null
+$taskLockHeld = $false
 try {
+    if ($Integration) {
+        $taskLock = [System.Threading.Mutex]::new($false, 'Local\ShopQueryAIIntegrationTests')
+        $taskLockHeld = $taskLock.WaitOne(0)
+        if (-not $taskLockHeld) { throw 'Another integration run owns this test database.' }
+    }
     $env:GEMINI_API_KEY = ''
     $env:INETCLOUD_BASE_URL = ''
     $env:AI_GEMINI_FALLBACK_ENABLED = 'false'
@@ -27,6 +34,8 @@ try {
     & "$taskRoot/backend/.venv/Scripts/python.exe" -m pytest -m $taskMarker @Tests -q --tb=short
     if ($LASTEXITCODE -ne 0) { throw 'Offline tests failed.' }
 } finally {
+    if ($taskLockHeld) { $taskLock.ReleaseMutex() }
+    if ($null -ne $taskLock) { $taskLock.Dispose() }
     foreach ($taskKey in $taskKeys) {
         if ($null -eq $taskSaved[$taskKey]) {
             Remove-Item -LiteralPath "Env:$taskKey" -ErrorAction SilentlyContinue

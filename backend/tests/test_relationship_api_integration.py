@@ -192,7 +192,7 @@ def test_join_api_pipelines_and_persisted_history(
     response = result.json()["assistant_message"]["response"]
     assert response["error"] is None and response["route"] == pipeline
     assert response["used_model"] == model and selected == [model]
-    assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 4}[pipeline]
+    assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 3}[pipeline]
     if pipeline != "RAG":
         assert response["rows"] == [{"total": "5"}] and "INNER JOIN" in response["sql"]
         assert (
@@ -280,6 +280,7 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
         f"INNER JOIN uploaded_data.{fact} f ON f.key=d.value"
     )
     gateway, embedder = Mock(), Mock()
+    embedder.embed_query.return_value = [1.0] + [0.0] * 767
     gateway.generate_structured.side_effect = [
         RouteDecision(route=RouteLabel(route), reason="Synthetic aggregate refusal"),
         SqlDraft(sql=sql),
@@ -317,4 +318,7 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
         assert private not in sent.text and private not in history.text
     assert gateway.generate_structured.call_count == 2
     gateway.generate_text.assert_not_called()
-    embedder.embed_query.assert_not_called()
+    if route == "HYBRID":
+        embedder.embed_query.assert_called_once_with("Synthetic count")
+    else:
+        embedder.embed_query.assert_not_called()

@@ -133,7 +133,7 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
         relationships=(record,),
     )
     assert result.route == route and result.used_model == model and selected == [model]
-    assert len(calls) == {RouteLabel.SQL: 3, RouteLabel.RAG: 2, RouteLabel.HYBRID: 4}[route]
+    assert len(calls) == {RouteLabel.SQL: 3, RouteLabel.RAG: 2, RouteLabel.HYBRID: 3}[route]
     if route != RouteLabel.RAG:
         assert result.rows == [{"total": "50"}]
     if route != RouteLabel.SQL:

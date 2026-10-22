@@ -238,7 +238,7 @@ def test_gate_d_questions_oracle_and_authenticated_history(
         ("unsupported", "generator_unsupported", None),
     ],
 )
-def test_gate_d_hypotheses_stay_fail_closed_before_retrieval(
+def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
     gate_d_workspace, monkeypatch, mutation: str, code: str, reason: str | None
 ) -> None:
     accounts, dataset, _, embedder = gate_d_workspace  # noqa: F811
@@ -286,7 +286,7 @@ def test_gate_d_hypotheses_stay_fail_closed_before_retrieval(
     )
     assert calls == ["RouteDecision", "SqlDraft"]
     assert not trace.facts["execution_reached"]
-    assert not any(e["stage"] == "document_retrieval" for e in trace.events)
+    assert any(e["stage"] == "document_retrieval" for e in trace.events)
     assert any(
         e["stage"] == code and (reason is None or e["reason"] == reason) for e in trace.events
     )
