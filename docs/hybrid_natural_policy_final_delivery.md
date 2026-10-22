@@ -2,7 +2,7 @@
 
 Ngày 22/10/2026, Asia/Ho_Chi_Minh. Workspace `C:\Work\ShopQuery AI`.
 
-**Checkpoint: DEPLOYED TO 8080 — GIT DELIVERY IN PROGRESS — LIVE PROVIDER NOT VERIFIED.**
+**HYBRID NATURAL POLICY PATCH DEPLOYED — COMMITTED/PUSHED — LIVE PROVIDER NOT VERIFIED.**
 Không live Knowledge/Gemini/embedding. Các kết quả live lịch sử KH FAIL/GH NOT RUN
 không được đổi thành PASS bởi các fake-provider tests dưới đây.
 
@@ -154,11 +154,18 @@ production parser/evaluator hoặc generated SQL làm expected.
 
 UUID physical names, shuffled upload/table/column order, duplicate names, source IDs,
 NULL/all-NULL/zero/equal values, reversed decisions và presentation aliases được giữ.
-Natural unit suite có22 explicit operator expectations ×4 aggregates, locale/boundary/
+Natural-policy và consistency unit suites có22 explicit operator expectations ×4 aggregates, locale/boundary/
 long Decimal, wrong owner/workspace, partial/missing scope, mutated body/hash, fake
 citations, missing entities, count-row/value mismatch, wrong root/metric/key/unit,
 unknown exceptions/qualifiers, conflicting JSON/prose và instruction-bearing text.
 Unrelated retrieved document không được dùng làm authority/citation cho verdict.
+
+Riêng acceptance prose mới có **40 PostgreSQL supported-positive scenarios**
+(36 six-domain +4 KH original) và **41 explicit unsafe-negative scenarios**:
+16 PostgreSQL original mutations +20 unit binding/authority mutations +2 unit COUNT
+kind mismatches +1 unknown heading +2 ambiguous decimal formats. Các số này là các
+nhóm đã chỉ rõ trong tests, không cộng toàn bộ regression negatives cũ hoặc các
+lượt chạy lại; positive grammar/operator unit cases được báo riêng trong127 unit mới.
 
 Hai policy fixtures cũ không-logistics được viết rõ source metric/ID/all-row scope,
 neutral source-bound titles theo grammar mới, giữ thresholds/oracles/security/filters.
@@ -193,7 +200,8 @@ New natural unit expectations độc lập operator dictionary của production;
 Disposable container duy nhất: `shopquery-ai-natural-policy-test`,
 `b7cbfb781030b6cc232e64df76127ec3903a8f47ee4b61b53ed7e9ced5d4c253`,
 label natural-policy-20261022, loopback15443, tmpfs data, Mounts=[], không main hoặc
-archived volume. DB `shopquery_test_natural_policy`, fresh full `_final`.
+archived volume. DB `shopquery_test_natural_policy`, fresh full `_final` (lượt lỗi)
+và `_final_v2` (lượt chốt PASS).
 Test safety guard giữ nguyên, provider credentials/endpoints blank trong process,
 fake generation/embeddings/mocked HTTP; không gọi providers thật.
 Sau full PASS đã inspect lại exactID/label/no mounts/tmpfs/loopback15443 rồi stop/rm
@@ -288,10 +296,29 @@ Private before/candidate/after/protected JSON tại
 ## G. GitHub delivery
 
 Baseline main HEAD `d9bcce165d6af2124866770c2879a74cbb3a207c`; repo PUBLIC,
-default main đã verify. Working tree giữ reviewed changes của task consistency cũ
-và task hiện tại; chưa stage/commit/push tại checkpoint. Không force/reset/rebase.
-Exact stage inventory, secret scan, remote SHA và CI đúng SHA sẽ được ghi sau
-deployment PASS. Không lấy CI cũ hoặc local tests làm CI mới.
+default main đã verify. Source commit **`82116d50f53b219858767706a251201db91e2a86`**:
+`fix(hybrid): verify natural-language numeric policies and consistent decisions`.
+Push fast-forward lên `origin main`, remote SHA exact-match; không force/reset/rebase.
+Commit33 reviewed files, gồm consistency changes trước đó, natural-policy source/
+tests, original synthetic prose, README/handoff và các báo cáo lịch sử; không có
+unstaged changes sau source commit. App manifest trong source/runtime vẫn a6e093c3….
+
+Staged diff check PASS; quét toàn bộ33 staged blobs cho credential patterns và
+private runtime key/OAuth/Knowledge endpoint/invited-email values trong memory:
+**0 findings**. Không in values. Đây là kiểm tra theo phạm vi đã nêu, không chứng
+nhận scanner tìm được mọi secret có thể tồn tại. Private evidence không được stage.
+
+[CI source commit82116d5](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39714299509)
+**COMPLETED / SUCCESS**, cả3 jobs Backend quality /PostgreSQL integration /
+Frontend quality đều success. Đối chiếu đúng headSha82116d50…; log CI ghi974 unit
+PASS (17.10s),778 PG PASS (130.68s), frontend lint/typecheck/unit/build/UI mock PASS.
+Không manual rerun hoặc sửa workflow. CI live provider không được chạy.
+
+Báo cáo này được hoàn thiện bằng một docs-only publication commit sau source commit;
+không đổi app/tests hay runtime. SHA/remote/CI của commit tài liệu cuối được kiểm
+riêng trong lời bàn giao để tránh tự tham chiếu SHA của chính file báo cáo. Trước
+publication chỉ còn đúng file báo cáo này modified; sau commit phải clean. Không
+lấy CI source82116d5 làm bằng chứng CI docs commit khi nó chưa hoàn tất.
 
 Không public .env/secrets/backups/JUnit/provider transcripts/customer rows/cookies/
 tokens/logs/venv/cache/build output. Original policy fixture chỉ là dữ liệu synthetic
