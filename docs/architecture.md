@@ -6,22 +6,22 @@ persistence và frontend layout được giữ nguyên.
 
 ```text
 Question + authorized workspace → structured QueryRouter
-  SQL: schema context → SqlDraft → SQLGlot/JOIN/COUNT guards → reader → answer
+  SQL: authorized catalog → PlanDecision → QueryCompiler → SQLGlot/JOIN/COUNT guards
+       → reader with bound parameters → answer
   RAG: embedding → scoped pgvector → optional local BGE → cited answer
   HYBRID: retrieval/rerank → policy requirements → SQL → verified decisions → answer
   UNSUPPORTED: clarification/insufficient evidence using the existing API contract
 ```
 
-SQL production vẫn dùng `SqlGenerator`. **QueryPlan compiler chưa nối vào factories**:
-còn thiếu biểu diễn công thức/nhóm ngày đã được hỗ trợ. Không có runtime switch
-giữa hai engines. Gate thay thế cụ thể nằm trong báo cáo Giai đoạn 1.
+Default, authenticated, Guest và Hybrid SQL dùng cùng QueryPlanner/QueryCompiler.
+Generator SQL tự do đã được gỡ; không có fallback sang SQL do model sinh.
 
 | Module | Trách nhiệm |
 | --- | --- |
 | `api`, `auth`, `conversations` | HTTP contracts, sessions/CSRF, owner-bound persistence |
 | `datasets/context.py` | Schema registry, headers/types, categories, approved relations |
-| `text_to_sql/generator.py` | Structured draft theo schema và retrieved evidence |
-| `query_plan.py`, `compiler.py` | Backend-issued IDs, SQLAlchemy subset compiler; chưa production |
+| `text_to_sql/planner.py` | PlanDecision từ authorized catalog IDs và retrieved evidence |
+| `query_plan.py`, `expressions.py`, `compiler.py` | Bounded typed DAG, type/grain checks và SQLAlchemy compilation |
 | `validator.py`, `join_policy.py`, `count_contract.py` | AST authorization, exact keys, grain, COUNT provenance |
 | `executor.py` | Read-only transaction, timeout, row cap, lossless values |
 | `rag/repository.py`, `reranker.py` | Owner/workspace retrieval, original sources, offline ranking |
@@ -38,6 +38,8 @@ Public API giữ `answer`, `route`, `sql`, `rows`, `sources`, error và model at
 NUMERIC là decimal strings; NULL khác zero; COUNT provenance từ AST, không từ alias.
 Router chưa có CLARIFY riêng; dùng phản hồi `UNSUPPORTED` hiện hữu.
 
-QueryPlan candidate resolve backend table/column/relation IDs, fields/metrics,
-AND filters, grouping, sorting, limit; bind values và kiểm cả preview/bound AST qua
-validator hiện hữu. Chưa có LLM plan generation/schema pruning trong production.
+QueryPlan giới hạn 80 expression nodes, depth8, 30 selected fields. Không pruning
+mất columns/relationships: catalog chỉ gồm workspace đã được authorize. Arithmetic,
+AND/OR, SUM HAVING, date grouping/formatting và typed ranges compile thành bound SQL.
+Literal evidence SQL được render an toàn và validate riêng cho Hybrid/public response;
+executor chỉ chạy statement có bind parameters. Hai AST phải giữ cùng provenance.

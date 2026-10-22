@@ -7,14 +7,19 @@ from typing import Any
 from sqlalchemy import Column, MetaData, Table, and_, bindparam, func, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import BindTyping
+from sqlalchemy.sql import visitors
 from sqlalchemy.sql.elements import ColumnElement
-from sqlglot import parse_one
+from sqlalchemy.sql.functions import FunctionElement
+from sqlglot import exp, parse_one
 
 from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.datasets.context import DatasetSqlContext
 from app.datasets.repository import SQL_TYPES
+from app.text_to_sql.count_contract import analyze_counts
+from app.text_to_sql.expressions import ExpressionBinding, ExpressionCompiler
 from app.text_to_sql.join_policy import ApprovedJoin, resolve_join_tree
 from app.text_to_sql.query_plan import QueryPlan
+from app.text_to_sql.schema_context import default_sql_context
 from app.text_to_sql.validator import SqlValidator, ValidatedSql
 
 
@@ -48,23 +53,42 @@ class SchemaReferences:
 class CompiledQuery:
     validated: ValidatedSql
     parameters: dict[str, Any]
+    evidence_sql: str
 
 
 class QueryCompiler:
     """Compile the bounded plan subset, then reuse all existing SQL safety checks."""
 
-    def __init__(self, context: DatasetSqlContext) -> None:
+    def __init__(
+        self,
+        context: DatasetSqlContext,
+        *,
+        default_schema: bool = False,
+        join_v1_enabled: bool | None = None,
+    ) -> None:
+        if default_schema and context != default_sql_context():
+            raise ValueError("Default schema compilation requires the declared demo catalog")
+        self._default_schema = default_schema
+        self._join_v1_enabled = (
+            bool(context.approved_joins) if join_v1_enabled is None else join_v1_enabled
+        )
         self._context = context
         self.references = SchemaReferences.from_context(context)
         self._validator = SqlValidator(
             context.table_columns,
             context.allowed_schemas,
             max_tables=(
-                3 if len(context.approved_joins) >= 2 else 2 if context.approved_joins else 1
+                None
+                if default_schema
+                else 3
+                if len(context.approved_joins) >= 2
+                else 2
+                if context.approved_joins
+                else 1
             ),
             approved_joins=context.approved_joins,
             column_types=context.column_types,
-            join_v1_enabled=bool(context.approved_joins),
+            join_v1_enabled=self._join_v1_enabled,
         )
 
     def compile(self, plan: QueryPlan) -> CompiledQuery:
@@ -74,10 +98,21 @@ class QueryCompiler:
             raise SqlValidationError("Query plan references or values are invalid") from exc
 
     def _compile(self, plan: QueryPlan) -> CompiledQuery:
+        plan = QueryPlan.model_validate(plan.model_dump())
         root = self.references.tables[plan.source]
+        if plan.relationships and self._join_v1_enabled and not self.references.relationships:
+            raise SqlUnsupportedError(
+                "A JOIN requires a confirmed relationship",
+                reason="relationship",
+                code="join_relationship",
+            )
         if len(set(plan.relationships)) != len(plan.relationships):
             raise SqlValidationError("Duplicate relationship requirements")
         edges = tuple(self.references.relationships[key] for key in plan.relationships)
+        if not self._default_schema and len(edges) > 2:
+            raise SqlUnsupportedError(
+                "Uploaded JOIN supports at most three tables", code="join_graph"
+            )
         if edges:
             names = {n for e in edges for n in (e.source_table, e.target_table)}
             available = tuple(
@@ -87,10 +122,30 @@ class QueryCompiler:
             )
             if set(edges) != set(available):
                 raise SqlUnsupportedError("Ambiguous approved JOIN path", code="join_graph")
-            tree = resolve_join_tree(edges) if len(edges) == 2 else None
-            if root != (tree.fact_table if tree else edges[0].source_table):
-                raise SqlUnsupportedError("Plan source is not the verified fact", code="join_grain")
-            edges = tree.relationships if tree else edges
+            if self._default_schema:
+                visited, pending, ordered = {root}, list(edges), []
+                while pending:
+                    edge = next(
+                        (
+                            e
+                            for e in pending
+                            if e.source_table in visited and e.target_table not in visited
+                        ),
+                        None,
+                    )
+                    if edge is None:
+                        raise SqlUnsupportedError("Invalid demo fact tree", code="join_graph")
+                    ordered.append(edge)
+                    visited.add(edge.target_table)
+                    pending.remove(edge)
+                edges = tuple(ordered)
+            else:
+                tree = resolve_join_tree(edges) if len(edges) == 2 else None
+                if root != (tree.fact_table if tree else edges[0].source_table):
+                    raise SqlUnsupportedError(
+                        "Plan source is not the verified fact", code="join_grain"
+                    )
+                edges = tree.relationships if tree else edges
         metadata = MetaData()
         used_tables = {root} | {n for e in edges for n in (e.source_table, e.target_table)}
         tables = {
@@ -101,7 +156,7 @@ class QueryCompiler:
                     Column(column, SQL_TYPES[self._context.column_types[name][column]]())
                     for column in sorted(self._context.table_columns[name])
                 ),
-                schema=self._context.allowed_schemas[name],
+                schema=self._context.allowed_schemas.get(name),
             ).alias(f"q{i}")
             for i, name in enumerate(sorted(used_tables))
         }
@@ -112,20 +167,38 @@ class QueryCompiler:
                 raise SqlValidationError("Column is outside the selected JOIN path")
             return tables[table].c[name]
 
+        def column_kind(reference: str) -> str:
+            table, name = self.references.columns[reference]
+            return self._context.column_types[table][name]
+
+        expressions = ExpressionCompiler(plan.expressions, column, column_kind, self._value)
+
         aliases = [field.alias for field in plan.fields]
-        if len(set(aliases)) != len(aliases):
+        if len(set(aliases)) != len(aliases) or any(
+            len(name.encode("utf-8")) > 63 for name in aliases
+        ):
             raise SqlValidationError("Plan output aliases must be unique")
         outputs = {}
+        output_bindings = []
         for field in plan.fields:
             if field.aggregate == "row_count":
                 if field.reference is not None:
                     raise SqlValidationError("Row count does not take a value column")
                 expression = func.count()
+                binding = ExpressionBinding(expression, "BIGINT", True)
             else:
                 if field.reference is None:
                     raise SqlValidationError("A column reference is required")
-                expression = column(field.reference)
+                binding = expressions.resolve(field.reference)
+                expression = binding.sql
                 if field.aggregate:
+                    if binding.aggregate or binding.kind == "BOOLEAN":
+                        raise SqlValidationError("Invalid nested aggregate")
+                    if field.aggregate in {"sum", "avg"} and binding.kind not in {
+                        "BIGINT",
+                        "NUMERIC",
+                    }:
+                        raise SqlValidationError("A numeric measure is required")
                     aggregate = {
                         "sum": func.sum,
                         "avg": func.avg,
@@ -134,7 +207,41 @@ class QueryCompiler:
                         "value_count": func.count,
                     }[field.aggregate]
                     expression = aggregate(expression)
+                    kind = (
+                        "BIGINT"
+                        if field.aggregate == "value_count"
+                        else "NUMERIC"
+                        if field.aggregate in {"sum", "avg"}
+                        else binding.kind
+                    )
+                    binding = ExpressionBinding(expression, kind, True)
+            output_bindings.append((field.reference, binding))
+            if field.alias in {"matched_row_count", "fact_row_count", "fact_value_count"} and (
+                not isinstance(expression, FunctionElement) or expression.name != "count"
+            ):
+                raise SqlValidationError("Count aliases require a direct count metric")
+            if self._default_schema and edges:
+                for aggregate in visitors.iterate(expression):
+                    if not isinstance(aggregate, FunctionElement) or aggregate.name not in {
+                        "sum",
+                        "avg",
+                        "min",
+                        "max",
+                    }:
+                        continue
+                    for argument in visitors.iterate(aggregate.clauses):
+                        table = getattr(argument, "table", None)
+                        if table is not None and table.original.name != root:
+                            raise SqlUnsupportedError(
+                                "Cannot aggregate a demo dimension measure", code="join_grain"
+                            )
             outputs[field.alias] = expression.label(field.alias)
+        has_aggregate = any(binding.aggregate for _, binding in output_bindings)
+        grouped_columns = {ref for ref in plan.group_by if ref in self.references.columns}
+        if has_aggregate or plan.group_by:
+            for reference, binding in output_bindings:
+                if reference not in plan.group_by and not binding.ungrouped <= grouped_columns:
+                    raise SqlValidationError("Projection is outside the grouping grain")
         source = tables[root]
         for edge in edges:
             source = source.join(
@@ -143,9 +250,17 @@ class QueryCompiler:
                 == tables[edge.target_table].c[edge.target_column],
             )
         query = select(*outputs.values()).select_from(source)
+        if plan.where:
+            predicate = expressions.resolve(plan.where)
+            if predicate.kind != "BOOLEAN" or predicate.aggregate:
+                raise SqlValidationError("WHERE requires a nonaggregate predicate")
+            query = query.where(predicate.sql)
         predicates = []
         for index, condition in enumerate(plan.filters):
-            target = column(condition.reference)
+            binding = expressions.resolve(condition.reference)
+            if binding.aggregate:
+                raise SqlValidationError("WHERE cannot contain an aggregate")
+            target = binding.sql
             if condition.operator in {"is_null", "is_not_null"}:
                 if condition.values:
                     raise SqlValidationError("NULL predicates cannot take values")
@@ -155,8 +270,7 @@ class QueryCompiler:
                 continue
             if not condition.values or (condition.operator != "in" and len(condition.values) != 1):
                 raise SqlValidationError("Filter arity is invalid")
-            table, name = self.references.columns[condition.reference]
-            kind = self._context.column_types[table][name]
+            kind = binding.kind
             values = [self._value(value, kind) for value in condition.values]
             parameter = bindparam(
                 f"value_{index}",
@@ -173,9 +287,29 @@ class QueryCompiler:
         if predicates:
             query = query.where(and_(*predicates))
         if plan.group_by:
-            query = query.group_by(*(column(ref) for ref in plan.group_by))
+            grouped = [expressions.resolve(ref) for ref in plan.group_by]
+            if any(item.aggregate or item.kind == "BOOLEAN" for item in grouped):
+                raise SqlValidationError("Invalid grouping expression")
+            query = query.group_by(*(item.sql for item in grouped))
+        if plan.having:
+            predicate = expressions.resolve(plan.having)
+            if predicate.kind != "BOOLEAN" or not predicate.aggregate:
+                raise SqlValidationError("HAVING requires an aggregate predicate")
+            if not predicate.ungrouped <= grouped_columns:
+                raise SqlValidationError("HAVING is outside the grouping grain")
+            query = query.having(predicate.sql)
         for sort in plan.sort:
-            expression = outputs[sort.field]
+            if sort.field in outputs:
+                expression = outputs[sort.field]
+            else:
+                binding = expressions.resolve(sort.field)
+                if (
+                    (has_aggregate or plan.group_by)
+                    and sort.field not in plan.group_by
+                    and (not binding.ungrouped <= grouped_columns)
+                ):
+                    raise SqlValidationError("Sort is outside the grouping grain")
+                expression = binding.sql
             ordered = expression.desc() if sort.direction == "desc" else expression.asc()
             query = query.order_by(
                 ordered.nulls_first() if sort.nulls == "first" else ordered.nulls_last()
@@ -191,6 +325,27 @@ class QueryCompiler:
         if checked.statement != self._validator.validate(checked.statement).statement:
             raise SqlValidationError("Final SQL validation is not stable")
         parameterized = self._validator.validate(str(compiled))
+        if self._default_schema and edges:
+
+            def provenance(validated: ValidatedSql) -> ValidatedSql:
+                ast = parse_one(validated.statement, read="postgres")
+                aliases = {table.alias_or_name: table.name for table in ast.find_all(exp.Table)}
+                counts = analyze_counts(
+                    ast,
+                    aliases,
+                    root,
+                    edges,
+                    normalize=False,
+                    input_names=set().union(*self._context.table_columns.values()),
+                )
+                return replace(
+                    validated,
+                    fact_table=root,
+                    count_metrics=counts,
+                    relationship_ids=tuple(edge.relationship_id for edge in edges),
+                )
+
+            checked, parameterized = provenance(checked), provenance(parameterized)
         if (parameterized.tables, parameterized.fact_table, parameterized.count_metrics) != (
             checked.tables,
             checked.fact_table,
@@ -201,7 +356,11 @@ class QueryCompiler:
             parameterized.statement
         ):
             raise SqlValidationError("Compiled query would require AST normalization")
-        return CompiledQuery(replace(parameterized, statement=str(compiled)), dict(compiled.params))
+        return CompiledQuery(
+            replace(parameterized, statement=str(compiled)),
+            dict(compiled.params),
+            checked.statement,
+        )
 
     @staticmethod
     def _value(value: str, kind: str) -> Any:
@@ -211,7 +370,10 @@ class QueryCompiler:
                 raise ValueError("Non-finite numeric")
             return result
         if kind == "BIGINT":
-            return int(value)
+            integer = int(value)
+            if not -(2**63) <= integer < 2**63:
+                raise ValueError("Integer is outside PostgreSQL BIGINT bounds")
+            return integer
         if kind == "BOOLEAN":
             if value not in {"true", "false"}:
                 raise ValueError("Invalid boolean")

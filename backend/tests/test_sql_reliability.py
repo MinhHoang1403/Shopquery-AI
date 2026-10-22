@@ -12,8 +12,9 @@ from app.datasets.parser import ColumnSpec
 from app.datasets.repository import DatasetInfo, DatasetTableInfo
 from app.routing.router import RouteLabel
 from app.routing.service import DatasetChatService
-from app.text_to_sql.generator import SqlDraft, SqlGenerator
 from app.text_to_sql.join_policy import ApprovedJoin
+from app.text_to_sql.planner import QueryPlanner
+from app.text_to_sql.query_plan import PlanDecision, PlanField, QueryPlan
 from app.text_to_sql.validator import SqlValidator
 from tests.test_dataset_routing import FakeRouter
 from tests.test_workspace_prompts import tuition_context
@@ -66,13 +67,13 @@ def test_join_prompt_includes_exact_from_fragment_even_when_dimension_is_listed_
         dataset, schema_name="pg_temp", approved_joins=(relation,), join_v1_enabled=True
     )
     gateway = Mock()
-    gateway.generate_structured.return_value = SqlDraft(sql="SELECT 1")
-    SqlGenerator(gateway, "2026-10-20", context.schema_context).generate("Tổng theo học viên?")
+    gateway.generate_structured.return_value = PlanDecision(
+        plan=QueryPlan(source="t0", fields=[PlanField(alias="n", aggregate="row_count")])
+    )
+    QueryPlanner(gateway, "2026-10-20", context).generate("Tổng theo học viên?")
     prompt = gateway.generate_structured.call_args.args[0]
-    assert (
-        "FROM pg_temp.payments AS f INNER JOIN pg_temp.students AS d ON f.student_id = d.student_id"
-    ) in prompt
-    assert "Do not reverse FROM and JOIN" in prompt
+    assert '"source": "t0.c' in prompt and '"target": "t1.c' in prompt
+    assert "source fact to target dimension" in prompt
     assert "FROM pg_temp.payments" not in base.schema_context
 
 

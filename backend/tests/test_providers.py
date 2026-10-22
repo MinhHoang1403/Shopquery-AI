@@ -312,12 +312,13 @@ def test_models_discovery_is_fixed_and_does_not_call_upstream(monkeypatch, contr
 
 def test_sql_only_build_does_not_instantiate_gemini(monkeypatch):
     from app.dependencies import build_chat_service
+    from tests.plan_fixtures import decision_from_sql
 
     class Gateway:
         def generate_structured(self, prompt, response_model):
             if response_model is RouteDecision:
                 return response_model(route="SQL", reason="Rows")
-            return response_model(sql="SELECT COUNT(*) AS total FROM products")
+            return decision_from_sql("SELECT COUNT(*) AS total FROM products", prompt)
 
         def generate_text(self, prompt):
             return "150 products"
@@ -329,7 +330,7 @@ def test_sql_only_build_does_not_instantiate_gemini(monkeypatch):
     monkeypatch.setattr("app.ai.providers.GeminiGateway", forbidden_gemini)
     monkeypatch.setattr(
         "app.dependencies.SqlExecutor",
-        lambda *args: SimpleNamespace(execute=lambda query: [{"total": 150}]),
+        lambda *args: SimpleNamespace(execute=lambda query, parameters: [{"total": 150}]),
     )
     result = build_chat_service(settings(gemini_api_key=None)).chat("Count products")
     assert result.used_model == "inetcloud-knowledge"

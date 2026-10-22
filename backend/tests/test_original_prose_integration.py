@@ -6,9 +6,10 @@ import pytest
 
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from tests.gate_d_fixture import QUESTIONS
 from tests.hybrid_fixtures import classification_draft
+from tests.plan_fixtures import decision_from_sql
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_gate_d_replay_integration import (
     add_policy,
@@ -53,14 +54,13 @@ def test_original_prose_exact_kh_acceptance_and_history(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.HYBRID, reason="Offline original prose")
-            if schema is SqlDraft:
+            if schema is PlanDecision:
                 sql = draft_sql(dataset, "H")
                 if unsafe == "ambiguous_binding":
                     sql = sql.replace("COUNT(*)", "SUM(f.phi_giao_vnd) AS other_total,COUNT(*)", 1)
-                return SqlDraft(
-                    sql=sql.replace("AS fact_row_count", "AS so_dong_don")
-                    if business_alias
-                    else sql
+                return decision_from_sql(
+                    sql.replace("AS fact_row_count", "AS so_dong_don") if business_alias else sql,
+                    prompt,
                 )
             assert schema is HybridAnswerDraft
             candidates.extend(
@@ -108,7 +108,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
         assert response["sql"] is None and "Qualified:" not in response["answer"]
         assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
         assert actors.b.client.get(path).status_code == 404
-        assert calls == ["RouteDecision", "SqlDraft", "HybridAnswerDraft"]
+        assert calls == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]
         return
     assert response["error"] is None, response["error"]
     assert response["route"] == "HYBRID" and response["rows"] == expected
@@ -123,4 +123,4 @@ def test_original_prose_exact_kh_acceptance_and_history(
         assert line.endswith("| Qualified |" if status == "qualified" else "| Not qualified |")
     assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
     assert actors.b.client.get(path).status_code == 404
-    assert calls == ["RouteDecision", "SqlDraft", "HybridAnswerDraft"]
+    assert calls == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]

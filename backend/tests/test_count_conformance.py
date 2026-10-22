@@ -8,7 +8,6 @@ from sqlglot import exp, parse_one
 from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.text_to_sql.count_contract import count_evidence
 from app.text_to_sql.join_policy import ApprovedJoin
-from app.text_to_sql.pipeline import TextToSqlPipeline
 from tests.count_conformance import (
     POSITIVE_COUNTS,
     UNSAFE_COUNTS,
@@ -16,6 +15,7 @@ from tests.count_conformance import (
     selections,
     unsafe_query,
 )
+from tests.sql_validation_fixtures import ValidationPipeline
 from tests.test_three_table_join import CHAIN_ORDERS, PC, PS, validator
 
 
@@ -73,7 +73,7 @@ def test_unsafe_count_conformance_never_reaches_guard_or_executor(case):
     )
     sql = unsafe_query(base, case, key="student_id", measure="amount", identifier="payment_id")
     executor, gateway, guard = Mock(), Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(generate=Mock(return_value=sql)), validator(), executor, gateway, guard
     )
     with pytest.raises(SqlValidationError) as caught:
@@ -137,7 +137,7 @@ def test_grounding_uses_count_provenance_not_a_misleading_business_label():
     gateway, executor = Mock(), Mock()
     executor.execute.return_value = [{"total_orders": 0}]
     gateway.generate_text.return_value = "Insufficient row-count evidence"
-    result = TextToSqlPipeline(
+    result = ValidationPipeline(
         Mock(generate=Mock(return_value=sql)), validator(), executor, gateway
     ).run("How many rows?")
     prompt = gateway.generate_text.call_args.args[0]
@@ -156,7 +156,7 @@ def test_grounding_uses_count_provenance_not_a_misleading_business_label():
 )
 def test_count_cannot_authorize_missing_edges_or_a_two_fact_fanout(relationships):
     executor, gateway = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(generate=Mock(return_value=f"SELECT COUNT(*) AS business_count {CHAIN_ORDERS[0]}")),
         validator(relationships),
         executor,
@@ -172,7 +172,7 @@ def test_single_table_count_does_not_hide_unknown_star_output_collisions():
     from app.text_to_sql.validator import SqlValidator
 
     executor, gateway = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(generate=Mock(return_value="SELECT *,COUNT(*) FROM uploaded_data.payments")),
         SqlValidator({"payments": {"count"}}, {"payments": "uploaded_data"}, max_tables=1),
         executor,

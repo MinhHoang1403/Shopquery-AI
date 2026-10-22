@@ -30,6 +30,7 @@ ALLOWED_FUNCTIONS = {
     "extract",
     "max",
     "min",
+    "nullif",
     "or",
     "round",
     "sum",

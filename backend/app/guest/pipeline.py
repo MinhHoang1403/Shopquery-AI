@@ -29,11 +29,11 @@ from app.rag.repository import DocumentScope, RetrievedChunk
 from app.routing.hybrid import HybridPipeline
 from app.routing.router import QueryRouter
 from app.routing.service import ChatResult, DatasetChatService
+from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.generator import SqlGenerator
 from app.text_to_sql.join_policy import ApprovedJoin
 from app.text_to_sql.pipeline import TextToSqlPipeline
-from app.text_to_sql.validator import SqlValidator
+from app.text_to_sql.planner import QueryPlanner
 
 
 class GuestSqlDatabase:
@@ -247,15 +247,13 @@ def run_guest_chat(
             )
             sql_pipeline = (
                 TextToSqlPipeline(
-                    SqlGenerator(selected, settings.demo_reference_date, context.schema_context),
-                    SqlValidator(
-                        context.table_columns,
-                        context.allowed_schemas,
-                        max_tables=3 if len(joins) >= 2 else 2 if joins else 1,
-                        approved_joins=tuple(joins),
-                        column_types=context.column_types,
+                    QueryPlanner(
+                        selected,
+                        settings.demo_reference_date,
+                        context,
                         join_v1_enabled=settings.sql_join_v1_enabled,
                     ),
+                    QueryCompiler(context, join_v1_enabled=settings.sql_join_v1_enabled),
                     SqlExecutor(sql.engine, min(settings.sql_statement_timeout_ms, 3000), 100),
                     selected,
                 )

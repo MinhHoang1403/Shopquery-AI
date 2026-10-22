@@ -16,10 +16,11 @@ from app.datasets.repository import DatasetRepository
 from app.dependencies import build_dataset_chat_service, build_workspace_context
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.generator import SqlDraft, SqlGenerator
-from app.text_to_sql.pipeline import TextToSqlPipeline
+from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import SqlValidator
 from tests.auth_helpers import TEST_OWNER
+from tests.plan_fixtures import decision_from_sql
+from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 from tests.test_dataset_parser import parse
 
 pytestmark = pytest.mark.integration
@@ -123,8 +124,8 @@ def test_reverse_draft_matches_postgres_oracle_through_authenticated_context(
             if schema is RouteDecision:
                 assert context.routing_context in prompt
                 return RouteDecision(route=RouteLabel.SQL, reason="Synthetic contract")
-            assert schema is SqlDraft and context.schema_context in prompt
-            return SqlDraft(sql=reverse)
+            assert schema is PlanDecision and all(name in prompt for name in context.table_columns)
+            return decision_from_sql(reverse, prompt)
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -137,7 +138,7 @@ def test_reverse_draft_matches_postgres_oracle_through_authenticated_context(
     response = build_dataset_chat_service(
         settings.model_copy(update={"ai_default_model": model}), context
     ).chat("Tổng và trung bình thanh toán theo học viên")
-    assert calls == ["RouteDecision", "SqlDraft", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision", "answer"]
     assert response.route == RouteLabel.SQL and response.used_model == model
     assert not response.fallback_used
     assert response.sql.startswith("SELECT")
@@ -179,7 +180,7 @@ def test_normalized_query_still_uses_owner_workspace_and_revocation_guard(
         repository.delete(other.dataset_id)
     relations.delete(dataset.dataset_id, UUID(record.relationship_id))
     executor, gateway = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(generate=Mock(return_value=reverse)),
         join_validator(context),
         executor,
@@ -355,7 +356,7 @@ def test_aggregate_drafts_guarded_execution_and_independent_fact_oracle(
         + (" GROUP BY s.id ORDER BY s.id" if grouped else "")
     )
     gateway = Mock()
-    gateway.generate_structured.return_value = SqlDraft(sql=sql)
+    gateway.generate_structured.return_value = SqlFixture(sql=sql)
     gateway.generate_text.return_value = "Synthetic aggregate evidence only"
     executor = Mock(wraps=SqlExecutor(get_readonly_engine(), 1000, 100))
     guard = Mock(
@@ -363,8 +364,8 @@ def test_aggregate_drafts_guarded_execution_and_independent_fact_oracle(
             dataset.dataset_id, context.approved_joins, validated
         )
     )
-    pipeline = TextToSqlPipeline(
-        SqlGenerator(gateway, "2026-10-20", context.schema_context),
+    pipeline = ValidationPipeline(
+        FixtureGenerator(gateway, "2026-10-20", context.schema_context),
         join_validator(context),
         executor,
         gateway,
@@ -438,15 +439,15 @@ def test_recorded_synthetic_draft_replay(authenticated_workspace, case: str, cod
 
         context = replace(context, approved_joins=())
     gateway = Mock()
-    gateway.generate_structured.return_value = SqlDraft(sql=draft)
+    gateway.generate_structured.return_value = SqlFixture(sql=draft)
     executor = Mock(wraps=SqlExecutor(get_readonly_engine(), 1000, 100))
     guard = Mock(
         side_effect=lambda validated: relations.execution_guard(
             dataset.dataset_id, context.approved_joins, validated
         )
     )
-    pipeline = TextToSqlPipeline(
-        SqlGenerator(gateway, "2026-10-20", context.schema_context),
+    pipeline = ValidationPipeline(
+        FixtureGenerator(gateway, "2026-10-20", context.schema_context),
         join_validator(context),
         executor,
         gateway,
@@ -550,7 +551,7 @@ def test_real_workspace_metadata_diagnoses_each_aggregate_refusal_before_guard(
         (dimension_binding, fact_binding) if reverse else (fact_binding, dimension_binding)
     )
     gateway = Mock()
-    gateway.generate_structured.return_value = SqlDraft(
+    gateway.generate_structured.return_value = SqlFixture(
         sql=f"SELECT {projection} FROM {first} INNER JOIN {second} ON p.student_id=s.id"
     )
     executor = Mock(wraps=SqlExecutor(get_readonly_engine(), 1000, 100))
@@ -559,8 +560,8 @@ def test_real_workspace_metadata_diagnoses_each_aggregate_refusal_before_guard(
             dataset.dataset_id, context.approved_joins, validated
         )
     )
-    pipeline = TextToSqlPipeline(
-        SqlGenerator(gateway, "2026-10-20", context.schema_context),
+    pipeline = ValidationPipeline(
+        FixtureGenerator(gateway, "2026-10-20", context.schema_context),
         join_validator(context),
         executor,
         gateway,
@@ -673,8 +674,10 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
                 if schema is RouteDecision:
                     assert context.routing_context in prompt
                     return RouteDecision(route=RouteLabel.SQL, reason="Synthetic intent fixture")
-                assert schema is SqlDraft and context.schema_context in prompt
-                return SqlDraft(sql=sql)
+                assert schema is PlanDecision and all(
+                    name in prompt for name in context.table_columns
+                )
+                return decision_from_sql(sql, prompt)
 
             def generate_text(self, prompt):
                 calls.append("answer")
@@ -689,7 +692,7 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
             assert refused.route == RouteLabel.UNSUPPORTED and refused.sql is None
             assert refused.rows == [] and "liên kết" in refused.answer
             executor.assert_not_called()
-        assert calls == ["RouteDecision", "SqlDraft"]
+        assert calls == ["RouteDecision", "PlanDecision"]
         calls.clear()
         confirm(selected)
         context = build_workspace_context(settings, selected, repository)
@@ -701,7 +704,7 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
         result = build_dataset_chat_service(settings, context).chat("Synthetic tuition JOIN")
         assert result.route == RouteLabel.SQL and result.used_model == model
         assert result.fallback_used is False
-        assert calls == ["RouteDecision", "SqlDraft", "answer"]
+        assert calls == ["RouteDecision", "PlanDecision", "answer"]
         with get_setup_engine().connect() as connection:
             totals = connection.execute(
                 text(

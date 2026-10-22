@@ -16,7 +16,6 @@ from app.database.session import get_readonly_engine, get_setup_engine
 from app.datasets.relationship_repository import RelationshipRepository
 from app.dependencies import build_workspace_context
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import ValidatedSql
 from tests.auth_helpers import TEST_OWNER
 from tests.count_conformance import (
@@ -27,6 +26,7 @@ from tests.count_conformance import (
     unsafe_query,
 )
 from tests.join_domains import DOMAINS
+from tests.sql_validation_fixtures import ValidationPipeline
 from tests.test_dataset_parser import parse
 from tests.test_join_domains_integration import (
     domain_workspace,  # noqa: F401
@@ -142,7 +142,7 @@ def test_count_conformance_postgresql(domain_workspace, tables_count):  # noqa: 
         base = golden_sql(domain, dataset, tables_count)
         unauthorized = scoped_validator(replace(context, approved_joins=()))
         blocked_executor, blocked_gateway = Mock(), Mock()
-        pipeline = TextToSqlPipeline(
+        pipeline = ValidationPipeline(
             Mock(
                 generate=Mock(
                     return_value=count_query(domain, dataset, tables_count, POSITIVE_COUNTS[0])[0]
@@ -161,7 +161,7 @@ def test_count_conformance_postgresql(domain_workspace, tables_count):  # noqa: 
                 base, case, key=domain.keys[1], measure=domain.measure, identifier="event_id"
             )
             rejected_executor, gateway, rejected_guard = Mock(), Mock(), Mock()
-            pipeline = TextToSqlPipeline(
+            pipeline = ValidationPipeline(
                 Mock(generate=Mock(return_value=sql)),
                 checked,
                 rejected_executor,
@@ -202,7 +202,7 @@ def test_count_provenance_never_authorizes_owner_workspace_or_revision(domain_wo
         ]
         for build_guard in guards:
             executor, gateway = Mock(), Mock()
-            pipeline = TextToSqlPipeline(
+            pipeline = ValidationPipeline(
                 Mock(generate=Mock(return_value=sql)),
                 scoped_validator(context),
                 executor,

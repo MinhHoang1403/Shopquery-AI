@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import ValidatedSql
+from tests.sql_validation_fixtures import ValidationPipeline
 
 
 class StaticGenerator:
@@ -53,7 +53,7 @@ def test_grounding_prompt_preserves_empty_null_zero_and_rows(
     rows: list[dict[str, Any]],
 ) -> None:
     gateway = GroundingGateway()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         generator=StaticGenerator(),
         validator=PassthroughValidator(),
         executor=StaticExecutor(rows),

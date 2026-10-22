@@ -15,10 +15,11 @@ from app.dependencies import (
 from app.rag.upload_parser import parse_document_file
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from tests.auth_helpers import TEST_OWNER
 from tests.hybrid_fixtures import assert_decision_summary, classification_draft, rule_block
 from tests.join_domains import DOMAINS
+from tests.plan_fixtures import decision_from_sql
 from tests.test_guest_integration import OfflineEmbedder
 from tests.test_join_domains_integration import (
     domain_workspace,  # noqa: F401
@@ -100,13 +101,13 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.HYBRID, reason="Scripted policy test")
-            if schema is SqlDraft:
-                assert "document conditions are applied after SQL execution" in prompt
-                assert "Preserve filters explicitly requested" in prompt
+            if schema is PlanDecision:
+                assert "retrieve required metrics, grouping identifiers" in prompt
+                assert "filters only if requested" in prompt
                 assert json.dumps(policy, ensure_ascii=False)[1:-1] in prompt
                 assert str(threshold) in prompt
                 assert "policy_candidates_not_verified" in prompt
-                return SqlDraft(sql=sql)
+                return decision_from_sql(sql, prompt)
             assert schema is HybridAnswerDraft
             if business_aliases:
                 assert '"field": "event_rows", "kind": "row_count"' in prompt
@@ -136,6 +137,6 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
     assert response.used_model == model and not response.fallback_used
     assert len(response.sources) == 1 and response.sources[0].source_file == filename
     assert response.sources[0].content == policy
-    assert calls == ["RouteDecision", "SqlDraft", "HybridAnswerDraft"]
+    assert calls == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]
     assert trace.facts["sql_validated"] and trace.facts["execution_reached"]
     assert ("2025-09-01" in response.sql) is filtered

@@ -10,6 +10,13 @@ relationship revisions/key proof. Reader role, read-only transaction, timeout v�
 row cap giữ nguyên. Không nới validator để model trả lời được. Runtime setup role
 cho metadata trong kiến trúc cũ chưa được coi là least-privilege production-audited.
 
+Model chỉ sinh PlanDecision với catalog IDs và bounded expression operations; không
+nhận SQL fragments, physical identifiers hoặc JOIN ON từ model. Compiler kiểm types,
+grouping, depth/node bounds và COUNT aliases trước SQLGlot. Giá trị luôn bind vào
+executor; rendered literal SQL chỉ dùng làm evidence sau validation. NULLIF được
+thêm vào allowlist cho numeric division với mẫu số động bằng zero; COUNT/JOIN
+policies và các assertions từ chối cũ được giữ.
+
 Retrieval lọc owner/workspace trước nearest-neighbor. Reranker chỉ trả original
 objects, không đổi source content/scope/IDs. Hybrid kiểm whole-document hash,
 source identity, exact metric/Decimal và coverage; model verdict không override

@@ -37,3 +37,11 @@ ranking/scope/fallback; Hybrid evidence sequence, binding, decisions/citations;
 auth/Guest isolation. Real-model smoke dùng synthetic text/local weights, không
 chứng minh retrieval quality. Giai đoạn 2 cần independent holdout, comprehensive
 benchmark/regression, retrieval quality/latency, live providers và release gates.
+
+`test_plan_providers.py` đi qua real Knowledge/Gemini serializers với HTTP mock;
+`test_plan_factory_integration.py` nối adapter → planner → compiler → PostgreSQL.
+`test_plan_expressions_integration.py` kiểm arithmetic/calendar/OR/HAVING bằng oracle
+độc lập. Fixed SQL adversarial fixtures dùng `sql_validation_fixtures.py` để kiểm
+validator/execution/grounding; chúng không được tính là provider-planning proof.
+`plan_fixtures.py` chỉ chuyển static regression SQL sang mocked PlanDecision, giữ
+nguyên expected rows; helper này không được import từ production.

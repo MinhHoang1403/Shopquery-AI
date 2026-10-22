@@ -7,8 +7,8 @@ from sqlglot import parse_one
 
 from app.core.errors import SqlValidationError
 from app.text_to_sql.join_policy import ApprovedJoin
-from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import SqlValidator
+from tests.sql_validation_fixtures import ValidationPipeline
 
 TYPES = {
     "payments": {
@@ -105,7 +105,7 @@ def test_star_uses_payments_as_fact_independent_of_from_position(reverse):
 )
 def test_dimension_or_unsafe_aggregate_never_reaches_guard_executor_or_answer(projection):
     executor, gateway, guard = Mock(), Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(generate=Mock(return_value=f"SELECT {projection} {CHAIN_ORDERS[0]}")),
         validator(),
         executor,

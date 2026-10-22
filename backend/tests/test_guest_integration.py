@@ -22,8 +22,9 @@ from app.guest.worker import parse_guest_file, run_isolated
 from app.rag.pipeline import RagAnswerDraft
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from tests.hybrid_fixtures import explanation_draft
+from tests.plan_fixtures import decision_from_sql
 
 pytestmark = pytest.mark.integration
 
@@ -44,11 +45,12 @@ class GuestGateway:
         if schema is RouteDecision:
             assert "Never JOIN tables" not in prompt
             return RouteDecision(route=self.route, reason="Fake gateway, real isolated sources")
-        if schema is SqlDraft:
-            return SqlDraft(
-                sql="SELECT count(*) FROM public.users"
+        if schema is PlanDecision:
+            return decision_from_sql(
+                "SELECT count(*) FROM public.users"
                 if self.unsafe
-                else "SELECT SUM(fee) AS total FROM pg_temp.table_1"
+                else "SELECT SUM(fee) AS total FROM pg_temp.table_1",
+                prompt,
             )
         if schema is RagAnswerDraft:
             return RagAnswerDraft(answer="Ngưỡng là 250.", used_chunk_ids=[1])

@@ -20,8 +20,9 @@ from app.datasets.context import DatasetSqlContext, build_dataset_sql_context
 from app.datasets.parser import ParsedTable, parse_tabular_file
 from app.datasets.repository import SQL_TYPES, DatasetInfo, DatasetTableInfo
 from app.routing.router import QueryRouter, RouteLabel
+from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.executor import SqlExecutor, _json_safe
-from app.text_to_sql.generator import SqlGenerator
+from app.text_to_sql.planner import QueryPlanner
 from app.text_to_sql.validator import SqlValidator
 
 WIDTHS = (5, 15, 30)
@@ -215,15 +216,11 @@ def test_live_wide_group_by_against_disposable_postgres(width: int, model: str) 
             table.create(connection)
             connection.execute(table.insert(), parsed.database_rows())
         started = perf_counter()
-        sql = SqlGenerator(gateway, settings.demo_reference_date, context.schema_context).generate(
-            QUESTION
-        )
+        plan = QueryPlanner(gateway, settings.demo_reference_date, context).generate(QUESTION)
         generated = perf_counter()
-        validated = SqlValidator(
-            context.table_columns, context.allowed_schemas, max_tables=1
-        ).validate(sql)
+        compiled = QueryCompiler(context).compile(plan)
         checked = perf_counter()
-        rows = SqlExecutor(engine, 5000, 200).execute(validated)
+        rows = SqlExecutor(engine, 5000, 200).execute(compiled.validated, compiled.parameters)
         finished = perf_counter()
         assert sorted(rows, key=lambda row: row["nhom"]) == [
             {"nhom": "Lớp A", "tong_tien": "10.25", "so_dong": 2, "so_gia_tri": 1},
@@ -242,7 +239,7 @@ def test_live_wide_group_by_against_disposable_postgres(width: int, model: str) 
                     "execution_ms": round((finished - checked) * 1000, 2),
                     "logical_generation_calls": 1,
                     "tokens": "unknown (not exposed by gateway)",
-                    "validated_sql": validated.statement,
+                    "validated_sql": compiled.evidence_sql,
                 },
                 ensure_ascii=False,
             )

@@ -3,10 +3,10 @@
 **STAGE 1 PARTIAL — BLOCKED**
 
 Ngày thực hiện: 22–23/10/2026, Asia/Saigon. Không chuyển sang Giai đoạn 2.
-Typed QueryPlan/compiler đã được xây và kiểm offline nhưng **chưa thay production
-SqlGenerator**. Contract hiện chưa biểu diễn đủ các capability đã hỗ trợ; không
-âm thầm từ chối các câu hỏi đó hoặc bỏ guardrails để kết luận hoàn tất.
-Đây là phần Giai đoạn 1 chưa hoàn thành, không chuyển nghĩa vụ này sang Giai đoạn 2.
+Continuation từ `946ff82`: production SQL đã chuyển sang QueryPlanner/QueryCompiler
+cho default/authenticated/Guest/Hybrid; generator SQL tự do đã được gỡ.
+CUDA development và các gates cuối đang được kiểm chứng; chưa kết luận hoàn tất.
+Các checkpoints 22–23/10 phía dưới là lịch sử, không chứng nhận source mới.
 
 ## A. Source/runtime baseline
 
@@ -42,12 +42,43 @@ PostgreSQL + pgvector, SQLAlchemy/Psycopg, SQLGlot, React/Vite và provider/mode
 Canonical [architecture](architecture.md), [capabilities](capabilities.md),
 [security](security.md) thay các snapshot cũ làm hướng dẫn chính.
 
-Production SQL vẫn có một path rõ: schema registry → SqlDraft → validator/JOIN/COUNT
-→ guarded reader execution. QueryCompiler chỉ được gọi trong tests, chưa có runtime
-flag hoặc path fallback luân phiên. Không xóa generator/guards trước khi replacement
-bao phủ arithmetic/date semantics. Không xây authentication/frontend/database mới.
+Production SQL có một path: authorized catalog → PlanDecision → QueryCompiler →
+SQLGlot/JOIN/COUNT → guarded reader execution với parameters. Không có legacy fallback.
+Không xây authentication/frontend/database mới.
 
 ## C. Text-to-SQL
+
+### Continuation baseline and capability matrix (23/10/2026)
+
+Continuation starts at clean `946ff82b28d84b88c2dcebb522e0af5242ba546f`.
+API `264ba70159c3`, web `07893ff84717`, protected main DB `511c4f5aaccc`
+and DevDB `337bd37c8ef8` were healthy; development source hashes matched.
+Compose project inventory reports base, dev, UI override; service verification
+against base+dev reports no API/web environment drift. Main/archived volumes remain protected.
+
+This matrix was recorded before extending the plan implementation. A validator
+acceptance test proves syntax coverage only; new compilation requires PostgreSQL oracles.
+
+| Capability | Existing evidence | Verified scope / migration requirement |
+| --- | --- | --- |
+| Projection, comparisons, NULL, IN, sort/limit | compiler tests; SQL correctness, alias and import integration | One authorized table; exact typed values and output labels |
+| SUM/AVG/MIN/MAX, Decimal and NULL | SQL correctness integration | Single table; preserve zero versus NULL and lossless decimals |
+| COUNT rows/non-NULL values | count conformance and key/order PostgreSQL suites | Preserve direct metric provenance, aliases and verified INNER-key proof |
+| Arithmetic on multiple columns | generator prompt; default revenue validator tests and database revenue oracle | Bounded numeric expressions; no invented formulas |
+| Aggregate division | domain integration uses SUM(price)/COUNT(price) as independent AVG oracle | Legacy production emits AVG, not division. Raw wrapped COUNT is rejected by current count contract; equivalent typed average must preserve NULL/zero semantics |
+| quantity × unit_price | default validator cases and database revenue oracle | Default store fact expression; uploaded JOIN aggregate expressions remain explicitly unsupported |
+| AND/OR, HAVING | SQL validator permits operators and ordinary SUM HAVING; no dedicated semantic oracle | Add bounded typed boolean/HAVING oracle; COUNT HAVING stays unsupported |
+| Date/time boundaries | timezone and correctness PostgreSQL suites | DATE/TIMESTAMP/TIMESTAMPTZ, explicit offsets, half-open local ranges |
+| Date grouping/formatting | validator function allowlist, no dedicated grouping oracle | Bound day/month/year operations and add timezone/year-boundary oracles |
+| Two/three table chain/star | join golden/order/tree PostgreSQL suites | Verified N:1 keys, fact root, dimension grouping identity, revision guard |
+| JOIN aggregate arithmetic/MIN/MAX/dimension measures | join order/tree negative tests | Unsupported intentionally; retain these security assertions |
+| Default four-table revenue/category joins | default validator cases | Backend-declared default FK tree only; never extend uploaded three-table scope |
+| Hybrid metric/filter/source binding | gate D, original prose, count/policy integration | Preserve literal evidence SQL separately from parameterized execution |
+| Structured provider plan and factories | absent at baseline | Must exercise real mocked Knowledge/Gemini serializers and all factories before removing legacy |
+
+SQLAlchemy bound operators and Pydantic validation are based on official references:
+[SQLAlchemy operators](https://docs.sqlalchemy.org/en/20/core/operators.html),
+[Pydantic models](https://docs.pydantic.dev/latest/concepts/models/).
 
 - `QueryPlan`: backend-issued source/column/relation IDs, selected fields/metrics,
   aggregate kinds, AND filters, grouping, sort/null ordering, row limit.
@@ -64,13 +95,49 @@ bao phủ arithmetic/date semantics. Không xây authentication/frontend/databas
   6 PASS với independent VALUES oracle, một/hai/ba bảng và half-open timestamp filters.
   Integration phát hiện `:parameter::TIMESTAMP` không được SQLAlchemy text bind nhận;
   đã sửa bằng dialect BindTyping.NONE và chạy lại toàn bộ sáu cases PASS.
-- **Blocker:** PlanField chỉ có direct column + aggregate. Chưa biểu diễn derived
-  arithmetic (`SUM(price)/COUNT(price)` có oracle trong
-  `backend/tests/test_domain_pipelines_integration.py`), date grouping/formatting,
-  OR/HAVING hoặc default-store quantity*unit_price formulas. Chưa có plan-generation
-  adapter contract tests/factory migration/schema pruning. Không gọi đây là Text-to-SQL
-  replacement đã tích hợp. Cần mở rộng representation tối thiểu và oracle trước khi đổi.
+- Continuation: bounded expression DAG (80 nodes/depth8), +/−/×/÷, aggregate
+  expressions một bảng, AND/OR, SUM HAVING, day/month/year và date/month labels.
+  SUM(x)/COUNT(x) compile thành AVG(x); PostgreSQL oracle giữ empty/all-NULL/zero.
+  Mẫu số động zero trả NULL bằng NULLIF; literal zero bị từ chối. Type/group checks
+  chạy trước SQL. Uploaded JOIN aggregate restrictions không đổi.
+- Default catalog lấy từ đúng bốn SQLAlchemy models và declared FKs. Default revenue
+  bốn bảng qua actual Knowledge mock → Plan → SQL → PostgreSQL khớp independent
+  seed oracle tổng `151687001000`. Không đưa công thức commerce vào uploaded compiler.
+- Knowledge/Gemini serializers đi qua HTTP mock với PlanDecision; valid/invalid JSON,
+  missing/extra fields, unsupported output, unknown IDs, bad operators/depth và schema
+  rejection đều được kiểm. Actual-adapter factory integration gồm authenticated và Guest.
+- Schema prompting dùng toàn bộ authorized catalog IDs/types/headers/observed values/
+  approved relationships; không heuristic pruning làm mất field/path. Một logical plan
+  generation thay một logical SQL generation. Existing adapter retry policies giữ nguyên.
+  SQL vẫn route/plan/answer; Hybrid retrieval → route/plan/final decision không thêm repair call.
+- Pipeline execute chỉ bound SQL; safe rendered/validated evidence SQL giữ public API
+  và Hybrid filter/metric binding. Count provenance từ AST và approved keys/revisions.
+  Guard chạy trước executor; COUNT aliases không biến SUM/AVG thành row evidence.
+- `generator.py` đã gỡ. Fixed hostile SQL tests dùng test-only validation harness;
+  static oracle SQL có helper chuyển sang mocked PlanDecision, không import từ app.
+  Các tests đó không được tính thay actual serializer/factory proof ở trên.
 - COUNT/alias/JOIN validator hiện hữu được giữ nguyên; không domain-hardcode trong compiler.
+
+Nguồn semantic: [PostgreSQL aggregates](https://www.postgresql.org/docs/17/functions-aggregate.html),
+[NULLIF](https://www.postgresql.org/docs/17/functions-conditional.html).
+
+| Path | Changed/Removed | Why safe | Test evidence |
+| --- | --- | --- | --- |
+| `backend/app/text_to_sql/generator.py` | Removed | All production factories use typed planner/compiler; no fallback | Real mocked adapters + PostgreSQL factory tests |
+| `backend/app/text_to_sql/planner.py`, `expressions.py`, `compiler.py` | Added/extended | Catalog IDs, bounded operators and bind values; existing guards remain | Type/security, arithmetic/calendar/COUNT/JOIN oracles |
+| `backend/app/dependencies.py`, `guest/pipeline.py`, `text_to_sql/pipeline.py` | Migrated | Same reader/timeout/guard/grounding stages and public rows | Auth/Guest/Hybrid/history regressions |
+| `backend/tests/plan_fixtures.py`, `sql_validation_fixtures.py` | Test-only adapters | Preserve static oracle rows and adversarial SQL assertions; never imported by app | Existing security and independent domain suites |
+
+Continuation SQL checkpoint: Ruff PASS, backend unit **1037 PASS**, isolated PostgreSQL
+**803 PASS** (one complete sequential run, 325.03s), frontend unit **68 PASS**.
+16 live cases excluded; no provider/embedding call or Stage2 benchmark.
+Runtime still healthy with the original development API/web containers; **80 app modules**
+and31 frontend sources match bind mounts, no environment drift, DevDB identity unchanged.
+API source manifest: `db6cf69e7a095de94a8b1fe406eb29846602de85404b32f38e23723dd0794a5e`.
+
+Docker GPU preflight succeeded using the existing development image with `--network none`,
+one GPU, no extra host mounts: RTX3050 6GB, driver617.42, compute8.6. This is visibility
+proof only; CUDA-enabled Torch/model inference remains a separate gate below.
 
 ## D. RAG/local BGE
 
@@ -225,20 +292,16 @@ No merge/force push; no secrets/env/weights/log/private evidence in commits.
 
 ## I. Remaining mandatory work and Stage 2 boundary
 
-1. Finish QueryPlan expression/date capability representation, fake-provider serializers,
-   schema linking and application factory migration. Keep existing COUNT/JOIN oracles;
-   remove raw SQL generator only after capability parity. This is unfinished Stage 1.
-2. Plan production injection/security acceptance remains incomplete. The existing raw SQL
-   path continues to enforce old guardrails; new compiler tests do not prove provider planning.
-3. Guest BGE integration requires a resource/isolation decision if required beyond the
-   explicitly documented vector fallback. No separate server or worker-limit change was made.
-4. Final Stage 2 comprehensive regression, independent holdout/150-question benchmark,
+1. CUDA API image/inference/resource/reload gates và exact final CI cần hoàn tất trong
+   continuation này; QueryPlan production migration đã được triển khai, regressions đang chạy.
+2. Guest giữ vector-only theo phạm vi được chấp nhận; không load BGE vào worker768 MiB.
+3. Final Stage 2 comprehensive regression, independent holdout/150-question benchmark,
    retrieval quality/latency, live Knowledge/Gemini and final release remain unperformed.
    Historical user report says KH PASS/GH FAIL on the old runtime; no new live verdict.
 
 **Không đủ điều kiện ghi STAGE 1 COMPLETED — READY FOR STAGE 2.**
 
-## Inventory evidence
+## Historical inventory evidence at 946ff82 (superseded by continuation above)
 
 AST inventory covers every app Python module, local import adjacency, entrypoint scripts
 and HTTP decorator registrations. Zero direct callers are not treated as dead code. Main
@@ -422,5 +485,5 @@ Inventory: 76 backend test modules, plus fixture/helper modules; frontend unit/E
 - Final documentation commit does not change app source. Its exact local/remote SHA and
   current PR check results are verified at handoff; use PR checks rather than reusing an
   older run as certification of a later commit.
-- Mandatory QueryPlan production migration remains incomplete as described in C/I.
+- At historical checkpoint946ff82, QueryPlan production migration was incomplete.
   No Stage 2 benchmark/provider acceptance/release was performed.

@@ -8,8 +8,10 @@ from app.rag.pipeline import RagAnswerDraft, RagPipeline
 from app.rag.repository import RetrievedChunk
 from app.routing.hybrid import HybridAnswerDraft, HybridPipeline
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft, SqlGenerator
 from app.text_to_sql.pipeline import SqlResult
+from app.text_to_sql.planner import QueryPlanner
+from app.text_to_sql.query_plan import PlanDecision, PlanField, QueryPlan
+from app.text_to_sql.schema_context import default_sql_context
 from tests.hybrid_fixtures import explanation_draft
 
 
@@ -68,9 +70,11 @@ class SqlPromptGateway:
         self.prompt = ""
 
     def generate_structured(self, prompt: str, response_model: type[Any]) -> Any:
-        assert response_model is SqlDraft
+        assert response_model is PlanDecision
         self.prompt = prompt
-        return SqlDraft(sql="SELECT product_name FROM products")
+        return PlanDecision(
+            plan=QueryPlan(source="t0", fields=[PlanField(alias="n", aggregate="row_count")])
+        )
 
     def generate_text(self, prompt: str) -> str:
         raise AssertionError("Text generation is not expected")
@@ -93,28 +97,29 @@ def test_router_preserves_structured_label(question: str, expected: RouteLabel) 
 def test_sql_prompt_requires_category_evidence_for_policy_comparison() -> None:
     gateway = SqlPromptGateway()
 
-    SqlGenerator(gateway, "2026-10-01").generate(
+    QueryPlanner(gateway, "2026-10-01", default_sql_context()).generate(
         "Top products thuộc danh mục được miễn phí vận chuyển?"
     )
 
     assert "include category_code and category_name" in gateway.prompt
     assert "infer a category from product_name" in gateway.prompt
-    assert "Do not add date, status, category, or other filters" in gateway.prompt
-    assert "COUNT(*)" in gateway.prompt
-    assert "AS matched_row_count" in gateway.prompt
-    assert "Never label a SUM, AVG" in gateway.prompt
+    assert "filters only if requested" in gateway.prompt
+    assert "Row count has zero arguments" in gateway.prompt
+    assert "Do not confuse COUNT rows with non-NULL value counts" in gateway.prompt
+    assert "aliases as semantic proof" in gateway.prompt
 
 
 def test_sql_prompt_requires_explicit_vietnamese_calendar_boundaries() -> None:
     gateway = SqlPromptGateway()
 
-    SqlGenerator(gateway, "2026-10-01").generate("Top sản phẩm tháng 9/2025?")
+    QueryPlanner(gateway, "2026-10-01", default_sql_context()).generate(
+        "Top sản phẩm tháng 9/2025?"
+    )
 
-    assert "Asia/Ho_Chi_Minh, not UTC" in gateway.prompt
-    assert "TIMESTAMPTZ literals with an" in gateway.prompt
-    assert "explicit +07:00 offset" in gateway.prompt
-    assert "TIMESTAMP literals AT TIME ZONE 'Asia/Ho_Chi_Minh'" in gateway.prompt
-    assert "that discards its offset" in gateway.prompt
+    assert "Asia/Ho_Chi_Minh" in gateway.prompt
+    assert "TIMESTAMPTZ values require explicit offsets" in gateway.prompt
+    assert "local boundaries +07:00" in gateway.prompt
+    assert "values must have no offset" in gateway.prompt
     assert ">= start AND < end" in gateway.prompt
 
 

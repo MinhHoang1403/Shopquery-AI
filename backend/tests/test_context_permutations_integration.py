@@ -11,10 +11,11 @@ from app.datasets.parser import ColumnSpec
 from app.datasets.repository import DatasetTableInfo
 from app.dependencies import build_dataset_chat_service
 from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import SqlValidator
 from tests import test_join_domains_integration as domain_tests
 from tests.join_domains import DOMAINS
+from tests.plan_fixtures import decision_from_sql
 from tests.test_join_domains_integration import golden_sql, oracle
 
 pytestmark = pytest.mark.integration
@@ -67,8 +68,8 @@ def test_context_permutations_and_multiple_unrelated_tables_keep_oracle(
             assert all(table.physical_table_name in prompt for table in tables)
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.SQL, reason="Offline permutation")
-            assert schema is SqlDraft
-            return SqlDraft(sql=golden_sql(domain, dataset, 3))
+            assert schema is PlanDecision
+            return decision_from_sql(golden_sql(domain, dataset, 3), prompt)
 
         def generate_text(self, prompt):
             return "Offline synthetic answer"

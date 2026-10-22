@@ -16,10 +16,15 @@ INNER fact key có thể row-equivalent. SUM/AVG NULL không đổi thành zero.
 executor là `Asia/Ho_Chi_Minh`; boundaries giữ offset và khoảng `>= start AND < end`.
 Không writes, CTE/subquery/window/locks hoặc hàm ngoài allowlist.
 
-Typed compiler candidate hỗ trợ một bảng, approved JOIN hai/ba bảng, SUM/AVG/MIN/MAX/
-COUNT, comparisons/IN/NULL, grouping/sort/limit và date/timestamp filter values.
-Chưa biểu diễn derived arithmetic, date grouping/formatting, OR/HAVING hoặc full
-default-store formulas. Không thay production để tránh mất capability.
+Production dùng typed QueryPlan: +/−/×/÷ numeric, SUM/AVG/MIN/MAX một bảng,
+AND/OR, IN/NULL, GROUP BY, SUM HAVING, sort/limit và typed temporal ranges.
+Day/month/year grouping và YYYY-MM/YYYY-MM-DD formatting dùng business timezone.
+Mẫu SUM(x)/COUNT(x) compile thành AVG(x), giữ NULL và exact numeric semantics;
+dynamic denominator zero trả NULL, literal zero bị từ chối. Không đổi NULL thành zero.
+Uploaded JOIN vẫn chỉ direct root-fact SUM/AVG và COUNT; aggregate arithmetic,
+MIN/MAX/dimension metrics, COUNT HAVING và nested aggregates vẫn bị từ chối.
+Default demo dùng đúng bốn models/FKs đã khai báo và revenue quantity×unit_price;
+quy tắc này không áp dụng cho uploaded workspaces.
 
 ## RAG và Hybrid
 

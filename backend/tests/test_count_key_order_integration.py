@@ -9,9 +9,10 @@ from app.database.session import get_readonly_engine
 from app.dependencies import build_dataset_chat_service
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import ValidatedSql
 from tests.join_domains import DOMAINS
+from tests.plan_fixtures import decision_from_sql
 from tests.test_join_domains_integration import (
     domain_workspace,  # noqa: F401
     golden_sql,
@@ -84,8 +85,8 @@ def test_count_key_order_differential(
         def generate_structured(self, prompt, schema):
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.SQL, reason="Synthetic offline")
-            assert schema is SqlDraft
-            return SqlDraft(sql=draft)
+            assert schema is PlanDecision
+            return decision_from_sql(draft, prompt)
 
         def generate_text(self, prompt):
             assert json.dumps(expected, ensure_ascii=False) in prompt

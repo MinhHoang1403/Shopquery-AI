@@ -27,11 +27,12 @@ from app.rag.upload_parser import parse_document_file
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.generator import SqlDraft
-from app.text_to_sql.pipeline import TextToSqlPipeline
+from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import SqlValidator
 from tests.auth_helpers import TEST_OWNER
 from tests.hybrid_fixtures import explanation_draft
+from tests.plan_fixtures import decision_from_sql
+from tests.sql_validation_fixtures import ValidationPipeline
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
@@ -126,13 +127,15 @@ def test_three_table_pipeline_keeps_exact_root_fact_oracle(workspace, monkeypatc
     class Gateway:
         def generate_structured(self, prompt, response_model):
             calls.append(response_model.__name__)
-            assert "Safe three-table tree" in prompt and payments in prompt
+            assert (
+                "Safe three-table tree" in prompt or '"relationships": [' in prompt
+            ) and payments in prompt
             if response_model is RouteDecision:
                 return RouteDecision(route=RouteLabel.SQL, reason="Offline synthetic")
-            assert response_model is SqlDraft
+            assert response_model is PlanDecision
             assert "At most three tables" in prompt
-            assert "d1/d2 are dimensions in this query" in prompt
-            return SqlDraft(sql=sql)
+            assert "source fact to target dimension" in prompt
+            return decision_from_sql(sql, prompt)
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -146,8 +149,8 @@ def test_three_table_pipeline_keeps_exact_root_fact_oracle(workspace, monkeypatc
         context,
     ).chat("Tổng thanh toán và số lần theo khóa học")
     assert response.route == RouteLabel.SQL and response.used_model == model
-    assert not response.fallback_used and calls == ["RouteDecision", "SqlDraft", "answer"]
-    assert response.sql.count("INNER JOIN") == 2
+    assert not response.fallback_used and calls == ["RouteDecision", "PlanDecision", "answer"]
+    assert response.sql.count("JOIN") == 2
     for row, expected in zip(response.rows, oracle, strict=True):
         assert row["course_id"] == expected.course
         assert (row["total"], row["average"], row["fact_row_count"], row["fact_value_count"]) == (
@@ -179,7 +182,7 @@ def test_either_relation_revoked_or_stale_blocks_execution(workspace, index, mut
                 {"name": edge.target_table},
             )
     executor, gateway = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(generate=Mock(return_value=query(*(t.physical_table_name for t in dataset.tables)))),
         scoped_validator(context),
         executor,
@@ -276,9 +279,9 @@ def test_authenticated_upload_three_tables_pipeline_and_owner_history(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel(route), reason="Offline authenticated")
-            if schema is SqlDraft:
-                assert "Safe three-table tree" in prompt
-                return SqlDraft(sql=sql)
+            if schema is PlanDecision:
+                assert "Safe three-table tree" in prompt or '"relationships": [' in prompt
+                return decision_from_sql(sql, prompt)
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(
                     answer="Synthetic threshold 40", used_chunk_ids=[chunk.chunk_id]
@@ -307,10 +310,10 @@ def test_authenticated_upload_three_tables_pipeline_and_owner_history(
     assert response["used_model"] == model and response["fallback_used"] is False
     assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 3}[route]
     if route != "RAG":
-        assert response["sql"].count("INNER JOIN") == 2
+        assert response["sql"].count("JOIN") == 2
         assert [r["fact_row_count"] for r in response["rows"]] == [3, 2, 2]
     else:
-        assert "SqlDraft" not in calls and response["rows"] == []
+        assert "PlanDecision" not in calls and response["rows"] == []
     if route != "SQL":
         assert response["sources"][0]["source_file"] == "rules.md"
     assert a.client.get(chat_path).json()["messages"][-1]["response"] == response
@@ -358,9 +361,9 @@ def test_guest_three_table_auto_relations_temp_and_pipelines(monkeypatch, model,
             def generate_structured(self, prompt, schema):
                 if schema is RouteDecision:
                     return RouteDecision(route=route, reason="Synthetic guest")
-                if schema is SqlDraft:
-                    assert "Safe three-table tree" in prompt
-                    return SqlDraft(sql=sql)
+                if schema is PlanDecision:
+                    assert "Safe three-table tree" in prompt or '"relationships": [' in prompt
+                    return decision_from_sql(sql, prompt)
                 if schema is RagAnswerDraft:
                     return RagAnswerDraft(answer="Threshold 40", used_chunk_ids=[1])
                 if schema is HybridAnswerDraft:
@@ -381,7 +384,7 @@ def test_guest_three_table_auto_relations_temp_and_pipelines(monkeypatch, model,
         )
         assert result.route == route and result.used_model == model and not result.fallback_used
         if route != RouteLabel.RAG:
-            assert result.sql.count("INNER JOIN") == 2
+            assert result.sql.count("JOIN") == 2
             assert [r["fact_row_count"] for r in result.rows] == [3, 2, 2]
         assert legacy_fingerprints(get_setup_engine()) == before
     finally:
@@ -549,7 +552,7 @@ def test_foreign_workspace_third_table_and_wrong_owner_do_not_reach_executor(wor
         names = [t.physical_table_name for t in dataset.tables]
         names[0] = other.table.physical_table_name
         executor, gateway = Mock(), Mock()
-        pipeline = TextToSqlPipeline(
+        pipeline = ValidationPipeline(
             Mock(generate=Mock(return_value=query(*names))),
             scoped_validator(context),
             executor,

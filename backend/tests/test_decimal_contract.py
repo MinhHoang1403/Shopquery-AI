@@ -12,9 +12,10 @@ from app.routing.hybrid import HybridAnswerDraft, HybridPipeline
 from app.routing.router import RouteLabel
 from app.routing.service import ChatResult
 from app.text_to_sql.executor import _json_safe
-from app.text_to_sql.pipeline import SqlResult, TextToSqlPipeline
+from app.text_to_sql.pipeline import SqlResult
 from app.text_to_sql.validator import ValidatedSql
 from tests.auth_helpers import TestClient
+from tests.sql_validation_fixtures import ValidationPipeline
 from tests.test_routing_and_hybrid import FakeGateway, FakeRepository, FakeSqlPipeline
 from tests.test_sql_executor import executor_connection
 from tests.test_text_to_sql_pipeline import (
@@ -87,7 +88,7 @@ def test_executor_to_http_and_grounding_preserve_decimal_strings(
     connection.execute.return_value.mappings.return_value.fetchmany.return_value = [raw]
     rows = executor.execute(ValidatedSql("SELECT total FROM fixture", frozenset({"fixture"})))
     gateway = GroundingGateway()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         StaticGenerator(), PassthroughValidator(), StaticExecutor(rows), gateway
     )
     result = pipeline.run("Tổng chính xác?")

@@ -5,8 +5,8 @@ from unittest.mock import Mock
 import pytest
 
 from app.core.errors import SqlValidationError
-from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import SqlValidator
+from tests.sql_validation_fixtures import ValidationPipeline
 
 
 @pytest.fixture(params=[("uploaded_data", "dataset_safe"), ("pg_temp", "table_1")])
@@ -90,6 +90,6 @@ def test_missing_projection_input_stops_pipeline_before_execution_or_answer(
     generator, executor, gateway = Mock(), Mock(), Mock()
     generator.generate.return_value = f"SELECT salary AS salary FROM {table}"
     with pytest.raises(SqlValidationError):
-        TextToSqlPipeline(generator, validator, executor, gateway).run("Lương?")
+        ValidationPipeline(generator, validator, executor, gateway).run("Lương?")
     executor.execute.assert_not_called()
     gateway.generate_text.assert_not_called()
