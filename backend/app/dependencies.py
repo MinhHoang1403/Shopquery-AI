@@ -15,6 +15,7 @@ from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.repository import DatasetInfo, DatasetRepository
 from app.rag.pipeline import RagPipeline
 from app.rag.repository import DocumentRepository
+from app.rag.reranker import build_reranker
 from app.routing.hybrid import HybridPipeline
 from app.routing.router import QueryRouter
 from app.routing.service import ChatService, DatasetChatService
@@ -46,6 +47,9 @@ def _build_chat_service(settings: Settings, gateway: GenerationGateway) -> ChatS
         embedder=build_embedding_gateway(settings),
         gateway=gateway,
         repository=DocumentRepository(get_setup_engine(), readonly_engine),
+        reranker=build_reranker(settings),
+        candidate_top_k=settings.rag_candidate_top_k,
+        top_n=settings.rag_top_n,
     )
     return ChatService(
         router=QueryRouter(gateway),
@@ -134,6 +138,9 @@ def _build_dataset_chat_service(
                 get_setup_engine(), get_readonly_engine(), context.owner_user_id
             ),
             dataset_id=context.dataset_id,
+            reranker=build_reranker(settings),
+            candidate_top_k=settings.rag_candidate_top_k,
+            top_n=settings.rag_top_n,
         )
     hybrid_pipeline = (
         HybridPipeline(sql_pipeline, rag_pipeline, gateway, context)

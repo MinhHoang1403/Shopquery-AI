@@ -17,6 +17,12 @@ class ChunkRetriever(Protocol):
     ) -> list[RetrievedChunk]: ...
 
 
+class ChunkReranker(Protocol):
+    def rerank(
+        self, question: str, candidates: list[RetrievedChunk], top_n: int
+    ) -> list[RetrievedChunk]: ...
+
+
 class RagAnswerDraft(BaseModel):
     answer: str = Field(description="Answer supported only by the supplied evidence")
     used_chunk_ids: list[int] = Field(
@@ -46,22 +52,46 @@ class RagPipeline:
         gateway: GenerationGateway,
         repository: ChunkRetriever,
         dataset_id: int | None = None,
+        reranker: ChunkReranker | None = None,
+        candidate_top_k: int = 12,
+        top_n: int = 3,
     ) -> None:
         self._embedder = embedder
         self._gateway = gateway
         self._repository = repository
         self._dataset_id = dataset_id
+        self._reranker = reranker
+        self._candidate_top_k = candidate_top_k
+        self._top_n = top_n
 
     @diagnostic_stage("document_retrieval")
-    def retrieve(self, question: str, top_k: int = 3) -> list[RetrievedChunk]:
+    def retrieve(self, question: str, top_k: int | None = None) -> list[RetrievedChunk]:
+        selected_count = top_k if top_k is not None else self._top_n
+        if not 1 <= selected_count <= 20:
+            raise ValueError("Retrieval selection is outside supported bounds")
+        candidate_count = max(selected_count, self._candidate_top_k) if self._reranker else (
+            selected_count
+        )
         vector = self._embedder.embed_query(question)
         if self._dataset_id is None:
-            chunks = self._repository.retrieve(vector, top_k=top_k)
+            chunks = self._repository.retrieve(vector, top_k=candidate_count)
         else:
-            chunks = self._repository.retrieve(vector, top_k=top_k, dataset_id=self._dataset_id)
+            chunks = self._repository.retrieve(
+                vector, top_k=candidate_count, dataset_id=self._dataset_id
+            )
         if not chunks:
             raise RetrievalError("No policy evidence is available")
-        return chunks
+        if self._reranker is None:
+            return chunks[:selected_count]
+        ranked = self._reranker.rerank(question, chunks, selected_count)
+        original = {id(chunk) for chunk in chunks}
+        if (
+            not ranked or len(ranked) > selected_count
+            or len({chunk.chunk_id for chunk in ranked}) != len(ranked)
+            or any(id(chunk) not in original for chunk in ranked)
+        ):
+            raise RetrievalError("Reranker changed the retrieved evidence scope")
+        return ranked
 
     @diagnostic_stage("answer_grounding")
     def answer_from_chunks(self, question: str, chunks: list[RetrievedChunk]) -> RagResult:

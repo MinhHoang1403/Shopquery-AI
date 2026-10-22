@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     sql_statement_timeout_ms: int = Field(default=5_000, ge=100, le=60_000)
     sql_max_rows: int = Field(default=200, ge=1, le=1_000)
     sql_join_v1_enabled: bool = False
+    rag_candidate_top_k: int = Field(default=12, ge=3, le=50)
+    rag_top_n: int = Field(default=3, ge=1, le=20)
+    rag_reranker_path: str | None = None
+    rag_reranker_revision: str = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
+    rag_reranker_device: Literal["cpu", "cuda"] = "cpu"
+    rag_reranker_batch_size: int = Field(default=2, ge=1, le=8)
+    rag_reranker_max_length: int = Field(default=512, ge=64, le=1024)
     upload_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1_024, le=25 * 1024 * 1024)
     upload_max_rows: int = Field(default=5_000, ge=1, le=20_000)
     upload_max_columns: int = Field(default=30, ge=1, le=100)

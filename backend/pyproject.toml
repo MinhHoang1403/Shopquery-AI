@@ -24,6 +24,12 @@ dependencies = [
     "uvicorn[standard]>=0.37,<1",
 ]
 
+[project.optional-dependencies]
+reranker = [
+    "sentence-transformers>=5.1,<6",
+    "torch>=2.6,<3",
+]
+
 [dependency-groups]
 dev = [
     "httpx>=0.28,<1",
@@ -31,6 +37,14 @@ dev = [
     "pytest-cov>=7,<8",
     "ruff>=0.14,<1",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
