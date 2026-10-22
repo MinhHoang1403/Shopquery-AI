@@ -5,7 +5,8 @@
 Trợ lý phân tích bảng và tài liệu bằng FastAPI, React/TypeScript, PostgreSQL/pgvector.
 Hỗ trợ SQL, RAG, Hybrid, Google OIDC, không gian cá nhân và Guest tạm thời.
 
-**MVP V2 đang thực hiện Giai đoạn 1; chưa đủ điều kiện nghiệm thu Giai đoạn 2/release.**
+**STAGE 1 COMPLETED — READY FOR STAGE 2.** QueryPlan production và BGE CUDA development
+đã qua bounded gates; chưa thực hiện Giai đoạn 2 hoặc deploy release.
 Nguồn trạng thái hiện tại: [báo cáo triển khai](docs/stage1_implementation_report.md).
 Các báo cáo trong `docs/archive/` chỉ phản ánh thời điểm lịch sử.
 

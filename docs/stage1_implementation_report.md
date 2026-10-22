@@ -1,11 +1,11 @@
 # MVP V2 — Stage 1 implementation report
 
-**STAGE 1 PARTIAL — BLOCKED**
+**STAGE 1 COMPLETED — READY FOR STAGE 2**
 
 Ngày thực hiện: 22–23/10/2026, Asia/Saigon. Không chuyển sang Giai đoạn 2.
 Continuation từ `946ff82`: production SQL đã chuyển sang QueryPlanner/QueryCompiler
 cho default/authenticated/Guest/Hybrid; generator SQL tự do đã được gỡ.
-CUDA model/serving/reload đã được kiểm chứng; đang chờ exact final pushed CI.
+CUDA model/serving/reload đã được kiểm chứng; exact source commit `e191358` đã PASS CI.
 Các checkpoints 22–23/10 phía dưới là lịch sử, không chứng nhận source mới.
 
 ## A. Source/runtime baseline
@@ -388,16 +388,18 @@ Run39817362150 phát hiện25 assertions/fixtures integration còn giả định
 New run [39818625553](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39818625553) at3915485 completed SUCCESS for all three jobs: Backend quality998, PostgreSQL integration784 and Frontend quality.
 No merge/force push; no secrets/env/weights/log/private evidence in commits.
 
-## I. Remaining mandatory work and Stage 2 boundary
+## I. Stage 2 boundary — chưa thực hiện
 
-1. QueryPlan và CUDA image/inference/resource/reload gates đã PASS offline/local;
-   exact final GPU commit CI còn chờ trước khi kết luận hoàn tất.
-2. Guest giữ vector-only theo phạm vi được chấp nhận; không load BGE vào worker768 MiB.
-3. Final Stage 2 comprehensive regression, independent holdout/150-question benchmark,
-   retrieval quality/latency, live Knowledge/Gemini and final release remain unperformed.
-   Historical user report says KH PASS/GH FAIL on the old runtime; no new live verdict.
+1. Full Text-to-SQL benchmark với independent holdout/150 câu; không suy natural-language
+   accuracy từ offline scripted plans/serializers.
+2. RAG Recall/MRR/nDCG và retrieval quality study trên corpus đại diện.
+3. Production GPU p95/load/concurrency, cold-start/reload và RAM-headroom study; bounded
+   smoke hiện tại không chứng nhận production headroom hoặc mọi workload.
+4. End-to-end live Knowledge/Gemini/embedding acceptance; chưa tiêu provider budget.
+5. Comprehensive data/security audit, final release gates và release deployment.
 
-**Không đủ điều kiện ghi STAGE 1 COMPLETED — READY FOR STAGE 2.**
+Giai đoạn1 đạt cả A/B và development gates. Không tự bắt đầu Giai đoạn2, merge main
+hoặc deploy release. Guest vector-only là contract được giữ, không phải blocker còn thiếu.
 
 ## Historical inventory evidence at 946ff82 (superseded by continuation above)
 
@@ -585,3 +587,31 @@ Inventory: 76 backend test modules, plus fixture/helper modules; frontend unit/E
   older run as certification of a later commit.
 - At historical checkpoint946ff82, QueryPlan production migration was incomplete.
   No Stage 2 benchmark/provider acceptance/release was performed.
+
+## Continuation delivery verification — authoritative current result
+
+- Feature branch `codex/shopquery-mvp-v2-stage1`; source checkpoints:
+  `6d74736fb7ca11f20f7227e393efe2ad685eec4a` (production planning),
+  `cde91517f99cdb0cbe7674b5d6d6487326df504c` (BOOL counts/temporal filters),
+  `b661c19b9d0d4ee89bb482eef669207d322318d7` (bounded expansion),
+  `e19135855d3eb9f115539d57f3f343fdb3b18de0` (CUDA development/runtime proof).
+  Local/remote feature heads matched after push. Main remains
+  `0062e47d75cc51646bf9b45409a12aa49288552e`; no merge/force push.
+- Exact source CI [39836576422](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39836576422)
+  at `e19135855d3eb9f115539d57f3f343fdb3b18de0`: all three jobs SUCCESS.
+  Backend **1042 PASS**, PostgreSQL **804 PASS**, frontend **68 PASS** and mock UI
+  **105 PASS**, Ruff/lint/typecheck/build PASS.16 live cases excluded. Counts are from
+  complete suites, not sums of targeted reruns. Local final backend1042 also PASS.
+- Final status update is documentation-only; exact final metadata SHA/current-head checks
+  are available from Git log and [draft PR1](https://github.com/MinhHoang1403/Shopquery-AI/pull/1).
+  Final handoff verifies that pushed head's CI separately; the source run above does not
+  certify a later commit by assumption. Working tree/remote equality checked at handoff.
+- Runtime source inspection confirms all default/authenticated/Guest factories construct
+  QueryPlanner + QueryCompiler, executor receives bound parameters, and legacy generator
+  module is absent. GPU warmup/reload runs inside the real serving worker, not only docker exec.
+- DEV8080 UPDATED, API8001/proxy8080 health200; main/DevDB identities and logical data
+  checks unchanged. RELEASE NOT DEPLOYED. All transient model diagnostic containers exited;
+  only the one serving CUDA model remains. No change to other project configuration/data.
+- Scoped high-signal secret scan PASS; no env/keys/weights/cache/log/private evidence in
+  commits. This is not a comprehensive historical secret audit. No paid provider or
+  embedding calls, no150-question benchmark, no Stage2 work.
