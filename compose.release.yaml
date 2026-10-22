@@ -1,0 +1,11 @@
+services:
+  api:
+    image: ${SHOPQUERY_API_IMAGE:?Set a reviewed immutable API image digest or tag}
+    build: !reset null
+  web:
+    image: ${SHOPQUERY_WEB_IMAGE:?Set a reviewed immutable web image digest or tag}
+    build: !reset null
+volumes:
+  postgres_data:
+    external: true
+    name: ${POSTGRES_VOLUME_NAME:?Set the existing protected database volume}

@@ -1,0 +1,80 @@
+services:
+  devdb:
+    image: pgvector/pgvector:0.8.1-pg17-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shopquery_dev
+      POSTGRES_USER: shopquery_setup
+      POSTGRES_PASSWORD: setup_password
+    ports:
+      - "127.0.0.1:15433:5432"
+    volumes:
+      - postgres_dev:/var/lib/postgresql/data
+      - ./backend/sql/development.sql:/docker-entrypoint-initdb.d/001-development.sql:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopquery_setup -d shopquery_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  api:
+    image: shopquery-ai-api:development
+    build:
+      args:
+        INSTALL_RERANKER: "true"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app", "--no-access-log", "--no-proxy-headers"]
+    environment:
+      DATABASE_SETUP_URL: postgresql+psycopg://shopquery_setup:setup_password@devdb:5432/shopquery_dev
+      DATABASE_READONLY_URL: postgresql+psycopg://shopquery_reader:readonly_password@devdb:5432/shopquery_dev
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      AUTH_INVITED_EMAILS: '[]'
+      BETA_PROVIDER_DATA_ENABLED: "false"
+      GUEST_AI_ENABLED: "false"
+      INETCLOUD_BASE_URL: ""
+      GEMINI_API_KEY: ""
+      AI_GEMINI_FALLBACK_ENABLED: "false"
+      APP_ENVIRONMENT: development
+      APP_ORIGIN: http://127.0.0.1:8080
+      SQL_JOIN_V1_ENABLED: "true"
+      WATCHFILES_FORCE_POLLING: "true"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      OMP_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+      RAG_RERANKER_PATH: /models/bge
+      RAG_RERANKER_REVISION: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+      RAG_RERANKER_DEVICE: cpu
+      RAG_RERANKER_BATCH_SIZE: "2"
+      RAG_RERANKER_MAX_LENGTH: "512"
+      RAG_CANDIDATE_TOP_K: "12"
+      RAG_TOP_N: "3"
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/scripts:/app/scripts:ro
+      - type: bind
+        source: ${BGE_MODEL_PATH:?Set BGE_MODEL_PATH to the verified local snapshot}
+        target: /models/bge
+        read_only: true
+        bind:
+          create_host_path: false
+    ports: !override
+      - "127.0.0.1:8001:8000"
+    depends_on: !override
+      devdb:
+        condition: service_healthy
+  web:
+    image: shopquery-ai-web:development
+    build:
+      target: development
+    environment:
+      SHOPQUERY_DEV_CONTAINER: "1"
+      SHOPQUERY_API_PROXY_TARGET: http://api:8000
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+volumes:
+  postgres_dev:
+    name: shopquery-ai_postgres_dev_stage1

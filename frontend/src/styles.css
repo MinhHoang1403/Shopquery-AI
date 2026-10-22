@@ -446,3 +446,17 @@ button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-v
 .relationship-panel dd { margin: 0; }
 .relationship-panel p, .relationship-panel li { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .relationship-fields { grid-template-columns: minmax(0, 1fr); } }
+ .development-notice {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 3px 12px;
+  border-radius: 0 0 8px 8px;
+  background: #fff4cc;
+  color: #563e00;
+  font-size: 11px;
+  pointer-events: none;
+  white-space: nowrap;
+}
