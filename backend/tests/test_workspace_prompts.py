@@ -186,7 +186,7 @@ def test_generalized_prompts_do_not_expand_sql_permissions(sql: str) -> None:
 
 
 class TuitionSqlPipeline:
-    def run(self, question: str) -> SqlResult:
+    def run(self, question: str, **kwargs) -> SqlResult:
         return SqlResult(
             answer="Rows only",
             sql="SELECT ma_hoc_vien, hoc_phi_phai_nop - da_dong AS con_no "
@@ -203,7 +203,7 @@ class TuitionRagPipeline:
 @pytest.mark.parametrize("joined", [False, True])
 def test_hybrid_prompt_grounds_non_product_entities_in_rows_and_documents(joined: bool) -> None:
     class SqlPipeline(TuitionSqlPipeline):
-        def run(self, question: str) -> SqlResult:
+        def run(self, question: str, **kwargs) -> SqlResult:
             result = super().run(question)
             result.fact_table = "synthetic_fact" if joined else None
             return result

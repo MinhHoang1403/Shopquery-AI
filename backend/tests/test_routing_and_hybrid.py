@@ -48,7 +48,7 @@ class FakeRepository:
 
 
 class FakeSqlPipeline:
-    def run(self, question: str) -> SqlResult:
+    def run(self, question: str, **kwargs) -> SqlResult:
         return SqlResult(
             answer="SQL rows",
             sql="SELECT 'PHONE' AS category_code",

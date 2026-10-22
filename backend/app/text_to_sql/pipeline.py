@@ -38,9 +38,14 @@ class TextToSqlPipeline:
         self._gateway = gateway
         self._execution_guard = execution_guard
 
-    def run(self, question: str) -> SqlResult:
+    def run(
+        self, question: str, *, evidence_context: str | None = None, ground_answer: bool = True
+    ) -> SqlResult:
         with diagnostic_stage("generator_unsupported"):
-            sql = self._generator.generate(question)
+            sql = (
+                self._generator.generate(question, evidence_context=evidence_context)
+                if evidence_context is not None else self._generator.generate(question)
+            )
         validated = self._validator.validate(sql)
         record_facts(sql_validated=True)
         guard = self._execution_guard(validated) if self._execution_guard else nullcontext()
@@ -51,10 +56,12 @@ class TextToSqlPipeline:
                 record_facts(execution_reached=True)
                 rows = self._executor.execute(validated)
                 record_facts(result_rows=len(rows))
-        with diagnostic_stage("answer_grounding"):
-            answer = self._ground_answer(
-                question, rows, validated.fact_table, validated.count_metrics
-            )
+        answer = ""
+        if ground_answer:
+            with diagnostic_stage("answer_grounding"):
+                answer = self._ground_answer(
+                    question, rows, validated.fact_table, validated.count_metrics
+                )
         return SqlResult(
             answer=answer,
             sql=validated.statement,

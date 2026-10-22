@@ -108,7 +108,7 @@ def test_executor_to_http_and_grounding_preserve_decimal_strings(
 
 def test_hybrid_grounding_receives_lossless_decimal_evidence() -> None:
     class Sql(FakeSqlPipeline):
-        def run(self, question: str) -> SqlResult:
+        def run(self, question: str, **kwargs) -> SqlResult:
             result = super().run(question)
             result.rows = [{"amount": "12345678901234567890.12"}]
             return result
