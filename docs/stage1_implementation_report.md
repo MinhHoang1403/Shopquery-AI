@@ -15,7 +15,7 @@ SqlGenerator**. Contract hiện chưa biểu diễn đủ các capability đã h
 - Feature branch: `codex/shopquery-mvp-v2-stage1`; main không được merge/force-push.
 - Trước khi làm: chỉ có untracked `docs/hybrid_live_acceptance_20261022.md`.
   Tệp này được giữ nguyên ngoài commits, SHA256 `0a13a5e7c41b0c2003cedc1c7475da8a7f726b1580b1da930b0900c01161e283`.
-- Source/infrastructure checkpoint: `cf5ca602e3ff485d2b710fced92860f6d4264b21`; các commit tiếp theo chỉnh regression assertions/test runner và docs, không thay app source.
+- Backend/infrastructure checkpoint: `cf5ca602e3ff485d2b710fced92860f6d4264b21`. Frontend development notice/runtime verification được hoàn thiện tại `8d9d83885b3d46a730503459a88946d35a1166d6`; regression fixtures/test runner tại3915485.
   Các commit tài liệu tiếp theo không thay source runtime; final metadata SHA đọc từ Git log.
 - Baseline smoke: 135 PASS. Historical counts 974/778/68/105 chỉ là tham chiếu.
 - Baseline Compose project `shopquery-ai`, exact order `compose.yaml`,
@@ -53,7 +53,7 @@ bao phủ arithmetic/date semantics. Không xây authentication/frontend/databas
   aggregate kinds, AND filters, grouping, sort/null ordering, row limit.
 - `SchemaReferences`: deterministic IDs từ chính authorized DatasetSqlContext;
   không nhận raw SQL identifiers, JOIN ON expressions hoặc provider-generated paths.
-- SQLAlchemy Core compile; exact ON/root từ approved graph; reject stale/unknown IDs,
+- SQLAlchemy Core compile; exact ON/root từ approved graph; reject unknown IDs,
   duplicate relations/aliases và columns ngoài selected graph. Existing validator vẫn
   là authority cho grain, approved edges, dimension group keys và COUNT semantics.
 - Filter values được parse theo registered types, Decimal giữ exact digits,
@@ -220,7 +220,7 @@ CI run at infrastructure checkpoint:
 [39817362150](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39817362150).
 Run39817362150 phát hiện25 assertions/fixtures integration còn giả định SQL-before-retrieval; đã sửa expectations và synthetic embedding. Một lần chạy local chồng test DB gây deadlock, kết quả đó không dùng làm PASS; test.ps1 đã thêm named mutex và chạy lại tuần tự. Final CI/remote verification được ghi ở phần delivery cuối.
 
-New run [39818625553](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39818625553) at3915485 has Backend quality SUCCESS (998 tests) and PostgreSQL integration SUCCESS (784 tests); frontend result is verified in delivery below.
+New run [39818625553](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39818625553) at3915485 completed SUCCESS for all three jobs: Backend quality998, PostgreSQL integration784 and Frontend quality.
 No merge/force push; no secrets/env/weights/log/private evidence in commits.
 
 ## I. Remaining mandatory work and Stage 2 boundary
@@ -412,8 +412,8 @@ Inventory: 76 backend test modules, plus fixture/helper modules; frontend unit/E
 
 ## Delivery verification
 
-- GitHub run39818625553 at3915485: Backend quality998 PASS, PostgreSQL integration784 PASS;
-  frontend lint/typecheck/build/68 Vitest/105 mock UI are additionally PASS locally.
+- GitHub run39818625553 at3915485 completed SUCCESS for all three jobs: Backend quality998 PASS, PostgreSQL integration784 PASS, Frontend quality PASS.
+  Frontend lint/typecheck/build/68 Vitest/105 mock UI are also PASS locally.
 - All79 Python modules and31 frontend source files match running development bind mounts;
   API/web env drift list is empty and both services healthy. Main DB container/volume unchanged.
 - High-signal Google/GitHub/private-key pattern scan and local Markdown link check PASS;
