@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Nghiệm thu prompt đa lĩnh vực
 
 Ngày kiểm tra: 19/10/2026 (giờ Việt Nam). Baseline Git: `93fca7e`. Các kết quả live dưới đây được thu thập trên mã local đã build lại vào API Docker trước khi commit bàn giao. SHA và run CI của commit bàn giao được báo riêng khi push/xác minh hoàn tất; file không tự chứa SHA của chính commit tạo ra nó.

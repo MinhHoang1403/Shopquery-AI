@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Semantic COUNT — local deployment and Git delivery
 
 Ngày 21/10/2026, Asia/Ho_Chi_Minh. Workspace ShopQuery AI.
@@ -331,14 +333,14 @@ backend/tests/test_sql_draft_adapters.py
 backend/tests/test_sql_generation_contract.py
 backend/tests/test_three_table_join.py
 backend/tests/test_workspace_prompts.py
-docs/sql_join_root_cause_audit.md
-docs/text_to_sql_batch_a_live_and_generalization.md
-docs/text_to_sql_batch_b_hybrid_live_acceptance.md
-docs/text_to_sql_count_deployment_git_delivery.md
-docs/text_to_sql_count_semantic_contract_redesign.md
-docs/text_to_sql_hybrid_count_root_cause_fix.md
-docs/text_to_sql_reliability_investigation.md
-docs/text_to_sql_verification_and_acceptance.md
+docs/archive/2026-10/sql_join_root_cause_audit.md
+docs/archive/2026-10/text_to_sql_batch_a_live_and_generalization.md
+docs/archive/2026-10/text_to_sql_batch_b_hybrid_live_acceptance.md
+docs/archive/2026-10/text_to_sql_count_deployment_git_delivery.md
+docs/archive/2026-10/text_to_sql_count_semantic_contract_redesign.md
+docs/archive/2026-10/text_to_sql_hybrid_count_root_cause_fix.md
+docs/archive/2026-10/text_to_sql_reliability_investigation.md
+docs/archive/2026-10/text_to_sql_verification_and_acceptance.md
 frontend/src/components/ResultTable.test.tsx
 handoff.md
 ```

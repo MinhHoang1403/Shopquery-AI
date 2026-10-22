@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Final verification — Text-to-SQL / JOIN
 
 Ngày 21/10/2026. Workspace `C:\Work\ShopQuery AI`.
@@ -26,7 +28,7 @@ API build/recreate và operational checks, vẫn không cấp quyền provider l
 - Không sửa production thêm trong lượt này: chưa tìm được regression mới có bằng chứng
   buộc thay đổi logic. Production diff so HEAD vẫn 56 additions / 11 deletions, bốn files.
 - Giữ nguyên `handoff.md`, báo cáo investigation và mọi local modifications có sẵn,
-  đặc biệt `docs/sql_join_root_cause_audit.md`; không reset/checkout/overwrite.
+  đặc biệt `docs/archive/2026-10/sql_join_root_cause_audit.md`; không reset/checkout/overwrite.
 - Đối chiếu AGENTS, handoff, investigation mới nhất, Gate D, JOIN acceptance, SQL correctness
   và source/tests liên quan. Kết luận mới không bị kết luận live lịch sử cũ che lấp.
 - `handoff.md` SHA-256 vẫn

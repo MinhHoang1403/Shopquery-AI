@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Text-to-SQL và JOIN — nghiệm thu độ tin cậy, 20/10/2026
 
 > Mục A–M ghi kết quả lượt baseline `eeaffd4`; mục N ghi bản sửa offline.

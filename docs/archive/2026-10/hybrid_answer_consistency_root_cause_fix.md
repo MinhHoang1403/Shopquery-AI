@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Hybrid answer consistency — structured evidence root-cause fix
 
 > Báo cáo lịch sử của patch consistency ngày21/10. Khả năng natural-policy và trạng

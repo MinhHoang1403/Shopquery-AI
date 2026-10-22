@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Batch A live acceptance và khả năng tổng quát hóa Text-to-SQL
 
 Ngày kiểm tra: **21/10/2026**, múi giờ Việt Nam UTC+07:00.
@@ -281,7 +283,7 @@ digest không đổi sau tests; vẫn ba services main healthy, không còn cont
 
 - `backend/tests/test_context_permutations_integration.py`: regression context order/
   unrelated schemas cho sáu domain, chỉ test, không ảnh hưởng production modules.
-- `docs/text_to_sql_batch_a_live_and_generalization.md`: báo cáo này.
+- `docs/archive/2026-10/text_to_sql_batch_a_live_and_generalization.md`: báo cáo này.
 
 Không sửa thêm bốn production files đang dirty từ task trước: datasets/context.py,
 text_to_sql/generator.py, join_policy.py, validator.py. Giữ nguyên docs/tests/handoff và

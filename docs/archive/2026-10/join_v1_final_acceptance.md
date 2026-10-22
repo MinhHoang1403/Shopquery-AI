@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # JOIN v1 — bàn giao local 8080, 20/10/2026
 
 > Báo cáo lịch sử của đợt trước. Kết quả mới và blocker Gemini UI còn tồn tại:

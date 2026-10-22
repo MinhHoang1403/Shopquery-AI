@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Hybrid numeric prose policy — final delivery
 
 Ngày 22/10/2026, Asia/Ho_Chi_Minh. Workspace `C:\Work\ShopQuery AI`.

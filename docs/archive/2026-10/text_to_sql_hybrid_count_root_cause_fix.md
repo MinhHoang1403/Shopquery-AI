@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Hybrid COUNT — root-cause investigation and offline fix
 
 Ngày kiểm tra: 21/10/2026, local Windows; PostgreSQL test 17.8; SQLGlot 29.0.1.

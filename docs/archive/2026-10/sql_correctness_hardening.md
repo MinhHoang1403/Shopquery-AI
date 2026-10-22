@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # SQL correctness hardening — 19/10/2026
 
 Báo cáo này cập nhật trạng thái ba findings trong audit trước cho code/import mới;

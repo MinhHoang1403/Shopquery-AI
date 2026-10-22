@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Nghiệm thu ổn định Guest/Auth và dọn môi trường
 
 Ngày kiểm tra: 19-10-2026 (giờ Việt Nam). Đây là báo cáo thực nghiệm, không phải cam kết không còn mọi lỗi có thể xảy ra.

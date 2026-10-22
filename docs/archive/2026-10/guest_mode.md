@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Guest Mode, optional Google login và kiểm tra upload — 19/10/2026
 
 Trạng thái: đã triển khai local 8080, đạt kiểm thử offline/isolated và smoke upload thật; **chưa nghiệm thu live AI hoặc production/VPS**. Các kết quả mock được ghi rõ, không thay thế provider/Google live acceptance.

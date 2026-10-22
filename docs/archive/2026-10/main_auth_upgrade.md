@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Main authentication upgrade — 19/10/2026
 
 Trạng thái của checkpoint ban đầu: **READY FOR GOOGLE LIVE LOGIN ON MAIN 8080**. Các mục NOT RUN bên dưới ghi nhận thời điểm checkpoint này, không phải trạng thái runtime mới nhất. Sau đó người dùng đã xác nhận Google login thành công; main có một tài khoản thật. Đợt Guest giữ nguyên tài khoản/session và thay login wall bằng optional login; xem [báo cáo Guest và upload 8080](guest_mode.md). Không coi CI, mock browser hoặc HTTP 302 là Google login thật.

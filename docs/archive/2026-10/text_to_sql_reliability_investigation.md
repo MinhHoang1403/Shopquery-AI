@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Điều tra độ tin cậy Text-to-SQL / JOIN
 
 Ngày: 21/10/2026. Workspace: `C:\Work\ShopQuery AI`.
@@ -51,7 +53,7 @@ Không gọi provider/embedding live; không dùng lại ngân sách Gate D. Kh�
 main để chạy test. Không build/restart/deploy main, migration, seed main, restore, re-ingest,
 đổi model/key/gates/quota, OAuth, volume, VPS hoặc tracing. Không commit/push.
 
-Working tree ban đầu có `docs/sql_join_root_cause_audit.md` đang sửa và `handoff.md`
+Working tree ban đầu có `docs/archive/2026-10/sql_join_root_cause_audit.md` đang sửa và `handoff.md`
 chưa tracked. Giữ nguyên hai file đó. HEAD vẫn là
 `e2151a3d6b37f3a11e83f68553e5985bbe087deb`; code baseline là
 `50d7bac4e1f6af8adffeb8f317a458f637de7bb0`.

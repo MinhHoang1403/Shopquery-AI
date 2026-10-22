@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # SQL/JOIN root-cause audit — 20–21/10/2026
 
 Kết luận hiện tại: **PARTIALLY VERIFIED — chưa nghiệm thu JOIN/Hybrid live**.

@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Batch B — Hybrid live acceptance
 
 Ngày 21/10/2026, UTC+07:00. Workspace `C:\Work\ShopQuery AI`, ứng dụng local 8080.

@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Báo cáo độ tin cậy hệ thống ShopQuery AI
 
 Ngày kiểm tra: 2026-10-16 (Asia/Saigon)

@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Quản lý xóa bộ dữ liệu và nguồn upload
 
 Ngày kiểm tra: 19/10/2026 (giờ Việt Nam). Baseline Git: `3d441af`. Kết quả live được thu thập trên bản local đã build vào Docker trước commit bàn giao. SHA và kết quả CI của commit bàn giao được báo riêng sau push/xác minh.

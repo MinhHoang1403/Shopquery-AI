@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Báo cáo nghiệm thu cuối — ShopQuery AI
 
 Ngày kiểm tra: **19/10/2026 (giờ Việt Nam)**.
@@ -111,7 +113,7 @@ Run đã xác minh trước đợt live: [CI 39189762428](https://github.com/Min
 
 Integration job có service PostgreSQL 17/pgvector riêng, database `shopquery_ci`, role đọc riêng và `RUN_DATABASE_TESTS=1`; không cần API key, không gọi provider thật. Service bị hủy sau job. Hai marker `integration`/`live` được tách khỏi unit job; live tests không chạy trong CI. Không cộng các test deselected vào số test pass.
 
-Không chạy lại Playwright mock, live upload, Unsupported, failure injection hoặc build Docker trong đợt live 19/10 này. Những kết quả lịch sử vẫn giữ đúng ngày/phạm vi tại [đánh giá trước đây](evaluation_report.md), [multi-model](multi_model_integration.md) và [audit 14/10](archive/final_audit_2026-10-14.md); không tính chúng là test mới vừa chạy.
+Không chạy lại Playwright mock, live upload, Unsupported, failure injection hoặc build Docker trong đợt live 19/10 này. Những kết quả lịch sử vẫn giữ đúng ngày/phạm vi tại [đánh giá trước đây](evaluation_report.md), [multi-model](multi_model_integration.md) và [audit 14/10](../final_audit_2026-10-14.md); không tính chúng là test mới vừa chạy.
 
 ## Những việc chưa được nghiệm thu
 

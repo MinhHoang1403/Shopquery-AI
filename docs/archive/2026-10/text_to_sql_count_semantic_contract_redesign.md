@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Semantic COUNT contract — offline redesign and conformance
 
 Ngày 21/10/2026. Workspace `C:\Work\ShopQuery AI`.

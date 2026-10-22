@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Semantic COUNT + Knowledge/Gemini Hybrid — final live acceptance
 
 Ngày21/10/2026, Asia/Ho_Chi_Minh. Local8080, workspace ShopQuery AI.

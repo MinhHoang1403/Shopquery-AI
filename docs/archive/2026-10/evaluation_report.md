@@ -1,3 +1,5 @@
+> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+
 # Báo cáo đánh giá hệ thống ShopQuery AI
 
 > Báo cáo lịch sử ngày 14/10 và bổ sung ngày 16/10/2026. Các con số bên dưới thuộc từng đợt kiểm tra, không phải trạng thái hiện tại. Kết quả nghiệm thu mới nhất ngày 19/10 cho cả Knowledge và Gemini nằm tại [báo cáo nghiệm thu cuối](final_audit_report.md).
@@ -83,4 +85,4 @@ Các test parser xác định bao phủ UTF-8 BOM, Unicode, mã có số 0 đầ
 - 11 luồng live đại diện đều pass: 7 SQL (gồm CSV/XLSX và 1 Chromium UI upload/query file thật), 2 RAG, 1 Hybrid và 1 Unsupported. Không có 429/503 trong đợt này.
 - RAG/Hybrid chỉ trả chunk ID tồn tại; SQL rows khớp truy vấn PostgreSQL độc lập; Unsupported không tạo SQL, rows hoặc source.
 
-Chi tiết root cause, SQL/evidence từng ca, ma trận kiểm thử và inventory cleanup nằm trong `docs/system_reliability_audit.md`.
+Chi tiết root cause, SQL/evidence từng ca, ma trận kiểm thử và inventory cleanup nằm trong `docs/archive/2026-10/system_reliability_audit.md`.

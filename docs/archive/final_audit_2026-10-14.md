@@ -1,7 +1,7 @@
 # Báo cáo nghiệm thu cuối cùng ShopQuery AI
 
 > Bản lưu lịch sử ngày 14/10/2026, không đại diện cho trạng thái hiện tại.
-> Xem [báo cáo nghiệm thu mới nhất](../final_audit_report.md).
+> Xem [báo cáo nghiệm thu mới nhất](2026-10/final_audit_report.md).
 
 Ngày kiểm tra: 2026-10-14 (Asia/Saigon)
 Phạm vi source được nghiệm thu: commit `5f5d8e35085b3f3d0adecd40b15281e59aa8f23a` trên `main`.
