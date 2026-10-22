@@ -346,7 +346,7 @@ def test_aggregate_diagnostic_branch_is_private_and_stops_before_execution(
 
 
 @pytest.mark.parametrize("route", [RouteLabel.SQL, RouteLabel.HYBRID])
-def test_aggregate_diagnosis_never_continues_to_rag_or_hybrid_answer(route, caplog) -> None:
+def test_aggregate_diagnosis_never_executes_or_composes_a_hybrid_answer(route, caplog) -> None:
     sql_gateway = Mock()
     sql_gateway.generate_structured.return_value = SqlDraft(
         sql=f"SELECT COUNT(p.id) AS fact_row_count {REVERSE}"
@@ -361,6 +361,8 @@ def test_aggregate_diagnosis_never_continues_to_rag_or_hybrid_answer(route, capl
     from app.routing.hybrid import HybridPipeline
 
     rag, router = Mock(), Mock()
+    from app.rag.repository import RetrievedChunk
+    rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
     router.route.return_value = RouteDecision(route=route, reason="Synthetic branch")
     with caplog.at_level("INFO", logger="app.routing.service"):
         result = DatasetChatService(
@@ -369,7 +371,10 @@ def test_aggregate_diagnosis_never_continues_to_rag_or_hybrid_answer(route, capl
     assert result.route == RouteLabel.UNSUPPORTED
     assert result.sql is None and result.rows == [] and result.sources == []
     assert "join_aggregate (count_wrong_argument_semantics)" in caplog.text
-    rag.retrieve.assert_not_called()
+    if route == RouteLabel.HYBRID:
+        rag.retrieve.assert_called_once()
+    else:
+        rag.retrieve.assert_not_called()
     executor.execute.assert_not_called()
     answer_gateway.generate_text.assert_not_called()
     answer_gateway.generate_structured.assert_not_called()

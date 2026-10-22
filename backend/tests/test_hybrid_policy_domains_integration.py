@@ -103,8 +103,9 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
             if schema is SqlDraft:
                 assert "document conditions are applied after SQL execution" in prompt
                 assert "Preserve filters explicitly requested" in prompt
-                assert policy not in prompt
-                assert str(threshold) not in prompt
+                assert json.dumps(policy, ensure_ascii=False)[1:-1] in prompt
+                assert str(threshold) in prompt
+                assert "policy_candidates_not_verified" in prompt
                 return SqlDraft(sql=sql)
             assert schema is HybridAnswerDraft
             if business_aliases:
@@ -135,6 +136,6 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
     assert response.used_model == model and not response.fallback_used
     assert len(response.sources) == 1 and response.sources[0].source_file == filename
     assert response.sources[0].content == policy
-    assert calls == ["RouteDecision", "SqlDraft", "answer", "HybridAnswerDraft"]
+    assert calls == ["RouteDecision", "SqlDraft", "HybridAnswerDraft"]
     assert trace.facts["sql_validated"] and trace.facts["execution_reached"]
     assert ("2025-09-01" in response.sql) is filtered

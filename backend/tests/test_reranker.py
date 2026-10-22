@@ -78,6 +78,16 @@ def test_model_instance_is_shared_between_request_pipelines():
     assert build_reranker(Settings(_env_file=None)) is None
 
 
+def test_same_chunk_id_does_not_authorize_modified_content():
+    candidates = chunks()
+    modified = replace(candidates[0], content="Different workspace content")
+    ranker = Mock(rerank=Mock(return_value=[modified]))
+    pipeline = RagPipeline(Mock(), Mock(), Mock(retrieve=Mock(return_value=candidates)),
+                           17, ranker, 12, 1)
+    with pytest.raises(RetrievalError):
+        pipeline.retrieve("question")
+
+
 def test_missing_artifact_is_refused_before_library_import():
     with pytest.raises(FileNotFoundError):
         reranker()._load()

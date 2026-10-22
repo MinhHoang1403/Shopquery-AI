@@ -348,4 +348,4 @@ def test_structured_classification_api_history_and_failure_safety(
     before = list(calls)
     assert accounts.a.client.get(path).json()["messages"][-1]["response"] == response
     assert accounts.b.client.get(path).status_code == 404
-    assert calls == before == ["RouteDecision", "SqlDraft", "answer", "HybridAnswerDraft"]
+    assert calls == before == ["RouteDecision", "SqlDraft", "HybridAnswerDraft"]

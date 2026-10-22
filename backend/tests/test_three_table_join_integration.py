@@ -305,7 +305,7 @@ def test_authenticated_upload_three_tables_pipeline_and_owner_history(
     response = result.json()["assistant_message"]["response"]
     assert response["route"] == route and response["error"] is None
     assert response["used_model"] == model and response["fallback_used"] is False
-    assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 4}[route]
+    assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 3}[route]
     if route != "RAG":
         assert response["sql"].count("INNER JOIN") == 2
         assert [r["fact_row_count"] for r in response["rows"]] == [3, 2, 2]

@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 import math
 from functools import lru_cache
@@ -10,6 +12,10 @@ from app.core.config import Settings
 from app.rag.repository import RetrievedChunk
 
 BGE_REVISION = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
+BGE_ARTIFACT_HASHES = {
+    "model.safetensors": "d9e3e081faff1eefb84019509b2f5558fd74c1a05a2c7db22f74174fcedb5286",
+    "tokenizer.json": "69564b696052886ed0ac63fa393e928384e0f8caada38c1f4864a9bfbf379c15",
+}
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +38,13 @@ class LocalReranker:
         required = ("config.json", "tokenizer.json", "model.safetensors")
         if not self._path.is_dir() or any(not (self._path / f).is_file() for f in required):
             raise FileNotFoundError("Local reranker artifact is incomplete")
+        config = json.loads((self._path / "config.json").read_text(encoding="utf-8"))
+        if config.get("architectures") != ["XLMRobertaForSequenceClassification"]:
+            raise ValueError("Unexpected local model architecture")
+        for name, expected in BGE_ARTIFACT_HASHES.items():
+            with (self._path / name).open("rb") as artifact:
+                if hashlib.file_digest(artifact, "sha256").hexdigest() != expected:
+                    raise ValueError("Local model artifact integrity failed")
         from sentence_transformers import CrossEncoder
 
         return CrossEncoder(
@@ -84,7 +97,7 @@ class LocalReranker:
         return ranked
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=1)
 def _shared_reranker(
     path: str, revision: str, device: str, batch_size: int, max_length: int
 ) -> LocalReranker:

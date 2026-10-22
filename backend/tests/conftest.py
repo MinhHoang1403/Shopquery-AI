@@ -2,11 +2,27 @@
 
 import os
 
+import httpx
 import pytest
 
 from app.core.config import get_settings
 from app.database.test_safety import require_test_database
 from tests.auth_helpers import contract_session  # noqa: F401
+
+
+@pytest.fixture(autouse=True)
+def offline_http_boundary(request, monkeypatch):
+    if "live" in request.node.keywords:
+        return
+
+    def blocked(*args, **kwargs):
+        raise AssertionError("Offline tests cannot use a real HTTP transport")
+
+    async def async_blocked(*args, **kwargs):
+        raise AssertionError("Offline tests cannot use a real HTTP transport")
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", blocked)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", async_blocked)
 
 
 @pytest.fixture(autouse=True)

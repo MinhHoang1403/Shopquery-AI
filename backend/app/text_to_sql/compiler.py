@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import Column, MetaData, Table, and_, bindparam, func, select
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.engine import BindTyping
 from sqlalchemy.sql.elements import ColumnElement
 from sqlglot import parse_one
 
@@ -182,6 +183,7 @@ class QueryCompiler:
         if plan.limit:
             query = query.limit(plan.limit)
         dialect = postgresql.dialect(paramstyle="named")
+        dialect.bind_typing = BindTyping.NONE
         compiled = query.compile(dialect=dialect, compile_kwargs={"render_postcompile": True})
         # Validate a safely rendered preview so current COUNT/grain analysis sees actual AST values.
         preview = str(query.compile(dialect=dialect, compile_kwargs={"literal_binds": True}))

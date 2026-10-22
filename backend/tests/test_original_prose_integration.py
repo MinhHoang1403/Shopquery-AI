@@ -108,7 +108,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
         assert response["sql"] is None and "Qualified:" not in response["answer"]
         assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
         assert actors.b.client.get(path).status_code == 404
-        assert calls == ["RouteDecision", "SqlDraft", "answer", "HybridAnswerDraft"]
+        assert calls == ["RouteDecision", "SqlDraft", "HybridAnswerDraft"]
         return
     assert response["error"] is None, response["error"]
     assert response["route"] == "HYBRID" and response["rows"] == expected
@@ -123,4 +123,4 @@ def test_original_prose_exact_kh_acceptance_and_history(
         assert line.endswith("| Qualified |" if status == "qualified" else "| Not qualified |")
     assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
     assert actors.b.client.get(path).status_code == 404
-    assert calls == ["RouteDecision", "SqlDraft", "answer", "HybridAnswerDraft"]
+    assert calls == ["RouteDecision", "SqlDraft", "HybridAnswerDraft"]
