@@ -18,6 +18,7 @@ from app.routing.router import QueryRouter, RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft, SqlGenerator
 from app.text_to_sql.pipeline import SqlResult
 from app.text_to_sql.validator import SqlValidator
+from tests.hybrid_fixtures import explanation_draft
 
 
 class RecordingGateway:
@@ -34,7 +35,7 @@ class RecordingGateway:
         if response_model is RagAnswerDraft:
             return RagAnswerDraft(answer="Ngưỡng nợ trên 1000000.", used_chunk_ids=[41])
         if response_model is HybridAnswerDraft:
-            return HybridAnswerDraft(answer="HV02 còn nợ 1500000.", used_chunk_ids=[41])
+            return explanation_draft(prompt, [41])
         raise AssertionError(response_model)
 
 

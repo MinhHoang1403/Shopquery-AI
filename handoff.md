@@ -1,5 +1,10 @@
 # SHOPQUERY AI — HANDOFF TOÀN DIỆN CHO CHATGPT WEB
 
+> Cập nhật22/10/2026: xem `docs/hybrid_natural_policy_final_delivery.md` cho bản
+> structured Hybrid consistency + closed numeric prose grammar, exact original KH
+> offline acceptance, regression và trạng thái deployment/Git/CI mới nhất.
+> Đây không phải nghiệm thu provider live mới; KH live cũ FAIL, GH chưa chạy.
+
 > Snapshot lịch sử của lượt Gate D. Cập nhật tiếp theo ngày 21/10/2026:
 > semantic COUNT đã kiểm chứng offline và triển khai API-only lên8080.
 > Đọc `docs/text_to_sql_count_semantic_contract_redesign.md` và

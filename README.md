@@ -4,6 +4,12 @@
 
 ShopQuery AI là trợ lý phân tích bảng dữ liệu và tài liệu đa lĩnh vực, từ bán hàng đến học phí, nhân sự và vận hành. React, FastAPI, iNetCloud Knowledge/Gemini và PostgreSQL/pgvector hỗ trợ SQL, RAG và Hybrid; đây chưa phải dịch vụ production công khai.
 
+## Hybrid numeric policy — giới hạn cần biết
+
+Hybrid dùng structured decisions theo entity ID; backend kiểm metric/policy/citation rồi dựng summary và details từ cùng một tập kết luận. Chính sách số học tiếng Việt/Anh không bắt buộc có JSON, nhưng chỉ được xác minh trong grammar tường minh: một aggregate SUM/AVG/COUNT, toán tử/ngưỡng chính xác, source metric/ID/đơn vị rõ ràng và phạm vi tất cả dòng. Tài liệu phải được truy hồi đầy đủ trong một chunk, thuộc đúng owner/workspace. Ngoại lệ, nhiều rule mâu thuẫn, filters/top-N, đổi đơn vị hoặc binding mơ hồ không được tự suy đoán; hệ thống giữ chưa xác minh hoặc từ chối.
+
+Xem [báo cáo triển khai và nghiệm thu mới nhất](docs/hybrid_natural_policy_final_delivery.md) để biết trạng thái thực tế. Test PostgreSQL với fake providers không đồng nghĩa đã nghiệm thu Knowledge/Gemini live; không dùng các kết quả lịch sử bên dưới để khẳng định bản Hybrid mới đã live PASS.
+
 ## Authentication & multi-user — thay đổi cần đọc trước khi chạy
 
 Mở website là thấy chatbot Guest; Google login là tùy chọn để sử dụng không gian cá nhân lưu lâu dài. API dữ liệu/model cũ vẫn yêu cầu Google OIDC invite-only, PostgreSQL sessions, CSRF và ownership. Guest chỉ dùng namespace `/api/guest/*`, không được đọc history/datasets cá nhân. Logout thành công quay về Guest trống; lỗi logout không được coi là đã revoke session.
@@ -169,10 +175,10 @@ Chờ ba service `db`, `api`, `web` healthy rồi mở `http://127.0.0.1:8080`. 
 
 API không tự setup/migration khi khởi động hoặc nhận request. `--fresh` chỉ khởi tạo database chưa có bảng ứng dụng, thêm final ownership constraints và version marker, không tạo user giả. Cài mới thành công có thể chạy lại mà không xoá dữ liệu; schema cũ bị từ chối. Lệnh không có `--fresh` vẫn là expansion cho quy trình legacy, không thay thế migration ownership.
 
-Ở máy nghiệm thu hiện tại phải dùng cùng hai Compose files trong mọi lệnh vận hành, để giữ đúng cổng và volume sạch đã chọn:
+Ở máy nghiệm thu hiện tại phải dùng đủ ba Compose files trong mọi lệnh vận hành, để giữ đúng cổng, volume và JOIN flag đã chọn:
 
 ```powershell
-docker compose -p shopquery-ai -f compose.yaml -f .env.compose-ui.yaml up -d
+docker compose -p shopquery-ai -f compose.yaml -f .env.compose-ui.yaml -f .env.join-v1.yaml up -d
 ```
 
 File override local này không chứa secrets và không commit. Không chạy base Compose một mình trên máy này: mặc định vẫn tham chiếu volume cũ. Máy cài mới không cần sao chép override; có thể chọn volume bằng `POSTGRES_VOLUME_NAME` trước khi khởi tạo. Không đổi volume trên database đang dùng nếu chưa backup và kiểm tra target.

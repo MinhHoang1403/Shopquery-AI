@@ -23,6 +23,7 @@ from app.rag.pipeline import RagAnswerDraft
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft
+from tests.hybrid_fixtures import explanation_draft
 
 pytestmark = pytest.mark.integration
 
@@ -52,7 +53,7 @@ class GuestGateway:
         if schema is RagAnswerDraft:
             return RagAnswerDraft(answer="Ngưỡng là 250.", used_chunk_ids=[1])
         if schema is HybridAnswerDraft:
-            return HybridAnswerDraft(answer="Tổng 300 vượt ngưỡng 250.", used_chunk_ids=[1])
+            return explanation_draft(prompt, [1])
         raise AssertionError("Unexpected generation schema")
 
     def generate_text(self, prompt):

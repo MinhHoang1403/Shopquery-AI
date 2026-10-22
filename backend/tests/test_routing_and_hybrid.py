@@ -10,6 +10,7 @@ from app.routing.hybrid import HybridAnswerDraft, HybridPipeline
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft, SqlGenerator
 from app.text_to_sql.pipeline import SqlResult
+from tests.hybrid_fixtures import explanation_draft
 
 
 class FakeGateway:
@@ -22,9 +23,7 @@ class FakeGateway:
         if response_model is RagAnswerDraft:
             return RagAnswerDraft(answer="Câu trả lời có nguồn.", used_chunk_ids=[11])
         if response_model is HybridAnswerDraft:
-            return HybridAnswerDraft(
-                answer="Sản phẩm PHONE đáp ứng điều kiện miễn phí.", used_chunk_ids=[11]
-            )
+            return explanation_draft(prompt, [11])
         raise AssertionError(f"Unexpected response model: {response_model}")
 
     def generate_text(self, prompt: str) -> str:

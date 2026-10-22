@@ -4,21 +4,23 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import ValidationError
 
 from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage
 from app.core.errors import ModelResponseError
+from app.datasets.context import DatasetSqlContext
 from app.rag.pipeline import RagPipeline, Source
+from app.routing.hybrid_evidence import (
+    HybridAnswerDraft,
+    compose_answer,
+    decision_prompt,
+)
+from app.routing.hybrid_policy_binding import policy_evidence
 from app.text_to_sql.count_contract import count_evidence
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
-
-class HybridAnswerDraft(BaseModel):
-    answer: str = Field(description="Conclusion grounded in both supplied evidence sets")
-    used_chunk_ids: list[int] = Field(
-        description="IDs of document chunks used to support the conclusion"
-    )
+EVIDENCE_REFUSAL = "Chưa đủ bằng chứng để kết luận chính xác từ dữ liệu hiện có."
 
 
 @dataclass
@@ -35,14 +37,20 @@ class HybridPipeline:
         sql_pipeline: TextToSqlPipeline,
         rag_pipeline: RagPipeline,
         gateway: GenerationGateway,
+        context: DatasetSqlContext | None = None,
     ) -> None:
         self._sql_pipeline = sql_pipeline
         self._rag_pipeline = rag_pipeline
         self._gateway = gateway
+        self._context = context
 
     def run(self, question: str) -> HybridResult:
         sql_result = self._sql_pipeline.run(question)
         chunks = self._rag_pipeline.retrieve(question)
+        try:
+            policies = policy_evidence(sql_result, chunks, self._context)
+        except (ModelResponseError, ValueError, TypeError, KeyError):
+            policies = []
         evidence = "\n\n".join(
             f"[chunk_id={chunk.chunk_id}; file={chunk.source_file}; "
             f"section={chunk.section_title}]\n{chunk.content}"
@@ -78,6 +86,8 @@ If a document needs a row count but SQL supplies only nullable value counts, sta
 evidence instead of guessing missing rows. Zero value count is not proof that there are no rows.
 Do not rename or interchange count fields; a verified INNER key count is row-equivalent.
 COUNT field provenance: {json.dumps(count_evidence(sql_result.count_metrics), ensure_ascii=False)}
+{decision_prompt()}
+Backend policy candidates: {json.dumps(policies, ensure_ascii=False)}
 
 Question: {question}
 SQL rows: {json.dumps(sql_result.rows, ensure_ascii=False)}
@@ -86,7 +96,15 @@ Document evidence:
 {evidence}
 """.strip()
         with diagnostic_stage("answer_grounding"):
-            draft = self._gateway.generate_structured(prompt, HybridAnswerDraft)
+            try:
+                draft = self._gateway.generate_structured(prompt, HybridAnswerDraft)
+                draft = HybridAnswerDraft.model_validate(draft)
+                try:
+                    answer = compose_answer(sql_result, chunks, draft, self._context)
+                except ModelResponseError as exc:
+                    raise ModelResponseError(EVIDENCE_REFUSAL) from exc
+            except (ValidationError, ValueError, TypeError, KeyError) as exc:
+                raise ModelResponseError(EVIDENCE_REFUSAL) from exc
             by_id = {chunk.chunk_id: chunk for chunk in chunks}
             if not draft.used_chunk_ids or any(
                 chunk_id not in by_id for chunk_id in draft.used_chunk_ids
@@ -101,4 +119,4 @@ Document evidence:
                 )
                 for chunk_id in dict.fromkeys(draft.used_chunk_ids)
             ]
-        return HybridResult(draft.answer, sql_result.sql, sql_result.rows, sources)
+        return HybridResult(answer, sql_result.sql, sql_result.rows, sources)

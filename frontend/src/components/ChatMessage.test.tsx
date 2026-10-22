@@ -58,6 +58,20 @@ describe("Assistant content", () => {
     expect(screen.queryByRole("group", { name: "Bằng chứng hỗ trợ" })).not.toBeInTheDocument();
   });
 
+  it("renders deterministic Hybrid decisions with exact decimals and restored text", () => {
+    const text = "Đạt: KHO02, KHO03, KHO05.\n\n| ID | Tổng | Kết luận |\n| --- | --- | --- |\n| KHO02 | 598000.00 | Đạt |\n| KHO03 | 502000.00 | Đạt |\n| KHO05 | 540000.00 | Đạt |\n| E_NULL | NULL | Thiếu bằng chứng |\n| E_ZERO | 0.00 | Chưa đạt |";
+    const { unmount } = renderAnswer(text);
+    expect(screen.getByText("Đạt: KHO02, KHO03, KHO05.")).toBeVisible();
+    expect(screen.getByRole("cell", { name: "598000.00" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "0.00" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "NULL" })).toBeVisible();
+    expect(screen.getAllByRole("row")).toHaveLength(6);
+    unmount();
+    renderAnswer(text);
+    expect(screen.getByText("Đạt: KHO02, KHO03, KHO05.")).toBeVisible();
+    expect(screen.getAllByRole("row")).toHaveLength(6);
+  });
+
   it("ignores raw HTML and does not load Markdown images or execute embedded code", () => {
     const { container } = renderAnswer('<script>alert("xss")</script>\n\n<img src="x" onerror="alert(1)">\n\n![Mô tả ảnh](https://example.com/tracker.png)\n\n`<script>not executable</script>`');
     expect(container.querySelector("script, img, iframe")).toBeNull();

@@ -18,6 +18,7 @@ from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft
 from tests.gate_d_fixture import POLICY, QUESTIONS, uploads
+from tests.hybrid_fixtures import classification_draft, rule_block
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
@@ -105,10 +106,10 @@ def draft_sql(dataset, level: str) -> str:
     )
 
 
-def add_policy(actors, dataset, embedder):
+def add_policy(actors, dataset, embedder, policy=POLICY):
     actors.a.documents.add_document(
         dataset.dataset_id,
-        parse_document_file("live_gate_d_kpi.md", POLICY.encode(), max_bytes=10000),
+        parse_document_file("live_gate_d_kpi.md", policy.encode(), max_bytes=10000),
         embedder,
     )
     return actors.a.datasets.get(dataset.dataset_id)
@@ -182,7 +183,13 @@ def test_gate_d_questions_oracle_and_authenticated_history(
             ids = [int(value) for value in re.findall(r"\[chunk_id=(\d+)", prompt)]
             assert ids and "500000.00" in prompt
             assert json.dumps(expected, ensure_ascii=False) in prompt
-            return HybridAnswerDraft(answer=json.dumps(qualified), used_chunk_ids=[ids[0]])
+            return classification_draft(
+                expected,
+                ["unverified"] * len(expected),
+                ids[0],
+                identity_field="kho_id",
+                verified=False,
+            )
 
         def generate_text(self, prompt: str) -> str:
             calls.append("answer")
@@ -203,7 +210,12 @@ def test_gate_d_questions_oracle_and_authenticated_history(
     assert response["error"] is None and response["route"] == ("HYBRID" if level == "H" else "SQL")
     assert response["rows"] == expected and response["used_model"] == model
     assert not response["fallback_used"]
-    assert json.loads(response["answer"]) == (qualified if level == "H" else expected)
+    if level == "H":
+        assert "Policy semantics unverified" in response["answer"]
+        assert "Unverified: KHO01, KHO02, KHO03, KHO04, KHO05." in response["answer"]
+        assert "Qualified:" not in response["answer"]
+    else:
+        assert json.loads(response["answer"]) == expected
     assert trace.facts["execution_reached"] and trace.facts["sql_validated"]
     if level == "H":
         assert response["sources"][0]["source_file"] == "live_gate_d_kpi.md"
@@ -279,3 +291,61 @@ def test_gate_d_hypotheses_stay_fail_closed_before_retrieval(
         e["stage"] == code and (reason is None or e["reason"] == reason) for e in trace.events
     )
     assert "Private synthetic" not in response["answer"]
+
+
+@pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
+@pytest.mark.parametrize("contradiction", [False, True])
+def test_structured_classification_api_history_and_failure_safety(
+    gate_d_workspace,
+    monkeypatch,
+    model,
+    contradiction,
+):
+    accounts, dataset, facts, embedder = gate_d_workspace  # noqa: F811
+    policy = rule_block("kho_id", "phi_giao_vnd", "500000.00")
+    dataset = add_policy(accounts, dataset, embedder, policy)
+    expected = independent_oracle(facts, "H")
+    statuses = ["not_qualified", "qualified", "qualified", "not_qualified", "qualified"]
+    calls = []
+
+    class Gateway:
+        def generate_structured(self, prompt, schema):
+            calls.append(schema.__name__)
+            if schema is RouteDecision:
+                return RouteDecision(route=RouteLabel.HYBRID, reason="Offline evidence test")
+            if schema is SqlDraft:
+                return SqlDraft(sql=draft_sql(dataset, "H"))
+            assert schema is HybridAnswerDraft
+            ids = [int(value) for value in re.findall(r"\[chunk_id=(\d+)", prompt)]
+            assert len(ids) == 1 and json.dumps(expected, ensure_ascii=False) in prompt
+            draft = classification_draft(expected, statuses, ids[0], identity_field="kho_id")
+            if contradiction:
+                draft.decisions[1].status = "not_qualified"
+            return draft
+
+        def generate_text(self, prompt):
+            calls.append("answer")
+            return "Intermediate answer is never final evidence"
+
+    monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
+    created = accounts.a.client.post("/api/conversations", json={"dataset_id": dataset.dataset_id})
+    path = "/api/conversations/" + created.json()["conversation_id"]
+    sent = accounts.a.client.post(
+        path + "/messages", json={"message": QUESTIONS["H"], "model_id": model}
+    )
+    assert sent.status_code == 200
+    response = sent.json()["assistant_message"]["response"]
+    if contradiction:
+        assert response["error"] and response["rows"] == [] and response["sources"] == []
+        assert response["sql"] is None and "KHO02" not in response["answer"]
+        assert "Hybrid decision" not in response["answer"]
+        assert response["error"] == "Chưa đủ bằng chứng để kết luận chính xác từ dữ liệu hiện có."
+    else:
+        assert response["error"] is None and response["rows"] == expected
+        assert "Qualified: KHO02, KHO03, KHO05." in response["answer"]
+        assert response["used_model"] == model and not response["fallback_used"]
+        assert response["sources"][0]["content"] == policy
+    before = list(calls)
+    assert accounts.a.client.get(path).json()["messages"][-1]["response"] == response
+    assert accounts.b.client.get(path).status_code == 404
+    assert calls == before == ["RouteDecision", "SqlDraft", "answer", "HybridAnswerDraft"]

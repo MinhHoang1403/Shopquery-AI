@@ -22,6 +22,9 @@ class DatasetSqlContext:
     routing_context: str | None = None
     approved_joins: tuple[ApprovedJoin, ...] = ()
     column_types: dict[str, dict[str, str]] = field(default_factory=dict)
+    column_headers: dict[str, dict[str, str]] = field(default_factory=dict)
+    table_labels: dict[str, str] = field(default_factory=dict)
+    categorical_values: dict[str, dict[str, tuple[str, ...]]] = field(default_factory=dict)
 
 
 def build_dataset_sql_context(
@@ -250,4 +253,9 @@ Rules:
             table.physical_table_name: {c.name: c.data_type for c in table.columns}
             for table in tables
         },
+        column_headers={
+            t.physical_table_name: {c.name: c.source_name for c in t.columns} for t in tables
+        },
+        table_labels={t.physical_table_name: t.display_name for t in tables},
+        categorical_values=nested_values,
     )

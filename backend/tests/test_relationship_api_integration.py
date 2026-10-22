@@ -9,6 +9,7 @@ from app.auth.limits import ResourceControl
 from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.relationships import RelationshipConfirm, RelationshipInput
 from app.main import app
+from tests.hybrid_fixtures import explanation_draft
 from tests.test_auth_integration import accounts as auth_accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 
@@ -164,9 +165,7 @@ def test_join_api_pipelines_and_persisted_history(
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(answer="Synthetic policy", used_chunk_ids=[chunk_id])
             if schema is HybridAnswerDraft:
-                return HybridAnswerDraft(
-                    answer="Synthetic total 5 with policy", used_chunk_ids=[chunk_id]
-                )
+                return explanation_draft(prompt, [chunk_id])
             raise AssertionError(schema)
 
         def generate_text(self, prompt):
@@ -235,9 +234,7 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
                     answer="Must not be persisted as success", used_chunk_ids=[-1]
                 )
             if schema is HybridAnswerDraft:
-                return HybridAnswerDraft(
-                    answer="Must not be persisted as success", used_chunk_ids=[-1]
-                )
+                return explanation_draft(prompt, [-1])
             raise AssertionError(schema)
 
         def generate_text(self, prompt):

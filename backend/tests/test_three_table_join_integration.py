@@ -31,6 +31,7 @@ from app.text_to_sql.generator import SqlDraft
 from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import SqlValidator
 from tests.auth_helpers import TEST_OWNER
+from tests.hybrid_fixtures import explanation_draft
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
@@ -283,10 +284,7 @@ def test_authenticated_upload_three_tables_pipeline_and_owner_history(
                     answer="Synthetic threshold 40", used_chunk_ids=[chunk.chunk_id]
                 )
             if schema is HybridAnswerDraft:
-                return HybridAnswerDraft(
-                    answer="Synthetic rooted fact evidence with rule",
-                    used_chunk_ids=[chunk.chunk_id],
-                )
+                return explanation_draft(prompt, [chunk.chunk_id])
             raise AssertionError(schema)
 
         def generate_text(self, prompt):
@@ -366,9 +364,7 @@ def test_guest_three_table_auto_relations_temp_and_pipelines(monkeypatch, model,
                 if schema is RagAnswerDraft:
                     return RagAnswerDraft(answer="Threshold 40", used_chunk_ids=[1])
                 if schema is HybridAnswerDraft:
-                    return HybridAnswerDraft(
-                        answer="Synthetic course evidence and rule", used_chunk_ids=[1]
-                    )
+                    return explanation_draft(prompt, [1])
                 raise AssertionError(schema)
 
             def generate_text(self, prompt):

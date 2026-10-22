@@ -24,12 +24,23 @@ from app.rag.upload_parser import ParsedDocument
 
 
 @dataclass(frozen=True)
+class DocumentScope:
+    document_id: int | str
+    content_hash: str
+    chunk_ids: tuple[int, ...]
+    dataset_id: int
+    owner_user_id: UUID | None
+    text_hashes: tuple[tuple[int, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class RetrievedChunk:
     chunk_id: int
     source_file: str
     section_title: str
     content: str
     cosine_distance: float
+    document_scope: DocumentScope | None = None
 
 
 @dataclass(frozen=True)
@@ -147,9 +158,14 @@ class DocumentRepository:
         try:
             with Session(self._setup_engine) as session:
                 lock_owner_budget(session.connection(), self._owner_user_id)
-                parent = session.scalar(select(Dataset.dataset_id).where(
-                    Dataset.dataset_id == dataset_id, Dataset.owner_user_id == self._owner_user_id
-                ).with_for_update())
+                parent = session.scalar(
+                    select(Dataset.dataset_id)
+                    .where(
+                        Dataset.dataset_id == dataset_id,
+                        Dataset.owner_user_id == self._owner_user_id,
+                    )
+                    .with_for_update()
+                )
                 if parent is None:
                     raise ResourceNotFoundError("Không tìm thấy bộ dữ liệu.")
                 document = DatasetDocument(
@@ -215,12 +231,50 @@ class DocumentRepository:
             else DocumentChunk.dataset_id == dataset_id
         )
         if dataset_id is not None:
-            scope = scope & select(Dataset.dataset_id).where(
-                Dataset.dataset_id == dataset_id, Dataset.owner_user_id == self._owner_user_id
-            ).exists()
+            scope = (
+                scope
+                & select(Dataset.dataset_id)
+                .where(
+                    Dataset.dataset_id == dataset_id, Dataset.owner_user_id == self._owner_user_id
+                )
+                .exists()
+            )
         statement = select(DocumentChunk, distance).where(scope).order_by(distance).limit(top_k)
         with Session(self._readonly_engine) as session:
             results = session.execute(statement).all()
+            document_ids = {c.dataset_document_id for c, _ in results if c.dataset_document_id}
+            documents = (
+                session.scalars(
+                    select(DatasetDocument).where(
+                        DatasetDocument.document_id.in_(document_ids),
+                        DatasetDocument.dataset_id == dataset_id,
+                    )
+                ).all()
+                if dataset_id is not None
+                else []
+            )
+            registered = session.execute(
+                select(
+                    DocumentChunk.dataset_document_id,
+                    DocumentChunk.chunk_id,
+                ).where(DocumentChunk.dataset_document_id.in_(document_ids), scope)
+            ).all()
+            scopes = {}
+            for document in documents:
+                ids = tuple(sorted(i for d, i in registered if d == document.document_id))
+                if len(ids) == document.chunk_count:
+                    scopes[document.document_id] = DocumentScope(
+                        document.document_id,
+                        document.content_hash,
+                        ids,
+                        dataset_id,
+                        self._owner_user_id,
+                        tuple(
+                            (c.chunk_id, hashlib.sha256(c.content.encode()).hexdigest())
+                            for c, _ in results
+                            if c.dataset_document_id == document.document_id
+                        ),
+                    )
         return [
             RetrievedChunk(
                 chunk_id=chunk.chunk_id,
@@ -228,6 +282,7 @@ class DocumentRepository:
                 section_title=chunk.section_title,
                 content=chunk.content,
                 cosine_distance=float(score),
+                document_scope=scopes.get(chunk.dataset_document_id),
             )
             for chunk, score in results
         ]

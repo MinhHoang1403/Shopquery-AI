@@ -17,6 +17,7 @@ from app.rag.pipeline import RagAnswerDraft
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft
+from tests.hybrid_fixtures import explanation_draft
 from tests.test_guest import guest_api as guest_api_fixture  # noqa: F401
 from tests.test_guest import new_guest
 from tests.test_guest_integration import OfflineEmbedder
@@ -109,7 +110,7 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(answer="Threshold 40", used_chunk_ids=[1])
             if schema is HybridAnswerDraft:
-                return HybridAnswerDraft(answer="50 exceeds 40", used_chunk_ids=[1])
+                return explanation_draft(prompt, [1])
             raise AssertionError(schema)
 
         def generate_text(self, prompt):

@@ -17,6 +17,7 @@ from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft
 from tests.auth_helpers import TEST_OWNER
+from tests.hybrid_fixtures import assert_decision_summary, classification_draft, rule_block
 from tests.join_domains import DOMAINS
 from tests.test_guest_integration import OfflineEmbedder
 from tests.test_join_domains_integration import (
@@ -27,8 +28,10 @@ from tests.test_join_domains_integration import (
 
 pytestmark = pytest.mark.integration
 POLICIES = {
-    "tuition": "Khóa học đạt điều kiện khi tổng thanh toán >= 30.00. Tính mọi trạng thái.",
-    "staffing": "Phòng ban đạt điều kiện khi tổng giờ làm >= 12.50. Tính mọi trạng thái.",
+    "tuition": "Mỗi course đạt nếu tổng amount_paid >= 30.00 source. "
+    "Tính tất cả dòng. Phân biệt từng course theo mã course_id.",
+    "staffing": "Mỗi department đạt nếu tổng hours >= 12.50 source. "
+    "Tính tất cả dòng. Phân biệt từng department theo mã department_id.",
 }
 
 
@@ -52,8 +55,10 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
     policy = POLICIES[domain.name]
     # The document oracle reads its own fixture; no threshold is inferred from SQL/model output.
     threshold = Decimal(re.search(r">= (\d+\.\d+)", policy).group(1))
+    if not filtered:
+        policy += "\n" + rule_block(domain.keys[0], domain.measure, str(threshold))
     embedder = OfflineEmbedder()
-    filename = domain.name + "_policy.md"
+    filename = domain.keys[0].removesuffix("_id") + "_policy.md"
     build_document_repository(TEST_OWNER).add_document(
         dataset.dataset_id,
         parse_document_file(filename, policy.encode(), max_bytes=10000),
@@ -66,6 +71,16 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
         r["entity_id"]
         for r in expected
         if r["total"] is not None and Decimal(r["total"]) >= threshold
+    ]
+    statuses = [
+        "insufficient_evidence"
+        if r["total"] is None
+        else "unverified"
+        if filtered
+        else "qualified"
+        if r["entity_id"] in qualified
+        else "not_qualified"
+        for r in expected
     ]
     sql = golden_sql(domain, dataset, 3, filtered)
     sql = sql.replace("COUNT(*) AS fact_row_count", f"COUNT(f.{domain.keys[1]}) AS fact_row_count")
@@ -98,7 +113,7 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
             assert policy in prompt and json.dumps(expected, ensure_ascii=False) in prompt
             ids = [int(value) for value in re.findall(r"\[chunk_id=(\d+)", prompt)]
             assert len(ids) == 1
-            return HybridAnswerDraft(answer=json.dumps(sorted(qualified)), used_chunk_ids=ids)
+            return classification_draft(expected, statuses, ids[0], verified=not filtered)
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -116,7 +131,7 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
             context,
         ).chat(question)
     assert response.route == RouteLabel.HYBRID and response.rows == expected
-    assert json.loads(response.answer) == sorted(qualified)
+    assert_decision_summary(response.answer, expected, statuses)
     assert response.used_model == model and not response.fallback_used
     assert len(response.sources) == 1 and response.sources[0].source_file == filename
     assert response.sources[0].content == policy

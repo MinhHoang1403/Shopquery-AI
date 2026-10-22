@@ -1,5 +1,6 @@
 """Existing validated pipelines over request-scoped TEMP SQL and RAM-only RAG."""
 
+import hashlib
 import math
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -24,7 +25,7 @@ from app.datasets.relationships import (
 from app.datasets.repository import SQL_TYPES, DatasetInfo, DatasetTableInfo
 from app.guest.store import GuestFile
 from app.rag.pipeline import RagPipeline
-from app.rag.repository import RetrievedChunk
+from app.rag.repository import DocumentScope, RetrievedChunk
 from app.routing.hybrid import HybridPipeline
 from app.routing.router import QueryRouter
 from app.routing.service import ChatResult, DatasetChatService
@@ -102,6 +103,23 @@ class MemoryChunks:
         self.chunks = [chunk for file in files for chunk in file.chunks]
         self.embedder = embedder
         self.vectors: list[list[float]] | None = None
+        self.scopes = {}
+        position = 1
+        for file in files:
+            ids = tuple(range(position, position + len(file.chunks)))
+            for chunk_id in ids:
+                self.scopes[chunk_id] = DocumentScope(
+                    file.file_id,
+                    hashlib.sha256("\n".join(c.content for c in file.chunks).encode()).hexdigest(),
+                    ids,
+                    0,
+                    None,
+                    tuple(
+                        (i, hashlib.sha256(c.content.encode()).hexdigest())
+                        for i, c in zip(ids, file.chunks, strict=True)
+                    ),
+                )
+            position += len(file.chunks)
 
     def retrieve(self, query_vector, top_k=3, *, dataset_id=None) -> list[RetrievedChunk]:
         if dataset_id is not None:
@@ -123,6 +141,7 @@ class MemoryChunks:
                     chunk.section_title,
                     chunk.content,
                     distance,
+                    self.scopes[index],
                 )
             )
         return sorted(rows, key=lambda row: (row.cosine_distance, row.chunk_id))[:top_k]
@@ -255,7 +274,11 @@ def run_guest_chat(
                 if info.document_count
                 else None
             )
-            hybrid = HybridPipeline(sql_pipeline, rag, selected) if sql_pipeline and rag else None
+            hybrid = (
+                HybridPipeline(sql_pipeline, rag, selected, context)
+                if sql_pipeline and rag
+                else None
+            )
             return DatasetChatService(
                 QueryRouter(selected, context.routing_context),
                 sql_pipeline,

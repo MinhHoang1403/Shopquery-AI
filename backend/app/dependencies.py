@@ -136,7 +136,7 @@ def _build_dataset_chat_service(
             dataset_id=context.dataset_id,
         )
     hybrid_pipeline = (
-        HybridPipeline(sql_pipeline, rag_pipeline, gateway)
+        HybridPipeline(sql_pipeline, rag_pipeline, gateway, context)
         if sql_pipeline is not None and rag_pipeline is not None
         else None
     )

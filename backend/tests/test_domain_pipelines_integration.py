@@ -15,6 +15,7 @@ from app.guest.worker import parse_guest_file
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft
+from tests.hybrid_fixtures import explanation_draft
 from tests.test_guest_integration import OfflineEmbedder
 
 pytestmark = pytest.mark.integration
@@ -96,9 +97,7 @@ def test_domain_pipeline_matches_independent_fact_grain_oracle(
                 )
             if schema is HybridAnswerDraft:
                 assert "Threshold 40" in prompt and '"total": null' in prompt
-                return HybridAnswerDraft(
-                    answer="A below threshold; B unknown; C zero.", used_chunk_ids=[1]
-                )
+                return explanation_draft(prompt, [1])
             raise AssertionError(schema)
 
         def generate_text(self, prompt):

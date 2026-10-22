@@ -406,6 +406,10 @@ def test_owned_pipelines_execute_real_sql_retrieval_with_offline_providers(
                 )
             ids = [int(value) for value in re.findall(r"chunk_id=(\d+)", prompt)]
             assert ids
+            if response_model.__name__ == "HybridAnswerDraft":
+                from tests.hybrid_fixtures import explanation_draft
+
+                return explanation_draft(prompt, ids)
             return response_model(answer="Only the current account evidence.", used_chunk_ids=ids)
 
         def generate_text(self, prompt):

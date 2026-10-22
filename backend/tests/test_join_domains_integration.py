@@ -23,6 +23,12 @@ from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.generator import SqlDraft
 from tests.auth_helpers import TEST_OWNER
+from tests.hybrid_fixtures import (
+    assert_decision_summary,
+    classification_draft,
+    prose_policy,
+    rule_block,
+)
 from tests.join_domains import DOMAINS, uploads
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
@@ -197,14 +203,15 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
     embedder = OfflineEmbedder()
     documents = build_document_repository(TEST_OWNER)
     filename = "synthetic_kpi.md"
-    content = (
-        b"# Synthetic KPI\n\nA group qualifies when total is at least 40.00. Count all statuses."
-    )
+    prose = prose_policy(domain.keys[0], domain.measure, "40.00")
+    content = ("# Synthetic KPI\n\n" + prose).encode()
+    content += ("\n" + rule_block(domain.keys[0], domain.measure, "40.00")).encode()
     if domain.name == "logistics":
         filename = "synthetic_kpi.docx"
         policy = Document()
         policy.add_heading("Synthetic KPI", level=1)
-        policy.add_table(rows=1, cols=1).cell(0, 0).text = content.decode().split("\n\n")[1]
+        policy.add_table(rows=1, cols=1).cell(0, 0).text = prose
+        policy.add_paragraph(rule_block(domain.keys[0], domain.measure, "40.00"))
         output = BytesIO()
         policy.save(output)
         content = output.getvalue()
@@ -217,6 +224,14 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
         r["entity_id"]
         for r in expected
         if r["total"] is not None and Decimal(r["total"]) >= Decimal("40.00")
+    ]
+    statuses = [
+        "insufficient_evidence"
+        if r["total"] is None
+        else "qualified"
+        if r["entity_id"] in qualified
+        else "not_qualified"
+        for r in expected
     ]
     calls = []
 
@@ -236,7 +251,7 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
             assert schema is HybridAnswerDraft
             rows = json.loads(prompt.split("SQL rows: ", 1)[1].split("\n", 1)[0])
             assert rows == expected
-            return HybridAnswerDraft(answer=json.dumps(qualified), used_chunk_ids=[ids[0]])
+            return classification_draft(expected, statuses, ids[0])
 
         def generate_text(self, prompt):
             return json.dumps(expected)
@@ -248,7 +263,8 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
     ).chat("Synthetic question with KPI evidence")
     assert result.route == route and result.used_model == model and not result.fallback_used
     if route == RouteLabel.HYBRID:
-        assert result.rows == expected and json.loads(result.answer) == qualified
+        assert result.rows == expected
+        assert_decision_summary(result.answer, expected, statuses)
     else:
         assert result.rows == [] and "SqlDraft" not in calls
     if route != RouteLabel.UNSUPPORTED:
