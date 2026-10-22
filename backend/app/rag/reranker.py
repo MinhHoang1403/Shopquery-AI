@@ -19,6 +19,10 @@ BGE_ARTIFACT_HASHES = {
 logger = logging.getLogger(__name__)
 
 
+class RerankerDeviceError(RuntimeError):
+    """A configured local CUDA device is unavailable; vector fallback remains valid."""
+
+
 class LocalReranker:
     def __init__(
         self, model_path: str, revision: str, device: str, batch_size: int, max_length: int
@@ -45,6 +49,11 @@ class LocalReranker:
             with (self._path / name).open("rb") as artifact:
                 if hashlib.file_digest(artifact, "sha256").hexdigest() != expected:
                     raise ValueError("Local model artifact integrity failed")
+        if self._device in {"cuda", "cuda:0"}:
+            import torch
+
+            if torch.version.cuda is None or not torch.cuda.is_available():
+                raise RerankerDeviceError("Configured CUDA device is unavailable")
         from sentence_transformers import CrossEncoder
 
         return CrossEncoder(
@@ -86,13 +95,25 @@ class LocalReranker:
                 # Keep the original authorized objects on failure; never synthesize evidence.
                 self._unavailable = True
                 self._model = None
+                category = (
+                    "cuda_unavailable"
+                    if isinstance(exc, RerankerDeviceError)
+                    else "cuda_oom"
+                    if self._device.startswith("cuda") and type(exc).__name__ == "OutOfMemoryError"
+                    else "model_unavailable"
+                )
                 logger.warning(
-                    "Local reranker unavailable (%s); vector fallback", type(exc).__name__
+                    "Local reranker unavailable device=%s failure=%s (%s); vector fallback",
+                    self._device,
+                    category,
+                    type(exc).__name__,
                 )
                 return candidates[:top_n]
         logger.info(
             "Local rerank candidates=%d selected=%d elapsed_ms=%d",
-            len(candidates), len(ranked), (perf_counter() - started) * 1000,
+            len(candidates),
+            len(ranked),
+            (perf_counter() - started) * 1000,
         )
         return ranked
 
@@ -108,6 +129,9 @@ def build_reranker(settings: Settings) -> LocalReranker | None:
     if not settings.rag_reranker_path:
         return None
     return _shared_reranker(
-        settings.rag_reranker_path, settings.rag_reranker_revision, settings.rag_reranker_device,
-        settings.rag_reranker_batch_size, settings.rag_reranker_max_length,
+        settings.rag_reranker_path,
+        settings.rag_reranker_revision,
+        settings.rag_reranker_device,
+        settings.rag_reranker_batch_size,
+        settings.rag_reranker_max_length,
     )

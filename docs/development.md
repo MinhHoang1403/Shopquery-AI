@@ -33,6 +33,32 @@ Mount read-only, không copy weights vào image/Git. Pinned revision
 Extra `reranker` khóa Sentence Transformers/PyTorch CPU. CPU đã smoke; host CUDA
 không có nghĩa Docker CUDA inference đã nghiệm thu. HF offline, remote code tắt.
 
+CUDA development dùng thêm `compose.gpu.yaml`, chỉ cấp một GPU cho API:
+
+```powershell
+./scripts/dev.ps1 -Gpu -Build
+./scripts/verify-runtime.ps1 -Gpu
+```
+
+Override chọn image `shopquery-ai-api:development-cuda`, extra `reranker-cuda`
+với Torch `2.14.1+cu130` và Sentence Transformers `5.7.0`; CPU extra/CI/release giữ
+riêng. Không cài CUDA dependencies vào Windows/global Python. Lockfile chứa exact
+versions/hashes; không nâng dependencies khác. Driver/WSL/Docker phải đã hỗ trợ GPU;
+không dùng script này để thay driver hoặc host settings.
+
+GPU entrypoint `scripts.gpu_api:create_app` trả cùng FastAPI app và warmup shared
+reranker bằng hai synthetic chunks trong chính Uvicorn worker. Không thêm HTTP endpoint.
+Reload dừng worker cũ rồi load một model ở worker mới; Guest RAM không sống qua restart.
+K12/N3, batch2, max_length512; log device/dtype/memory, không log query/chunk text.
+Device/OOM errors giữ vector fallback, không được coi là CUDA PASS. Proof runtime và
+bounded CPU/GPU measurements nằm trong báo cáo Giai đoạn1; không suy quality/production
+p95 từ smoke này. Guest tiếp tục vector-only.
+
+`backend/scripts/reranker_smoke.py` chạy trong isolated Docker container với network
+tắt và model mount read-only, dùng ba synthetic query/chunk sets, short/512-token
+inputs, finite scores, source identity và two concurrent rerank requests. Chỉ chạy
+một model diagnostic mỗi lần; không giữ thêm GPU copy khi worker API đã warmup.
+
 | Thay đổi | Thao tác |
 | --- | --- |
 | Python/React source | Reload/HMR tự động; verify-runtime |

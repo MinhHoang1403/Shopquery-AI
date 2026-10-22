@@ -1,4 +1,7 @@
+import json
+import sys
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -66,8 +69,9 @@ def test_scope_is_applied_before_rerank_and_sources_are_unchanged():
 def test_unretrieved_or_duplicate_reranker_evidence_is_rejected(mutate):
     candidates = chunks()
     ranker = Mock(rerank=Mock(return_value=[mutate(candidates[0]), mutate(candidates[0])]))
-    pipeline = RagPipeline(Mock(), Mock(), Mock(retrieve=Mock(return_value=candidates)),
-                           17, ranker, 12, 2)
+    pipeline = RagPipeline(
+        Mock(), Mock(), Mock(retrieve=Mock(return_value=candidates)), 17, ranker, 12, 2
+    )
     with pytest.raises(RetrievalError):
         pipeline.retrieve("question")
 
@@ -82,8 +86,9 @@ def test_same_chunk_id_does_not_authorize_modified_content():
     candidates = chunks()
     modified = replace(candidates[0], content="Different workspace content")
     ranker = Mock(rerank=Mock(return_value=[modified]))
-    pipeline = RagPipeline(Mock(), Mock(), Mock(retrieve=Mock(return_value=candidates)),
-                           17, ranker, 12, 1)
+    pipeline = RagPipeline(
+        Mock(), Mock(), Mock(retrieve=Mock(return_value=candidates)), 17, ranker, 12, 1
+    )
     with pytest.raises(RetrievalError):
         pipeline.retrieve("question")
 
@@ -91,3 +96,50 @@ def test_same_chunk_id_does_not_authorize_modified_content():
 def test_missing_artifact_is_refused_before_library_import():
     with pytest.raises(FileNotFoundError):
         reranker()._load()
+
+
+def test_unavailable_cuda_falls_back_once_without_cross_encoder_import(
+    tmp_path, monkeypatch, caplog
+):
+    available = Mock(return_value=False)
+    monkeypatch.setitem(
+        sys.modules,
+        "torch",
+        SimpleNamespace(
+            version=SimpleNamespace(cuda="13.0"), cuda=SimpleNamespace(is_available=available)
+        ),
+    )
+    monkeypatch.setattr("app.rag.reranker.BGE_ARTIFACT_HASHES", {})
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "architectures": ["XLMRobertaForSequenceClassification"],
+            }
+        )
+    )
+    for name in ("tokenizer.json", "model.safetensors"):
+        (tmp_path / name).write_bytes(b"synthetic")
+    subject = LocalReranker(str(tmp_path), BGE_REVISION, "cuda:0", 2, 512)
+    candidates = chunks()
+    for _ in range(2):
+        assert subject.rerank("question", candidates, 2) == candidates[:2]
+    available.assert_called_once()
+    assert subject._unavailable and subject._model is None
+    assert "device=cuda:0 failure=cuda_unavailable" in caplog.text
+    assert str(tmp_path) not in caplog.text
+
+
+def test_cuda_oom_keeps_authorized_sources_and_logs_safe_failure(monkeypatch, caplog):
+    class OutOfMemoryError(RuntimeError):
+        pass
+
+    loader = Mock(side_effect=OutOfMemoryError("private diagnostic detail"))
+    subject = LocalReranker("synthetic", BGE_REVISION, "cuda:0", 2, 512)
+    monkeypatch.setattr(subject, "_load", loader)
+    candidates = chunks()
+    for _ in range(2):
+        ranked = subject.rerank("question", candidates, 2)
+        assert ranked[0] is candidates[0] and ranked[1] is candidates[1]
+    loader.assert_called_once()
+    assert "failure=cuda_oom" in caplog.text
+    assert "private diagnostic detail" not in caplog.text

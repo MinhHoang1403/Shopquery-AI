@@ -1,4 +1,4 @@
-param([switch]$Build, [string]$ModelPath = $env:BGE_MODEL_PATH)
+param([switch]$Build, [string]$ModelPath = $env:BGE_MODEL_PATH, [switch]$Gpu)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 if (-not $ModelPath) {
@@ -11,6 +11,7 @@ $env:BGE_MODEL_PATH = (Resolve-Path -LiteralPath $ModelPath).Path
 Push-Location $taskRoot
 try {
     $taskCompose = @('compose', '-p', 'shopquery-ai', '-f', 'compose.yaml', '-f', 'compose.dev.yaml')
+    if ($Gpu) { $taskCompose += @('-f', 'compose.gpu.yaml') }
     $taskConfigText = & docker @taskCompose config --format json
     if ($LASTEXITCODE -ne 0) { throw 'Compose configuration failed.' }
     $taskConfig = $taskConfigText | ConvertFrom-Json

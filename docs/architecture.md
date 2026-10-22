@@ -38,7 +38,8 @@ Public API giữ `answer`, `route`, `sql`, `rows`, `sources`, error và model at
 NUMERIC là decimal strings; NULL khác zero; COUNT provenance từ AST, không từ alias.
 Router chưa có CLARIFY riêng; dùng phản hồi `UNSUPPORTED` hiện hữu.
 
-QueryPlan giới hạn 80 expression nodes, depth8, 30 selected fields. Không pruning
+QueryPlan giới hạn 80 expression nodes, depth8, 512 expanded nodes/expression và
+30 selected fields. Bound expansion chặn DAG reuse làm SQL tăng theo cấp số nhân. Không pruning
 mất columns/relationships: catalog chỉ gồm workspace đã được authorize. Arithmetic,
 AND/OR, SUM HAVING, date grouping/formatting và typed ranges compile thành bound SQL.
 Literal evidence SQL được render an toàn và validate riêng cho Hybrid/public response;

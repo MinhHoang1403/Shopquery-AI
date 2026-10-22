@@ -5,7 +5,7 @@
 Ngày thực hiện: 22–23/10/2026, Asia/Saigon. Không chuyển sang Giai đoạn 2.
 Continuation từ `946ff82`: production SQL đã chuyển sang QueryPlanner/QueryCompiler
 cho default/authenticated/Guest/Hybrid; generator SQL tự do đã được gỡ.
-CUDA development và các gates cuối đang được kiểm chứng; chưa kết luận hoàn tất.
+CUDA model/serving/reload đã được kiểm chứng; đang chờ exact final pushed CI.
 Các checkpoints 22–23/10 phía dưới là lịch sử, không chứng nhận source mới.
 
 ## A. Source/runtime baseline
@@ -100,6 +100,10 @@ SQLAlchemy bound operators and Pydantic validation are based on official referen
   SUM(x)/COUNT(x) compile thành AVG(x); PostgreSQL oracle giữ empty/all-NULL/zero.
   Mẫu số động zero trả NULL bằng NULLIF; literal zero bị từ chối. Type/group checks
   chạy trước SQL. Uploaded JOIN aggregate restrictions không đổi.
+- Hardening `cde9151` preserves COUNT(nullable BOOLEAN), including false values;
+  WHERE rejects formatted/bucketed timestamp comparisons and requires unchanged source
+  columns for temporal ranges. `b661c19` bounds expanded DAG size512/expression to prevent
+  repeated references from expanding SQL exponentially. Related security/PG oracles PASS.
 - Default catalog lấy từ đúng bốn SQLAlchemy models và declared FKs. Default revenue
   bốn bảng qua actual Knowledge mock → Plan → SQL → PostgreSQL khớp independent
   seed oracle tổng `151687001000`. Không đưa công thức commerce vào uploaded compiler.
@@ -153,7 +157,7 @@ proof only; CUDA-enabled Torch/model inference remains a separate gate below.
   Runtime kiểm hai hashes trước load; không tải/move/overwrite model.
 - Host Ryzen 5 7535HS, RAM khoảng15.31 GiB, RTX3050 6GiB, driver617.42/CUDA13.4;
   WSL2 có Docker Desktop running, Ubuntu stopped. Docker memory khoảng7.41GiB.
-  Chọn CPU, không GPU device requests; chưa nghiệm thu Docker CUDA inference.
+  Checkpoint946ff82 chọn CPU; CUDA continuation được ghi ngay dưới đây.
 - Sentence Transformers5.7.0/PyTorch2.14.1+cpu khóa trong optional extra/uv.lock.
   Offline local CrossEncoder, remote code=false, max_length512, batch2, K12/N3.
 - Shared instance per process/config, load/predict serialized; bounded scores và sanitized
@@ -165,6 +169,100 @@ proof only; CUDA-enabled Torch/model inference remains a separate gate below.
   relevant synthetic chunk đứng trước distractor. Đây là docker-exec smoke, không live chat.
 - Model mount read-only `/models/bge`; không weights trong image/Git; không re-embed main.
 - Chưa khẳng định tăng accuracy; Recall/MRR/nDCG/latency là Giai đoạn 2.
+
+### CUDA continuation — 23/10/2026
+
+- Official Torch `2.14.1+cu130`, CUDA build13.0, Sentence Transformers5.7.0,
+  Transformers5.20.2; Python3.11.9, glibc2.36, Linux x86_64. Driver617.42 supports
+  CUDA13.x; actual Torch reports available=true, device_count=1, RTX3050/compute8.6,
+  and compiled arch list includes sm_86. A CUDA tensor sum returned4.0 inside Docker.
+- Separate optional `reranker-cuda` and `compose.gpu.yaml` only affect API development.
+  All113 previously locked package/version pairs remain;20 CUDA dependency variants added.
+  Default export contains no CUDA/Torch; CPU extra still uses2.14.1+cpu. No global host
+  Python/CUDA/driver/WSL/Docker setting changed. NVIDIA runtime packages live in the image.
+- Official wheel SHA256: `9023b6a538714e370fe9e027fc20c5c600bbe3759b79d9a1a6f07e73c40db8d0`.
+  Model identity/revision/two hashes above were checked by the real loader on each smoke;
+  model mount read-only, trust_remote_code=false/local_files_only=true, network disabled.
+  No model download, provider generation or embedding calls.
+- CPU/GPU comparison used the **same CUDA wheel**, same local weights and three synthetic
+  bilingual query sets, K12/N3, batch2, max_length512. Short and padded512-token inputs,
+  two repetitions per scenario; two-CPU quota and6GiB RAM limit per temporary diagnostic
+  container. These are tiny empirical p50/p95 (p95 is the maximum of two samples), not
+  production latency estimates or a retrieval-quality benchmark.
+
+| Case/input | CPU p50/p95 ms | GPU p50/p95 ms |
+| --- | --- | --- |
+| Delivery/short | 2806.56 /2940.69 | 172.67 /190.97 |
+| Warranty/short | 2443.11 /2535.36 | 175.13 /192.87 |
+| Tuition/short | 2438.73 /2503.88 | 165.34 /172.85 |
+| Delivery/512 | 26811.00 /28503.36 | 1499.99 /1513.22 |
+| Warranty/512 | 25402.07 /25625.53 | 1902.57 /1935.77 |
+| Tuition/512 | 24720.72 /25034.27 | 2169.24 /2213.41 |
+
+- Both ran **torch.float32**, no FP16/AMP/quantization/torch.compile changes. All six
+  top-3 orders matched exactly; positive chunk ranked first throughout; maximum score
+  difference `4.172325134277344e-7`, all scores finite, original object identities retained.
+- Observer recorded72 CPU and84 CUDA forward calls, actual input device cpu/cuda:0,
+  max batch2/max token512. CUDA event spans were positive. Two concurrent CUDA rerank
+  requests used the same model, max_active_predict=1; singleton cache identity remained true.
+- Peak Torch allocated **2218.10 MiB**, reserved **2254 MiB**; NVIDIA sampler observed
+  **2373 MiB**, utilization100%. Process peak RSS: CPU2491.53 MiB, GPU2788.92 MiB.
+  Process load/hash/first-inference timers after Torch import: CPU62.88s, GPU84.43s.
+  No CUDA inference error/OOM. Initial CPU instrumentation trial failed because library5.7
+  invokes a bound forward method directly and bypasses PyTorch hooks; observer was corrected
+  in the diagnostic only, and that incomplete trial is excluded from PASS/timing results.
+- Host15.31GiB/Docker7.415GiB remained unchanged. The initial WMI sampler reported a zero
+  minimum (not treated as a reliable whole-host peak); after diagnostic exit Available
+  Memory was600MiB. Valid Available Memory counters later reached284MiB on API cold start
+  and166MiB on reload. This is limited
+  headroom, not evidence for production concurrency/load safety; no host limit was raised.
+  Diagnostics ended and released GPU memory to0 before the serving worker was started.
+- Missing CUDA/OOM unit cases preserve original sources/vector fallback, attempt once and
+  log only safe device/failure categories. Guest remains vector-only in its768MiB worker.
+
+Sources: [official Torch release](https://github.com/pytorch/pytorch/releases/tag/v2.14.1),
+[official CUDA wheel index](https://download.pytorch.org/whl/cu130/torch/),
+[NVIDIA driver compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html),
+[Docker GPU reservations](https://docs.docker.com/compose/how-tos/gpu-support/),
+[CrossEncoder API](https://www.sbert.net/docs/package_reference/cross_encoder/model.html).
+
+### GPU serving runtime and reload
+
+- Applied only API with `compose.yaml`, `compose.dev.yaml`, `compose.gpu.yaml`,
+  `up -d --no-deps --wait api`. Before restart DevDB had0 active leases; the three API
+  processes were exactly Uvicorn reloader, resource tracker and serving worker. Guest RAM
+  is not durable across restart; no claim to enumerate another process's idle RAM sessions.
+  No DB setup/migration/seed/ingestion command was run for this GPU switch.
+- API container `ea8f89d55fb836f28537c658049be22077ab4747e202c514bcea57fa9b821a1c`;
+  image `sha256:4b56f80c57f6cb4ebf46a6bdd140927863308ca254a7b7697cbf77c8370155e5`.
+  Driver nvidia/count1/capabilities gpu; no GPU given to DB/web, no privileged/socket/root mounts.
+- In the actual Uvicorn serving worker, warmup logged pid8, cuda:0, torch.float32,
+  shared=True, selected synthetic chunk1; allocated2174.1/reserved2184.0MiB.
+  Initial warmup109.36s. API stayed on DevDB with paid gates OFF/credentials empty.
+- Touching only planner.py mtime triggered one hot reload without content/hash changes.
+  New worker pid244 logged the same cuda:0/dtype/shared/model memory and successful inference;
+  warmup105.01s, recovery about119s. NVIDIA memory dropped to0 between workers and returned
+  to2287MiB (also observed peak2287), without accumulation/two resident model copies.
+  Both API8001 and proxy8080 `/api/health` returned200 after reload. This development pause
+  and cold-load RAM headroom are documented limits, not production readiness claims.
+- Runtime verification: 80 app modules and31 frontend source files match; env drift lists
+  empty, CUDA available/device_count1. App manifest
+  `cbc5e37a8e33eeaec658b98226a92067e36f732037fc14b3a992fef4172bba10`;
+  GPU entrypoint hash `3562269fc4a1a9b4be329d0a16f77e88314b8d025b21dc1ba64c1fbb0cac5c55`.
+- Web remains `07893ff84717`, main DB `511c4f5aaccc` on protected
+  `shopquery-ai_postgres_auth_20261019`, DevDB `337bd37c8ef8` on
+  `shopquery-ai_postgres_dev_stage1`; archived `shopquery-ai_postgres_data` untouched.
+- Final read-only checks confirm the five main logical fingerprints unchanged
+  (users/datasets/chunks/conversations/messages). DevDB still has0 users/datasets/chunks/
+  conversations. This is logical table proof, not bytewise proof of every DB/volume file.
+
+| GPU path | Change | Why bounded | Evidence |
+| --- | --- | --- | --- |
+| `backend/pyproject.toml`, `uv.lock`, `Dockerfile` | Separate CUDA extra/build argument | Existing113 versions retained; default/CPU independent | Frozen image build, export checks, real CUDA tensor/model |
+| `compose.gpu.yaml`, `scripts/dev.ps1`, `verify-runtime.ps1` | Explicit GPU development override | API only, one GPU, same DevDB/model mounts | Container config/source/CUDA verification |
+| `backend/scripts/gpu_api.py` | Warm same app/shared model in serving worker | Two synthetic chunks, no new endpoint/provider | pid8→pid244 reload, stable VRAM, health200 |
+| `backend/scripts/reranker_smoke.py` | Bounded diagnostic CLI | Three synthetic queries, K12/N3, batch2/512, network none | CPU/CUDA forward, scores, identity, concurrency and resources |
+| `backend/app/rag/reranker.py` | Device check/safe failure categories | Same retrieval/ranking/fallback; no retries or CPU model duplication | CUDA-unavailable/OOM units and actual model smoke |
 
 ## E. Hybrid
 
@@ -292,8 +390,8 @@ No merge/force push; no secrets/env/weights/log/private evidence in commits.
 
 ## I. Remaining mandatory work and Stage 2 boundary
 
-1. CUDA API image/inference/resource/reload gates và exact final CI cần hoàn tất trong
-   continuation này; QueryPlan production migration đã được triển khai, regressions đang chạy.
+1. QueryPlan và CUDA image/inference/resource/reload gates đã PASS offline/local;
+   exact final GPU commit CI còn chờ trước khi kết luận hoàn tất.
 2. Guest giữ vector-only theo phạm vi được chấp nhận; không load BGE vào worker768 MiB.
 3. Final Stage 2 comprehensive regression, independent holdout/150-question benchmark,
    retrieval quality/latency, live Knowledge/Gemini and final release remain unperformed.
@@ -473,7 +571,7 @@ Inventory: 76 backend test modules, plus fixture/helper modules; frontend unit/E
 | POST | `/api/guest/files` | `backend/app/guest/routes.py` |
 | POST | `/api/guest/chat` | `backend/app/guest/routes.py` |
 
-## Delivery verification
+## Historical delivery verification before continuation
 
 - GitHub run39818625553 at3915485 completed SUCCESS for all three jobs: Backend quality998 PASS, PostgreSQL integration784 PASS, Frontend quality PASS.
   Frontend lint/typecheck/build/68 Vitest/105 mock UI are also PASS locally.

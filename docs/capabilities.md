@@ -33,9 +33,12 @@ macro, URL ingestion hoặc vector database mới. Original binaries không lưu
 lại. Giai đoạn 1 không re-embed corpus main hoặc đổi embedding dimensions.
 
 Authenticated/default RAG có local `BAAI/bge-reranker-v2-m3` theo cấu hình. Default
-K=12/N=3; chỉ xếp original chunks. Chưa benchmark Recall/MRR/nDCG/latency hoặc chứng
+K=12/N=3; chỉ xếp original chunks. Chưa benchmark Recall/MRR/nDCG/production latency hoặc chứng
 minh tăng accuracy. Missing/error model dùng vector fallback với sanitized log;
 load thử một lần mỗi process/config, cần restart sau khi sửa artifact/device.
+Development CUDA override đã chạy FP32 trên RTX3050, batch2/max512; CPU/GPU synthetic
+orders khớp. Đây là bounded smoke, không phải production load/p95. Cold warmup/reload
+hiện khoảng105–109s và host RAM headroom thấp; xem báo cáo trước khi tăng concurrency.
 Guest giữ vector retrieval vì worker 768 MiB không chứa được weights BGE 2,27 GB;
 không nới resource isolation.
 

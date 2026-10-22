@@ -61,6 +61,19 @@ def verify(files: list[str]) -> dict:
             ],
         }
         if service == "api":
+            item["gpu_requests"] = container["HostConfig"].get("DeviceRequests") or []
+            if actual.get("RAG_RERANKER_DEVICE", "").startswith("cuda"):
+                code = (
+                    "import json,torch; print(json.dumps({'torch':torch.__version__,"
+                    "'cuda_build':torch.version.cuda,'available':torch.cuda.is_available(),"
+                    "'device_count':torch.cuda.device_count(),'device':"
+                    "torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}))"
+                )
+                item["cuda"] = json.loads(
+                    command(["docker", "exec", container_id, "python", "-c", code])
+                )
+                if not item["cuda"]["available"]:
+                    raise RuntimeError("Configured development CUDA device is unavailable")
             database = urlsplit(actual["DATABASE_SETUP_URL"])
             item["database"] = {"host": database.hostname, "name": database.path.lstrip("/")}
             local = source_manifest(ROOT / "backend" / "app", (".py",))
@@ -77,6 +90,20 @@ def verify(files: list[str]) -> dict:
                 json.dumps(remote, sort_keys=True).encode()
             ).hexdigest()
             item["source_modules"] = len(remote)
+            if actual.get("RAG_RERANKER_DEVICE") == "cuda:0":
+                local_entrypoint = hashlib.sha256(
+                    (ROOT / "backend" / "scripts" / "gpu_api.py").read_bytes()
+                ).hexdigest()
+                code = (
+                    "import hashlib,pathlib; print(hashlib.sha256("
+                    "pathlib.Path('/app/scripts/gpu_api.py').read_bytes()).hexdigest())"
+                )
+                remote_entrypoint = command(
+                    ["docker", "exec", container_id, "python", "-c", code]
+                ).strip()
+                item["gpu_entrypoint_sha256"] = remote_entrypoint
+                if local_entrypoint != remote_entrypoint:
+                    raise RuntimeError("GPU development entrypoint source drift")
         if service == "web" and actual.get("SHOPQUERY_DEV_CONTAINER") == "1":
             local = source_manifest(ROOT / "frontend" / "src", (".ts", ".tsx", ".css"))
             code = (

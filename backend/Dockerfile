@@ -9,14 +9,15 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.12.15 /uv /uvx /bin/
 COPY backend/pyproject.toml backend/uv.lock ./
 ARG INSTALL_RERANKER=false
+ARG RERANKER_EXTRA=reranker
 RUN if [ "$INSTALL_RERANKER" = "true" ]; then \
-      uv sync --frozen --no-dev --no-install-project --extra reranker; \
+      uv sync --frozen --no-dev --no-install-project --extra "$RERANKER_EXTRA"; \
     else uv sync --frozen --no-dev --no-install-project; fi
 
 COPY backend/app ./app
 COPY backend/scripts ./scripts
 COPY data /data
-RUN if [ "$INSTALL_RERANKER" = "true" ]; then uv sync --frozen --no-dev --extra reranker; \
+RUN if [ "$INSTALL_RERANKER" = "true" ]; then uv sync --frozen --no-dev --extra "$RERANKER_EXTRA"; \
     else uv sync --frozen --no-dev; fi
 
 EXPOSE 8000

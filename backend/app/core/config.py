@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     rag_top_n: int = Field(default=3, ge=1, le=20)
     rag_reranker_path: str | None = None
     rag_reranker_revision: str = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
-    rag_reranker_device: Literal["cpu", "cuda"] = "cpu"
+    rag_reranker_device: Literal["cpu", "cuda", "cuda:0"] = "cpu"
     rag_reranker_batch_size: int = Field(default=2, ge=1, le=8)
     rag_reranker_max_length: int = Field(default=512, ge=64, le=1024)
     upload_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1_024, le=25 * 1024 * 1024)

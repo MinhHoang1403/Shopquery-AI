@@ -29,6 +29,10 @@ reranker = [
     "sentence-transformers>=5.1,<6",
     "torch>=2.6,<3",
 ]
+reranker-cuda = [
+    "sentence-transformers==5.7.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch==2.14.1+cu130; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
 
 [dependency-groups]
 dev = [
@@ -38,12 +42,23 @@ dev = [
     "ruff>=0.14,<1",
 ]
 
+[tool.uv]
+conflicts = [[{ extra = "reranker" }, { extra = "reranker-cuda" }]]
+
 [tool.uv.sources]
-torch = { index = "pytorch-cpu" }
+torch = [
+    { index = "pytorch-cpu", extra = "reranker" },
+    { index = "pytorch-cu130", extra = "reranker-cuda", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.hatch.build.targets.wheel]
