@@ -74,10 +74,10 @@ policy`); cache directories remain. No bypass, broad clean/prune or volume delet
 | Google login/logout/relogin | PASS bounded | One invited account; operator confirmed real flow; current authenticated UI reload works |
 | History/citations | PASS bounded | Persist across API recreation/reload; original 86 messages unchanged |
 | CSV/XLSX upload | PASS smoke | Prior Guest CSV upload/preview and XLSX preview; no new authenticated upload acceptance |
-| Knowledge SQL | PARTIAL | Basic SUM/filter/count matched independent PostgreSQL oracle; warehouse JOIN/count failures remain unaccepted |
-| Gemini SQL | PARTIAL/BLOCKED acceptance | Earlier KPI average request rejected upstream; final holdout not sent |
+| Knowledge SQL | PARTIAL | Basic SUM/filter/count matched PostgreSQL oracle; latest warehouse JOIN/count falsely refused at join_grain before execution |
+| Gemini SQL | BLOCKED acceptance | Latest highest-fee warehouse question rejected HTTP400 at QueryPlan; router succeeds |
 | RAG | PASS bounded | Knowledge/Gemini policy answers with real persisted citation22, existing vector-only retrieval |
-| Hybrid | BLOCKED | SQL/policy or upstream generation failures; no final live PASS after latest patch |
+| Hybrid | BLOCKED | Latest Gemini retrieval succeeds but QueryPlan HTTP400; Knowledge follow-up routed UNSUPPORTED |
 | Model selection | PASS observed | Actual requested/used attribution checked; new chat defaults to Knowledge by existing design |
 | Guest | PASS bounded | RAM upload/reset and private-data denial; Guest AI remains OFF |
 | Owner security | PARTIAL live | Existing offline checks PASS; two-account live acceptance not performed |
@@ -151,19 +151,46 @@ No private question/result content from that workspace is included here.
 
 The agent closed the paid gate immediately after detecting this discrepancy;
 API-only deploy, Nginx reload, strict verifier and direct8080 health all PASS.
-A fresh bounded approval is required before sending the four remaining questions.
-They have NOT been sent and must not be reported as tested:
+Operator then approved a NEW independent window:4 UI chats,12 generation calls,
+4 query embeddings,0 document embeddings, the same verified KPI dataset13, one
+attempt per call, no retry/fallback/Guest AI. All four questions were sent directly
+through the real UI8080 with Computer Use, exactly once, on source `5ba7669`:
 
-1. Knowledge: “Cho tôi tổng phí và số đơn của từng kho.”
-2. Gemini: “Kho nào thu tổng phí cao nhất?”
-3. Gemini: “Theo tài liệu, kho nào đang đạt và kho nào chưa đạt KPI?”
-4. Knowledge: “Vậy còn những kho chưa đạt KPI?”
+| Provider / question | Actual route / outcome |
+| --- | --- |
+| Knowledge: Cho tôi tổng phí và số đơn của từng kho. | SQL → UNSUPPORTED at join_grain; false refusal; no SQL execution |
+| Gemini: Kho nào thu tổng phí cao nhất? | SQL router PASS; QueryPlan HTTP400 request_rejected; no execution |
+| Gemini: Theo tài liệu, kho nào đang đạt và kho nào chưa đạt KPI? | HYBRID retrieval PASS; QueryPlan HTTP400 request_rejected; no execution |
+| Knowledge: Vậy còn những kho chưa đạt KPI? | Router UNSUPPORTED; generic insufficient-information refusal; context/Hybrid acceptance unproven |
 
-These would bring the controlled corpus to11 unique natural questions. Broad
-conversational context, ambiguity handling and full SQL/Hybrid acceptance remain
-unproven. Computer Use is now available after operator restart; the real synthetic
-history and disabled paid-send control were directly verified, without fake auth
-or cookie extraction. No further agent provider call was made during this audit.
+No result rows were produced in this four-question window, so none can be claimed
+as a SQL/oracle or Hybrid PASS. The last refusal avoids invented results but does
+not demonstrate conversational-context support. All requested model selections
+match the runtime trace, with fallback false. Error metadata leaves used_model null
+for the failed Gemini requests; the trace independently identifies Gemini.
+
+Actual new-window usage:4 chats,7 generation calls (4 routers,3 planners),1 query
+embedding,0 document embeddings. Eight generation-stage events include one
+zero-duration refusal marker, which is excluded from provider-call accounting.
+No additional diagnostic call or question retry. Eleven controlled unique natural
+questions have now been exercised across the patches; historical failures remain
+failures, not overwritten by offline checks.
+
+The gate was closed prematurely after the first refusal, then reopened to complete
+the three independent questions within the same approved budget; the failed
+question was not resent. The paid gate is now CLOSED after all four, and Guest AI
+and fallback remain OFF. All API-only deploys refreshed Nginx without Web/DB
+recreation. Final strict verifier PASS, Web/API8080 HTTP200. Across this final
+window the full schema and all table identities are unchanged; only
+chat_conversations, chat_messages and resource_limits fingerprints changed.
+Data/document/upload tables stayed unchanged. The real authenticated history was
+reloaded after closure, without fake auth or cookie extraction.
+
+Remaining factual blockers: Knowledge emitted a plan rejected at join_grain;
+the exact plan is not retained, so the specific source/group-key error cannot be
+asserted from the stage code alone. Gemini still returns generic HTTP400 at the
+QueryPlan boundary; no more precise upstream cause is established. No speculative
+new patch, weakened guard, paid retry or extra diagnostic was made in this window.
 
 ## E. Future workflow
 
