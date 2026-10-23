@@ -5,20 +5,26 @@
 Trợ lý phân tích bảng và tài liệu bằng FastAPI, React/TypeScript, PostgreSQL/pgvector.
 Hỗ trợ SQL, RAG, Hybrid, Google OIDC, không gian cá nhân và Guest tạm thời.
 
-**V2 CONSOLIDATION PREPARED — MERGE/DEPLOY PENDING ACCEPTANCE.** Giai đoạn 1 đã hoàn
-thành; release candidate dùng cùng source đang được chuẩn bị cho nghiệm thu Giai đoạn 2.
-Nguồn trạng thái hiện tại: [bàn giao V2](docs/v2_release_handoff.md).
+**STAGE 2 PARTIAL — ACCEPTANCE BLOCKED.** 8080 đã chạy release API/Nginx với main DB,
+Google login/history hoạt động, BGE tạm hoãn và dùng vector-only có sẵn. RAG thật của
+Gemini/Knowledge đã đạt phạm vi policy fixture; SQL/Hybrid còn blocker. Paid gates
+đã tắt sau bounded acceptance. Chưa merge/tag hoặc tuyên bố V2 hoàn tất.
+Nguồn trạng thái hiện tại: [nghiệm thu V2](docs/v2_final_acceptance.md).
 Chi tiết QueryPlan/CUDA development: [báo cáo Giai đoạn 1](docs/stage1_implementation_report.md).
 Các báo cáo trong `docs/archive/` chỉ phản ánh thời điểm lịch sử.
 
 ## Tài liệu hiện hành
 
 - [Kiến trúc](docs/architecture.md) và [khả năng/giới hạn](docs/capabilities.md).
-- [Development trên 8080](docs/development.md), [kiểm thử](docs/testing.md).
+- [Development](docs/development.md), [kiểm thử](docs/testing.md).
 - [Runtime/deployment](docs/deployment.md), [bảo mật](docs/security.md).
 - [Authentication/migration](docs/authentication.md), [nguồn kỹ thuật](docs/technical_references.md).
 
 ## Development local
+
+8080 hiện dành cho release đang hoạt động. Chỉ chạy các lệnh chuyển development
+dưới đây khi chủ động có maintenance window; chúng thay API/Web sang DevDB.
+Vận hành release thường ngày theo [runbook](docs/deployment.md), không bật hot reload.
 
 Cần Docker Desktop/Compose hỗ trợ `!override`, PowerShell, Git, Python 3.11/uv;
 Node 24 nếu chạy frontend tests native. Đọc [AGENTS.md](AGENTS.md) trước khi sửa source.

@@ -1,5 +1,10 @@
 # Development
 
+8080 hiện chạy release vector-only theo [nghiệm thu V2](v2_final_acceptance.md).
+Các lệnh development dưới đây chỉ dùng khi chủ động chuyển mode trong maintenance
+window; không chạy để khởi động ứng dụng chính thường ngày. Dùng [runbook release](deployment.md)
+cho API/Web đang nối main. BGE benchmark đang tạm hoãn theo operator.
+
 ```powershell
 cd backend
 uv sync --locked --extra reranker

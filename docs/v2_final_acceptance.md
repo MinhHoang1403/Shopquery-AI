@@ -3,8 +3,10 @@
 **STAGE 2 PARTIAL — ACCEPTANCE BLOCKED**
 
 Ngày kiểm tra: 2026-10-23, Asia/Saigon. Đây là báo cáo hiện hành; các kết quả
-preparation trong handoff không thay thế nghiệm thu live. Không merge, tag,
-cutover8080 hoặc cleanup phá hủy khi còn gate bắt buộc chưa đạt.
+preparation trong handoff không thay thế nghiệm thu live. Theo chỉ đạo operator
+mới, tạm hoãn Gate C và ưu tiên khôi phục8080; không chạy lại GPU benchmark hoặc
+offline suites đã PASS. Controlled acceptance cutover đã được duyệt và thực hiện;
+không merge/tag, cleanup phá hủy hoặc tuyên bố Stage2 hoàn tất.
 
 ## Version và runtime
 
@@ -25,9 +27,14 @@ cutover8080 hoặc cleanup phá hủy khi còn gate bắt buộc chưa đạt.
   SHA/run hiện hành được ghi trong PR body khi bàn giao, không suy từ run handoff.
 - CUDA image: Torch `2.14.1+cu130`, Sentence Transformers `5.7.0`;
   BGE revision `953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e`, FP32 dự kiến.
-- 8080 vẫn là Web development; API development8001 đã dừng có kiểm soát để
-  giải phóng BGE. Vì vậy API phía sau8080 đang unavailable; chưa phải release.
-  Main DB15432 và DevDB15433 giữ nguyên container/volume, không recreate.
+- Stage2 host verification/tests/report commit `f66feb2023939aae1eee5c67b5d436660560fa2b`:
+  [CI 3/3 PASS](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39896418747).
+- **8080 hiện chạy release API/Web images nêu trên, main DB**, API8001 và Nginx8080
+  healthy; no reload/source bind, một worker. Google config hiện hữu đã khôi phục.
+  `RELEASE_RERANKER_PATH=` trong private `.env.release` chọn vector-only có sẵn,
+  không nạp BGE trên CPU hoặc GPU. Gate C vẫn chưa đạt.
+- Main DB15432 giữ container `511c4f5aacccd1ac42261aaa2a7173ae40c5c5e3aa673bb4898d988a8206a3c8`
+  và protected volume; không recreate/migrate/re-ingest. DevDB vẫn được giữ riêng.
 
 ## Gates và functional acceptance
 
@@ -35,28 +42,28 @@ cutover8080 hoặc cleanup phá hủy khi còn gate bắt buộc chưa đạt.
 | --- | --- |
 | A — preflight/backup/restore | PASS; 34 tables, schema và protected identities được đối chiếu |
 | B — offline regression/gold | PASS; backend1049, PostgreSQL804, frontend68, browser105, gold60 |
-| C — BGE release/memory | BLOCKED: model load bị guard-stop khi Windows thiếu RAM; chưa hoàn tất inference |
-| D — Google thật | PENDING controlled8080 window và thao tác người dùng |
-| E — Knowledge/Gemini thật | PENDING ngân sách mới; không dùng quyền các đợt trước |
-| F — UI/business live | PENDING; mock không thay thế Google/provider thật |
-| G — merge/tag/deploy | BLOCKED bởi các gate trên; PR vẫn draft |
+| C — BGE release/memory | DEFERRED/BLOCKED theo operator; giữ nguyên memory guard, không benchmark lại |
+| D — Google thật | Login/reload/logout/relogin/history PASS theo operator và DB session/revocation; A-B live chưa đủ |
+| E — Knowledge/Gemini thật | RAG/citations cả hai providers PASS; Knowledge SQL FAIL; Gemini Hybrid provider rejection |
+| F — UI/business live | Release8080/Google/history/Guest CSV-XLSX/RAG smoke hoạt động; SQL/Hybrid còn blocker |
+| G — merge/tag/deploy | Controlled release8080 vector-only đã duyệt; merge/tag/full acceptance vẫn BLOCKED |
 | H — cleanup | DEFERRED theo yêu cầu, chỉ sau stable accepted V2 |
 
 | Chức năng | Offline | Live | Final |
 | --- | --- | --- | --- |
-| Google Login | OIDC/cookie/CSRF mocks trong backend suite | Chưa chạy | PENDING |
-| Auth/history | Backend/PostgreSQL PASS | Chưa chạy | PENDING |
-| CSV/XLSX | Backend/PostgreSQL PASS | Chưa chạy | PENDING |
-| SQL single table | Backend/PostgreSQL/gold PASS | Chưa chạy | PENDING |
-| SQL 2–3 table JOIN | Backend/PostgreSQL/gold PASS | Chưa chạy | PENDING |
-| PDF/DOCX/TXT/Markdown, RAG/citations | Parser/contracts/PostgreSQL/gold PASS | Chưa chạy | PENDING |
+| Google Login | OIDC/cookie/CSRF mocks trong backend suite | Login/reload/logout/relogin PASS, fresh session và revocation đúng owner | PASS phạm vi1 account; A-B live chưa đủ |
+| Auth/history | Backend/PostgreSQL PASS | Operator thấy workspace/history cũ sau reload | PARTIAL |
+| CSV/XLSX | Backend/PostgreSQL PASS | Guest CSV upload/preview, XLSX preview PASS qua8080 | PASS phạm vi smoke; auth upload chưa live |
+| SQL single table | Backend/PostgreSQL/gold PASS | Knowledge plan bị guard từ chối trước execution | FAIL live probe |
+| SQL 2–3 table JOIN | Backend/PostgreSQL/gold PASS | Knowledge plan bị guard từ chối trước execution | FAIL live probe |
+| PDF/DOCX/TXT/Markdown, RAG/citations | Parser/contracts/PostgreSQL/gold PASS | Persisted Markdown RAG/citations cả hai providers PASS, vector-only | PASS phạm vi1 policy chunk; formats khác chưa live |
 | BGE GPU release | Load bị guard-stop; chưa có inference result | Chưa chạy | BLOCKED |
-| Hybrid | Backend/PostgreSQL/gold PASS | Chưa chạy | PENDING |
-| Knowledge | Mock contracts PASS | 0 calls | PENDING |
-| Gemini | Mock contracts PASS | 0 calls | PENDING |
-| Guest | Backend contracts PASS; AI gates OFF | Chưa chạy | PENDING |
+| Hybrid | Backend/PostgreSQL/gold PASS | Gemini retrieval PASS, generation QueryPlan bị provider từ chối | FAIL live probe; chưa có SQL/decisions |
+| Knowledge | Mock contracts PASS | RAG PASS; SQL plan bị từ chối trước execution | PARTIAL |
+| Gemini | Mock contracts PASS | RAG PASS; Hybrid generation bị provider từ chối | PARTIAL |
+| Guest | Backend contracts PASS; Guest AI OFF | Session/upload/preview/reset PASS, private datasets401 | PASS phạm vi smoke |
 | Security/owner isolation | Backend/PostgreSQL PASS | Chưa chạy | PENDING |
-| Persistence | Main unchanged; PostgreSQL PASS | Chưa Google/reload live | PENDING |
+| Persistence | Main protected data giữ nguyên; PostgreSQL PASS | Google reload/history cũ hiển thị, live turns đã persist | PASS phạm vi đã quan sát |
 
 ## Offline regression và benchmark MVP
 
@@ -64,7 +71,8 @@ cutover8080 hoặc cleanup phá hủy khi còn gate bắt buộc chưa đạt.
 - Ruff: PASS. PowerShell parse `dev.ps1`/`release.ps1`: PASS.
 - Runtime verifier: 7 cases PASS; actual development positive exit0; actual release
   expectation trên development image/environment exit nonzero đúng như yêu cầu.
-  Deploy branch của release script chưa được chạy.
+  Deploy branch sau đó đã chạy controlled vector-only cutover và API-only gate
+  recreation thành công; verifier đều PASS. Không chạy lại regression đã PASS.
 - Frontend lint/typecheck/build: PASS; Vitest **68/68 PASS**, 32.32s.
 - PostgreSQL lần đầu: **798 PASS, 6 FAIL** do management fixture dùng tên cố định
   trùng dữ liệu test tồn tại từ đợt trước. Sửa fixture tạo owner riêng mỗi test và
@@ -139,11 +147,10 @@ chưa nạp; chỉ một diagnostic process đang load BGE, không có model th�
   FP32 inference hoặc serving-worker model lifecycle đã đạt. Worker/restart smoke
   tiếp theo chưa chạy vì memory gate đã chặn.
 
-Chưa có bằng chứng FP32 không tương thích phần cứng. Biện pháp nhỏ nhất: giữ một
-model/worker, đóng thêm workload ngoài ShopQuery để có thêm khoảng2–3GiB Windows
-headroom (mục tiêu đo mới khoảng5–6GiB Available trước cold start, không phải cam
-kết PASS), rồi mới thực hiện một lần đo mới. Không tự giảm FP32, thêm inference
-server hoặc đổi WSL/driver. Không retry để che bằng chứng cold-load bị chặn.
+Chưa có bằng chứng FP32 không tương thích phần cứng. **Operator yêu cầu tạm hoãn
+GPU, không tiếp tục yêu cầu giải phóng RAM hoặc lặp benchmark.** Giữ nguyên guard,
+FP32/model artifact và kiến trúc; vận hành vector-only đã có. Không tự giảm FP32,
+thêm inference server hoặc đổi WSL/driver. Chứng cứ cold-load ở trên được bảo tồn.
 
 ## Database, backup và rollback
 
@@ -159,37 +166,94 @@ server hoặc đổi WSL/driver. Không retry để che bằng chứng cold-load
   PostgreSQL deparse khác cách đặt VARCHAR→TEXT cast; đã kiểm7 giá trị/constraint
   (valid/invalid/NULL) cho kết quả giống nhau. Schema/ACL còn lại giống nhau.
   Temporary restored DB đã drop sau khi giữ đầy đủ evidence; không drop volume.
-- Sau reboot: **34/34 tables và schema unchanged**; mainDB/DevDB/Web container IDs,
-  images và mounts giống baseline. Authorized main operational writes: **0**.
+- Trước/sau controlled cutover: **34/34 tables và schema unchanged**. MainDB và
+  DevDB giữ IDs/images/mounts. Chỉ API/Web được recreate bằng release digests.
+  Sau Google/Guest/live đã có operational writes được duyệt: OIDC/session,
+  rate counters, synthetic conversation/messages; phân loại riêng với dữ liệu cũ.
+- Sau live: schema và đủ34 table names giữ nguyên; chỉ5 bảng thay hash:
+  `chat_conversations`, `chat_messages`, `resource_limits`, `user_sessions`, `users`.
+  Dataset/table/document/chunk/uploaded rows không đổi. **86 historical messages
+  khớp toàn bộ baseline**; đối chiếu metadata từ private backup xác nhận đủ19
+  conversation và2 user cũ, chỉ `updated_at` của1 conversation synthetic và1 user
+  operator thay đổi. Không có thay đổi owner/dataset/title hoặc mất lịch sử cũ.
 - Baseline rollback API/Web digests tồn tại; private active config copies đã lưu.
   Chỉ rollback application theo [runbook](deployment.md), không restore main DB
-  để xóa writes. Release candidate chưa kết nối main.
+  để xóa writes. Release V2 vector-only hiện đã kết nối main trong acceptance window.
 
 ## Live scope và ngân sách
 
-Approved: **chưa có**. Used: chats0, logical generation stages0, query embeddings0,
-document embeddings0, manual retries0. Không reuse historic budget.
+Approved mới bởi operator: **6 chats,24 generation stages,8 query embeddings,
+0 document embeddings,0 manual retries**, mỗi SDK1 attempt. Chỉ verified synthetic
+KPI fixture, Knowledge/Gemini đúng model IDs, fallback OFF, Guest AI OFF.
+Used cuối cửa sổ: **5/6 chats,10/24 generation stages,3/8 query embeddings,
+0 document embeddings,0 manual retries**; SDK attempts1. Dừng sau provider rejection,
+không dùng slot6 để debug hoặc retry. Paid provider gate được tắt lại bằng API-only
+recreation; Google/history/tabular upload vẫn chạy, AI requests mới bị chặn.
 
 Presence-only preflight: Google client/secret, invited accounts và provider config
 có sẵn; không thử credentials upstream. Existing origin `http://127.0.0.1:8080`,
 callback `/api/auth/callback`; không đổi Google Console/client. Model IDs cấu hình:
 Knowledge `knowledge`, Gemini `gemini-3.5-flash-lite`, embeddings
-`gemini-embedding-2`; fallback OFF, release/Guest AI gates OFF.
+`gemini-embedding-2`; fallback OFF, Guest AI OFF. Authenticated provider gate chỉ bật
+trong cửa sổ nghiệm thu đã duyệt rồi tắt; không coi configured models là full PASS.
 
-Có một persisted document khớp SHA fixture KPI tổng hợp gốc; owner/source IDs giữ
-private. Chưa gửi nội dung lên provider. Sau offline/GPU gates mới xin **một lần**
-phê duyệt live budget, Google browser steps và thời điểm controlled8080 cutover,
-thông báo session/Guest interruption. Không tạo fake authenticated live session.
+Workspace `Root audit synthetic · 21-10-2026`: full-row comparison3 bảng (5/15/50)
+khớp source fixture, original KPI chunk khớp và embedding768D đã persist; owner
+khớp fresh Google session. Một policy chunk nên không có rerank-quality claim.
+Independent PostgreSQL oracles giữ riêng, không đưa expected results vào prompts.
+
+Browser automation bị Work settings chặn (`Local browser use is disabled`). Operator
+đăng nhập/gửi câu hỏi trên UI8080; agent chỉ đọc evidence runtime/DB, không lấy cookie,
+token hoặc tạo authenticated session giả. Operator xác nhận login/reload thấy data cũ.
+Cuối cửa sổ operator xác nhận reload thấy RAG/citation đã lưu, logout về màn chào và
+login lại giữ history/workspace. DB xác nhận session cũ revoked và một fresh active
+session đúng owner. Không giả lập account B; A-B live đầy đủ vẫn chưa được chứng minh.
+
+Knowledge SQL probe1: router chọn SQL, hai generation stages đã phản hồi, compiler
+từ chối `Invalid nested aggregate`; execution_reached=false, không fallback/retry.
+Plan gốc không được log nên không suy đoán chính xác nested shape hoặc tự sửa guard.
+Đây là planner/compiler refusal, chưa chứng minh backend SQL execution sai và không
+phải bằng chứng provider HTTP outage. Không tính là SQL PASS.
+
+| Probe | Actual model/route | Kết quả | Generation/query embeddings | Request time |
+| --- | --- | --- | --- | --- |
+| 1 — aggregate/filter | Knowledge/SQL | FAIL `Invalid nested aggregate`, chưa execution | 2/0 | 11.62s |
+| 2 — JOIN3 | Knowledge/SQL | FAIL `Row count does not take a value column`, chưa execution | 2/0 | 9.69s |
+| 3 — policy RAG | Gemini/RAG | PASS đúng policy, citation/source identity và provider | 2/1 | 3.64s |
+| 4 — policy RAG | Knowledge/RAG | PASS đúng policy, citation/source identity và provider | 2/1 | 6.09s |
+| 5 — KPI Hybrid | Gemini/HYBRID | Retrieval PASS; QueryPlan generation bị provider từ chối, chưa execution | 2/1 | 2.26s |
+| 6 | Không gọi | Chưa dùng; không retry provider | 0/0 | — |
+
+Probe2 được định chạy Gemini nhưng actual persisted metadata/diagnostics là
+Knowledge, nên không ghi Gemini SQL FAIL hoặc PASS. UI đổi model đã được xác minh
+persist sau đó; thao tác tạo chat mới đưa lựa chọn về default Knowledge theo source.
+Probe3/4/5 dùng model đúng qua requested/used attribution, không fallback. Chưa có
+browser observation để quy model selection trước probe2 là UI bug hay thao tác.
+
+Gemini Hybrid lỗi `Gemini generation request was rejected; verify API configuration`.
+Wrapper không persist upstream body/status chi tiết; chưa đủ chứng cứ kết luận quota,
+key hoặc response-schema root cause. Không chuyển lỗi provider này thành SQL/Hybrid
+logic failure. Không thay model, prompt, compiler guard hoặc gọi thêm để debug.
+Chưa có live SQL rows để chấm với independent oracle; chưa có Hybrid decisions để
+chấm accuracy. RAG chỉ1 policy chunk, không chứng minh ranking trên corpus lớn.
 
 ## Cleanup và bước tiếp theo
 
 Chưa xóa temporary workspace files, containers, networks, volumes hoặc images.
 Chỉ temporary restore DB được thu hồi sau proof theo vòng đời đã duyệt.
-Development API đã stop để giải phóng GPU; candidate API/Web chỉ chạy trong các
-cửa sổ test rồi stop. Giữ toàn bộ volumes, local BGE artifact, rollback images,
-feature branch và private evidence. `.env.release` là active config cần giữ.
+Candidate API/Web vẫn stop; production8080 dùng release images ngay trên project
+`shopquery-ai`. Giữ toàn bộ volumes, local BGE artifact, rollback images, feature
+branch và private evidence. `.env.release` là active vector-only config cần giữ;
+`.env.runtime-safe.yaml` là recovery config DevDB, không được release hiện hành dùng.
 
-Tiếp theo: giải phóng thêm host RAM → BGE release inference/lifecycle → xin quyền
-live/cutover → Google/SQL/RAG/Hybrid acceptance. Offline suites/gold đã hoàn tất.
-Merge, tag, promote và cleanup chỉ khi mọi gate bắt buộc PASS. Hướng dẫn vận hành,
+Tiếp theo: chốt Google/live evidence trong budget, sửa defect chỉ khi đủ bằng chứng,
+giữ8080 hoạt động. Không chạy lại offline/gold hoặc BGE benchmark nếu chưa có chỉ đạo
+mới. Merge, tag và cleanup chỉ khi mọi gate bắt buộc PASS. Hướng dẫn vận hành,
 start/stop/logs/health/version/config/promotion/rollback ở [deployment](deployment.md).
+
+Thay đổi lượt operator này chỉ gồm Compose configuration và canonical docs; đã kiểm
+hai trường hợp unset/explicit-empty reranker path bằng effective Compose, thực hiện
+deploy/gate recreation và smoke trực tiếp8080. Không đổi application/entrypoint/model,
+không rebuild. Không rerun offline/golden hoặc tự kích hoạt full CI cho config/docs
+commit (`[skip ci]`); bằng chứng CI application source hiện hành vẫn là run f66feb2
+đã dẫn ở trên. Không tuyên bố CI exact HEAD mới PASS hoặc merge-ready từ kết quả cũ.

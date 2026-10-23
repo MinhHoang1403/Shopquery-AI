@@ -38,7 +38,9 @@ baseline sẽ được verify-runtime báo rõ. Không down -v/prune hoặc trá
 
 Trạng thái nghiệm thu hiện hành nằm trong [nghiệm thu V2](v2_final_acceptance.md);
 baseline và image rollback được bảo tồn trong [bàn giao V2](v2_release_handoff.md).
-Chưa merge hoặc chuyển release vào 8080 khi các gate bắt buộc còn BLOCKED.
+Operator đã duyệt controlled acceptance cutover8080 ở chế độ vector-only để dùng
+Google/history/upload trong khi Gate C tạm hoãn. Đây chưa phải Stage2/full release
+acceptance; PR vẫn draft, chưa merge/tag. Không lặp GPU benchmark theo chỉ đạo mới.
 
 `compose.release.yaml` dùng cùng Dockerfiles/source với development nhưng chỉ nhận
 `SHOPQUERY_API_IMAGE`, `SHOPQUERY_WEB_IMAGE` đã pin digest; không build khi deploy.
@@ -56,6 +58,14 @@ Release provider gates mặc định tắt kể cả private `.env` đang bật 
 Chỉ operator được duyệt ngân sách/consent mới đặt `RELEASE_PROVIDER_DATA_ENABLED=true`
 và, riêng Guest, `RELEASE_GUEST_AI_ENABLED=true`. Không tự đổi credentials/fallback.
 Nếu gate tắt, UI giữ thông báo từ chối AI; health200 chỉ chứng minh API còn hoạt động.
+
+Trong cửa sổ operator tạm hoãn BGE, đặt dòng **`RELEASE_RERANKER_PATH=`** rỗng trong
+private `.env.release`. `compose.release.yaml` dùng default `/models/bge` khi biến
+không được đặt; explicit empty chọn đường vector retrieval đã có và không tạo model.
+Không thêm GPU overlay khi chạy vector-only; không âm thầm chuyển BGE sang CPU.
+Đổi cấu hình này cần recreate riêng API rồi kiểm trực tiếp8080; không sửa dữ liệu
+hoặc build image. Giữ model artifact read-only để có thể nghiệm thu BGE sau này.
+Gate C vẫn BLOCKED/DEFERRED; RAG/Hybrid vector-only không phải BGE GPU PASS.
 
 Local release tại HTTP 127.0.0.1:8080 giữ security environment `development` để dùng
 cookie local như bản trước; đây là release artifact, không phải public production.
@@ -84,13 +94,14 @@ GPU dùng đúng existing local snapshot read-only và image CUDA đã được 
 Các lệnh sau tại root chỉ dùng cho release sau khi được duyệt cutover:
 
 ```powershell
+# Hiện hành: vector-only, RELEASE_RERANKER_PATH= trong private .env.release.
 # Read-only: source/image/environment drift phải làm lệnh FAIL.
-./scripts/release.ps1 -Gpu
+./scripts/release.ps1
 
 # Start/promote API/Web; không build, pull hoặc recreate main DB.
-./scripts/release.ps1 -Gpu -Deploy
-./scripts/release.ps1 -Gpu -Deploy -Service api
-./scripts/release.ps1 -Gpu -Deploy -Service web
+./scripts/release.ps1 -Deploy
+./scripts/release.ps1 -Deploy -Service api
+./scripts/release.ps1 -Deploy -Service web
 
 # Liveness, process và logs; không đưa logs chứa nội dung riêng tư lên Git.
 Invoke-RestMethod http://127.0.0.1:8001/api/health
@@ -107,7 +118,9 @@ Guest RAM mất khi API dừng. Sau đó chỉ stop exact API/Web bằng `docker
 shopquery-ai-api-1 shopquery-ai-web-1`; giữ main DB chạy. Script promotion kiểm
 active work, main identity, image revision, một worker, no reload/source bind và
 ports loopback; chỉ thực hiện `up` API/Web `--no-deps --no-build --pull never`.
-Phần deploy của script chưa được nghiệm thu khi controlled cutover còn pending.
+Deploy branch đã thực hiện thành công cho controlled vector-only cutover: đúng
+API/Web digests, main container không recreate, source/image/environment verifier
+PASS và health8080 PASS. GPU mode chưa được nghiệm thu.
 
 Sửa `.env`/`.env.release` trong vùng private, kiểm diff tên biến mà không lộ giá trị,
 rồi recreate service chịu ảnh hưởng trong cửa sổ đã duyệt. Bật
@@ -115,6 +128,10 @@ rồi recreate service chịu ảnh hưởng trong cửa sổ đã duyệt. Bậ
 phê duyệt riêng trước `RELEASE_GUEST_AI_ENABLED=true`. Fallback giữ OFF.
 Không thử key bằng request ngoài ngân sách. Sau thay đổi chạy verification và
 kiểm chức năng tương ứng; health200 không thay thế Google/provider acceptance.
+Trong bounded live window hiện tại, SDK retry attempts đặt1 cho cả Gemini và
+Knowledge; không manual retry. Chỉ dùng verified synthetic fixture; hết cửa sổ
+hoặc gặp blocker thì tắt `RELEASE_PROVIDER_DATA_ENABLED` và recreate riêng API.
+Điều đó giữ Google/history/tabular upload, chặn paid chats/document embeddings.
 
 Một sửa đổi nhỏ: targeted tests → push/CI đúng SHA → build image service bị đổi
 hoặc reuse digest nếu build inputs không đổi → cập nhật private image ref →
