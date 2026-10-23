@@ -46,8 +46,9 @@ def test_actual_adapter_serializes_plan_and_compiles(monkeypatch, provider):
     payload = {
         "plan": {
             "source": "t0",
+            "expressions": [{"operation": "row_count", "arguments": []}],
             "fields": [
-                {"alias": "rows", "aggregate": "row_count"},
+                {"reference": "e0", "alias": "rows"},
             ],
         },
         "unsupported_reason": None,
@@ -65,15 +66,18 @@ def test_actual_adapter_serializes_plan_and_compiles(monkeypatch, provider):
         body = json.loads(calls[0].content)
         serialized = json.dumps(body)
         assert "PlanDecision" in serialized and "expressions" in serialized
-        assert "Must be null for field aggregate row_count" in serialized
-        assert "aggregate is an operation applied to reference" in serialized
+        assert "Aggregation belongs to expression nodes" in serialized
+        assert "Fields only select values" in serialized
         assert 'sql"' not in json.dumps(PlanDecision.model_json_schema())
         if provider == "gemini":
             config = body["generationConfig"]
-            assert config["responseJsonSchema"] == PlanDecision.model_json_schema()
-            assert "responseSchema" not in config
+            assert "responseJsonSchema" not in config
+            assert "responseSchema" in config
             assert "additional_properties" not in serialized
-            assert '"additionalProperties": false' in serialized
+            assert "additionalProperties" not in json.dumps(config)
+            assert config["responseSchema"]["properties"]["plan"]["properties"]["limit"][
+                "maximum"
+            ] == 1000
     finally:
         gateway.close()
 

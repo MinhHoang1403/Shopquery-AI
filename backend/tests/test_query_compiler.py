@@ -55,12 +55,11 @@ def test_count_values_and_rows_have_different_provenance():
     ]
 
 
-def test_row_count_wire_schema_and_validation_require_null_reference():
-    branches = PlanField.model_json_schema()["anyOf"]
-    assert branches[0]["properties"]["reference"] == {"type": "null"}
-    assert branches[0]["properties"]["aggregate"]["enum"] == ["row_count"]
-    assert "aggregate" in branches[0]["required"]
-    assert "row_count" not in branches[1]["properties"]["aggregate"]["anyOf"][0]["enum"]
+def test_projection_wire_schema_and_internal_row_count_guard():
+    schema = PlanField.model_json_schema()
+    assert "aggregate" not in schema["properties"]
+    assert schema["properties"]["reference"]["type"] == "string"
+    assert schema["required"] == ["reference", "alias"]
     assert PlanField(alias="rows", aggregate="row_count").reference is None
     with pytest.raises(ValidationError, match="Row count does not take a value column"):
         PlanDecision.model_validate({

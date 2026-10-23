@@ -1,7 +1,7 @@
 """Small Google GenAI SDK adapter with validated structured outputs."""
 
 import logging
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from google import genai
 from google.genai import errors, types
@@ -18,6 +18,19 @@ from app.core.errors import (
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 TRANSIENT_HTTP_STATUS_CODES = list(TRANSIENT_PROVIDER_STATUSES)
 logger = logging.getLogger(__name__)
+
+
+def _without_additional_properties(value: Any) -> Any:
+    """The native Schema endpoint rejects this keyword; Pydantic still forbids extras."""
+    if isinstance(value, dict):
+        return {
+            key: _without_additional_properties(item)
+            for key, item in value.items()
+            if key != "additionalProperties"
+        }
+    if isinstance(value, list):
+        return [_without_additional_properties(item) for item in value]
+    return value
 
 
 class GenerationGateway(Protocol):
@@ -65,7 +78,9 @@ class GeminiGateway:
                 config=types.GenerateContentConfig(
                     temperature=0,
                     response_mime_type="application/json",
-                    response_json_schema=response_model.model_json_schema(),
+                    response_schema=_without_additional_properties(
+                        response_model.model_json_schema()
+                    ),
                 ),
             )
             return response_model.model_validate_json(response.text)
@@ -133,15 +148,13 @@ class GeminiGateway:
             category = "transient_unavailable"
         elif exc.code == 400:
             message = str(exc.message).lower()
-            if "schema" in message:
+            if any(
+                term in message
+                for term in ("too many states", "too much branching", "too complex", "complexity")
+            ):
+                category = "schema_complexity"
+            elif "schema" in message:
                 category = "schema_rejected"
-                if any(
-                    term in message
-                    for term in (
-                        "too many states", "too much branching", "too complex", "complexity"
-                    )
-                ):
-                    category = "schema_complexity"
         logger.warning(
             "provider_error provider=gemini operation=%s http_status=%s category=%s",
             operation,

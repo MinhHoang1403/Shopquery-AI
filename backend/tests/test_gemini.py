@@ -181,6 +181,7 @@ def test_error_diagnostics_exclude_provider_payloads(monkeypatch, caplog, status
     [
         ("private-payload: schema rejected", "schema_rejected"),
         ("private-payload: schema constraint has too many states", "schema_complexity"),
+        ("private-payload: constraint has too many states", "schema_complexity"),
     ],
 )
 def test_schema_error_category_does_not_log_the_message(monkeypatch, caplog, message, category):

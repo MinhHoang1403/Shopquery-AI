@@ -180,6 +180,25 @@ Captured boundaries now establish:
   pending API build/deploy/live verification; these checks do not prove live accuracy.
   Six new UI questions prepared (11 unique questions total); stay within original cap.
 
+Subsequent UI checks failed before execution: Gemini average-fee QueryPlan HTTP400
+(router SQL succeeded); Knowledge warehouse comparison used SUM on a TEXT order ID.
+Global paid gate closed again. Standard response_json_schema did not resolve the
+QueryPlan request; it is not retained as an automatic request fallback.
+
+Operator approved2 further one-shot diagnostics within the same38/8/0 cap. Gemini
+returned only a generic invalid-argument detail. Knowledge captured the SUM(ID)
+plan. Generation now uses one existing representation: aggregates are expression
+nodes, fields project their IDs. Direct aggregate fields remain internal compiler
+DTO compatibility, not part of the generation schema. No plan repair or relaxed
+compiler guard. Gemini now sends native Schema dictionaries with the specifically
+rejected additionalProperties keyword omitted; original Pydantic validation still
+forbids extra output fields and enforces bounds. Targeted tests341/341 and Ruff PASS;
+pending build/deploy/live validation. Totals25 stages/3 query embeddings/0 document
+embeddings,7 UI chats plus8 diagnostics. Four new UI cases remain authorized.
+Computer Use became available after operator restart; real existing Google session
+and synthetic history visible. DevDB restarted with the machine and was stopped
+again only after verifying no clients; its container/volume remain preserved.
+
 Schema descriptions and backend validation follow the official
 [Gemini structured-output guidance](https://ai.google.dev/gemini-api/docs/structured-output).
 Standard JSON-schema request configuration follows the

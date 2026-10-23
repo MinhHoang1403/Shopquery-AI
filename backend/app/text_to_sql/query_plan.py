@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -50,21 +49,20 @@ class PlanExpression(BaseModel):
     ) = None
 
 
-def _field_aggregate_schema(schema: dict[str, Any]) -> None:
-    """Expose the same row-count/reference rule to constrained generation and validation."""
-    row_count = deepcopy(schema)
-    row_count["properties"]["reference"] = {"type": "null"}
-    row_count["properties"]["aggregate"] = {"type": "string", "enum": ["row_count"]}
-    row_count["required"] = [*row_count.get("required", []), "aggregate"]
-    other = deepcopy(schema)
-    other["properties"]["aggregate"]["anyOf"][0]["enum"].remove("row_count")
-    schema.clear()
-    schema["anyOf"] = [row_count, other]
+def _projection_schema(schema: dict[str, Any]) -> None:
+    """Generation uses the existing expression DAG; direct aggregates remain internal DTOs."""
+    schema["properties"].pop("aggregate")
+    schema["properties"]["reference"] = {
+        "type": "string",
+        "description": "Column or expression ID. Aggregation belongs to expression nodes, "
+        "not projection fields. Reference the aggregate expression's ID for its output.",
+    }
+    schema["required"] = ["reference", "alias"]
 
 
 class PlanField(BaseModel):
     model_config = ConfigDict(
-        extra="forbid", frozen=True, json_schema_extra=_field_aggregate_schema
+        extra="forbid", frozen=True, json_schema_extra=_projection_schema
     )
 
     reference: str | None = Field(

@@ -83,11 +83,10 @@ filters are AND comparisons with typed string values. where/having reference boo
 AND/OR arguments are predicates. Literal nodes require value and value_type; no other node
 takes a value. Row count has zero arguments; value count requires a direct source column.
 Do not confuse COUNT rows with non-NULL value counts or use aliases as semantic proof.
-Each aggregation has exactly one encoding: either a field aggregate over its source column,
-or an aggregate expression referenced by a field whose aggregate is null. Never use both.
-Prefer direct field aggregates for simple SUM/AVG/count outputs. A field row_count requires
-reference=null; an expression row_count requires arguments=[] and its output field aggregate=null.
-Field aggregate is an operation applied to reference, never an annotation of its result type.
+Encode every aggregation as an expression node, and project its expression ID in fields.
+Fields only select values; never put an aggregate operation on a field. Use row_count with
+zero arguments for number of orders/records, never SUM of an ID. SUM/AVG require numeric
+measure columns; TEXT identifiers are not measures. A count and a sum need separate nodes.
 Use separate row count alongside scalar SUM/AVG when needed to distinguish empty/all-NULL.
 Arithmetic is numeric only; preserve exact decimals and NULL. Division returns NULL for a
 dynamic zero denominator and rejects literal zero. SUM(x)/COUNT(x) means AVG(x), not row count.
