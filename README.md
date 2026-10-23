@@ -5,10 +5,15 @@
 Trợ lý phân tích bảng và tài liệu bằng FastAPI, React/TypeScript, PostgreSQL/pgvector.
 Hỗ trợ SQL, RAG, Hybrid, Google OIDC, không gian cá nhân và Guest tạm thời.
 
-**STAGE 2 PARTIAL — ACCEPTANCE BLOCKED.** 8080 đã chạy release API/Nginx với main DB,
-Google login/history hoạt động, BGE tạm hoãn và dùng vector-only có sẵn. RAG thật của
-Gemini/Knowledge đã đạt phạm vi policy fixture; SQL/Hybrid còn blocker. Paid gates
-đã tắt sau bounded acceptance. PR#1 đã merge về main theo chỉ đạo consolidation; chưa tag hoặc tuyên bố V2 hoàn tất.
+**MVP demo chính: [http://127.0.0.1:8080](http://127.0.0.1:8080).** Một Compose project
+`shopquery-ai` chạy API, Nginx Web và main PostgreSQL. Google login/history hoạt động;
+operator đã bật Knowledge, Gemini và document embeddings cho tài khoản đăng nhập.
+Giữ provider gate ON cho sử dụng thường ngày, cùng authentication, quota và rate limit.
+Guest preview hoạt động; Guest AI chưa được duyệt. Fallback OFF là lựa chọn cấu hình.
+SQL/RAG/Hybrid và follow-up đã có bằng chứng live trong phạm vi KPI synthetic;
+không coi đó là bảo đảm cho mọi dữ liệu. Auto-JOIN hiện chỉ nhận tên khóa theo quy tắc
+bảo thủ; khóa nghiệp vụ như `ma_tram`/`ma_goi` cần xác nhận quan hệ trong UI.
+BGE tạm hoãn, retrieval dùng vector-only. Chưa tag hoặc tuyên bố nghiệm thu V2 đầy đủ.
 Nguồn trạng thái hiện tại: [nghiệm thu V2](docs/v2_final_acceptance.md).
 Chi tiết QueryPlan/CUDA development: [báo cáo Giai đoạn 1](docs/archive/2026-10/stage1_implementation_report.md).
 Các báo cáo trong `docs/archive/` chỉ phản ánh thời điểm lịch sử.
@@ -20,42 +25,46 @@ Các báo cáo trong `docs/archive/` chỉ phản ánh thời điểm lịch s�
 - [Runtime/deployment](docs/deployment.md), [bảo mật](docs/security.md).
 - [Authentication/migration](docs/authentication.md), [nguồn kỹ thuật](docs/technical_references.md).
 
-## Development local
+## Quy trình làm việc trên bản chính
 
-8080 hiện dành cho release đang hoạt động. Chỉ chạy các lệnh chuyển development
-dưới đây khi chủ động có maintenance window; chúng thay API/Web sang DevDB.
-Vận hành release thường ngày theo [runbook](docs/deployment.md), không bật hot reload.
+GitHub `main` → local `main` → targeted tests → commit/push → build service thay đổi
+→ pin digest trong private `.env.release` → deploy8080 → verify. Không cần build
+image khi chỉ sửa docs hoặc dọn cache. Không tạo candidate/sandbox app stack.
 
 Cần Docker Desktop/Compose hỗ trợ `!override`, PowerShell, Git, Python 3.11/uv;
 Node 24 nếu chạy frontend tests native. Đọc [AGENTS.md](AGENTS.md) trước khi sửa source.
 
 ```powershell
-cd backend
-uv sync --locked --extra reranker
-cd ..
-./scripts/dev.ps1 -Build
-./scripts/verify-runtime.ps1
+git switch main
+git pull --ff-only
+# Sửa source; chọn tests đúng phần thay đổi, ví dụ:
+./scripts/test.ps1 -Tests tests/test_plan_binding.py
+git add -p
+git commit -m "Describe the verified change"
+git push origin main
+# Build/pin riêng API hoặc Web theo docs/deployment.md, rồi:
+./scripts/release.ps1 -Deploy -Service api
+./scripts/release.ps1
+Invoke-RestMethod http://127.0.0.1:8080/api/health
 ```
 
-Script chỉ vận hành `devdb`, `api`, `web`, project `shopquery-ai`, bằng `compose.yaml`
-rồi `compose.dev.yaml`. Database development riêng; main database không phải sandbox.
-BGE phải có sẵn ở snapshot xác minh; dùng `-ModelPath` nếu cache ở vị trí khác.
-Không tải model tự động. Trước lần chuyển từ main, đọc [deployment](docs/deployment.md).
-
-Mở [http://127.0.0.1:8080](http://127.0.0.1:8080). Banner Development phân biệt dữ liệu
-thử nghiệm; tài khoản/lịch sử main vẫn ở volume main. Dev tắt AI trả phí và Google
-credentials. Python bind mount + reload, React Vite HMR. Dependencies cần rebuild;
-environment cần recreate API/web có kiểm soát. Không chạy base Compose một mình
-trên máy đã có local overrides volume/port riêng.
+Private `.env`, `.env.release` và local overrides phải được giữ, không commit.
+Không chạy base Compose một mình trên máy đã có overrides riêng. Chuyển API/Web
+sang development là thao tác maintenance có gián đoạn; `scripts/dev.ps1` và Compose
+dev vẫn là công cụ source, không phải deployment thứ hai cần chạy thường trực.
+Test DB dùng volume riêng được giữ lại, chỉ khởi động khi integration test cần.
 
 ```powershell
-./scripts/test.ps1
+./scripts/test.ps1 -Tests tests/test_plan_binding.py
+# Chỉ khởi động isolated DevDB khi cần integration; không đổi API/Web8080:
+docker compose -p shopquery-ai -f compose.yaml -f compose.dev.yaml up -d --no-deps --wait devdb
 ./scripts/test.ps1 -Integration -Tests tests/test_hybrid_evidence_integration.py
+docker compose -p shopquery-ai -f compose.yaml -f compose.dev.yaml stop devdb
 cd frontend
 npm ci
 npm run lint
 npm run typecheck
-npm test
+npm test -- --run src/components/DatasetUploadDialog.test.tsx
 npm run build
 ```
 

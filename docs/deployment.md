@@ -1,38 +1,41 @@
 # Runtime và deployment
 
-Main baseline `0062e47d75cc51646bf9b45409a12aa49288552e`; active volume
-`shopquery-ai_postgres_auth_20261019`, archived volume `shopquery-ai_postgres_data`.
-Exact main order trên máy này: `compose.yaml`, `.env.compose-ui.yaml`,
-`.env.join-v1.yaml`, project `shopquery-ai`. API8001/web8080/PostgreSQL15432.
-Local overrides bị Git ignore, không phải template cho máy mới.
+Một source chính `C:\Work\ShopQuery AI` trên `main`, một Compose project
+`shopquery-ai`, API8001/Web8080/main PostgreSQL15432 trên loopback. Active volume
+`shopquery-ai_postgres_auth_20261019`; không recreate hoặc xóa volume này.
+Archived/test volumes được giữ, không dùng làm main. Exact release order:
+`compose.yaml`, `.env.compose-ui.yaml`, `.env.join-v1.yaml`, `compose.release.yaml`;
+env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 
-Main images giữ bằng `shopquery-ai-api:baseline-0062e47` và
-`shopquery-ai-web:baseline-0062e47`. Actual IDs/hashes/fingerprints nằm trong báo cáo
-và ignored private baseline. Kiểm image IDs, không chỉ tin tên tag.
+API source `ac369738f152ad2f685fbbd86fb71cdfa51fad8d`, digest `f161d7f5a441e7d036e4ecf97c3e4bd864edeefaf00820c577bb3c8cf31a2fa9`.
+Web source `e76dfed2ebcfaebcf37e36485d3041eda68f4209`, digest `e4a8c96c742bfaf2e6ff834fb320f457dc443ad4df4fedcf797094461e99bfb1`.
+Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
+không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
 
 Trước switch kiểm mounts, health, active leases và in-flight workers. Auth sessions
 lưu DB được giữ; Guest RAM không sống qua API recreate. Exec process mới không đọc
 được GuestStore của process đang chạy. Không coi worker count là số idle sessions.
 Không recreate main `db`, đổi main key/schema/data hoặc xóa volumes để chuyển modes.
 
-Development chỉ vận hành devdb/api/web qua base+dev override, database
-`shopquery_dev`, test `shopquery_test_stage1`, volume `shopquery-ai_postgres_dev_stage1`.
-`--fresh` chỉ áp dụng dev DB mới, không seed/ingest/fake Google user.
+Development tools và isolated test DB vẫn thuộc source. Không chạy dev API/Web
+song song hoặc chuyển8080 sang DevDB khi chỉ cần targeted tests. Test DB
+`shopquery_test_stage1` dùng volume `shopquery-ai_postgres_dev_stage1`, chỉ cần chạy
+lúc integration test; container có thể tái tạo từ Compose với volume còn nguyên.
+Không seed/ingest/fake Google user trên main.
 
-## Khôi phục main image đã giữ
+## Rollback đã giữ
 
-Kiểm không có in-flight work trước khi chuyển; cần baseline local overrides còn nguyên.
+Rollback API gần nhất là `shopquery-ai-api@sha256:1a57c0d151944309951bd32a2e9f21baca79ad3b82caf05683a81c3c2f7659a9`,
+source `5ba7669535e05d3779a0f2b5832be781405f9000`, đã từng phục vụ cùng Web hiện hành.
+Web không đổi trong các patch API; giữ thêm Web legacy `5ca6e17125f12574cf8cdf4d030b6a0a209007e9469b264e94e6d98056090146`
+làm bản dự phòng cuối. Private rollback/environment evidence được giữ ngoài Git.
+Không giữ mọi image patch cũ; không dùng tag `latest` để chọn bản chạy.
 
-```powershell
-docker image tag shopquery-ai-api:baseline-0062e47 shopquery-ai-api:latest
-docker image tag shopquery-ai-web:baseline-0062e47 shopquery-ai-web:latest
-docker compose -p shopquery-ai -f compose.yaml -f .env.compose-ui.yaml -f .env.join-v1.yaml up -d --no-deps --no-build --wait api web
-./scripts/verify-runtime.ps1 -Main
-```
-
-Recreate dùng environment host hiện tại: host key đã đổi nghĩa là không exact env
-rollback. Kiểm drift trước, không gọi provider để thử key. Local source khác image
-baseline sẽ được verify-runtime báo rõ. Không down -v/prune hoặc tráo main/dev volume.
+Rollback phải kiểm active work, pin đúng digest/private config và kiểm source drift.
+Nếu source khác image rollback, strict verifier phải báo đúng khác biệt; dùng
+reviewed manual Compose API-only sequence, không bỏ guard để tạo PASS giả. Không
+restore/drop main DB để xóa operational writes. Environment/credentials thay đổi
+không được coi là exact rollback dù image giống nhau.
 
 ## Release
 
@@ -173,10 +176,6 @@ Kiểm cả UI8080, session/history và hành vi đã sửa sau deploy; health k
 minh AI đúng. Khi chỉ sửa Web, build frontend/Dockerfile rồi pin/deploy riêng web.
 Không đổi dependency extra, key, volume hoặc bật paid gates trong ví dụ này.
 
-Nếu postdeploy FAIL, dùng rollback API/Web pin digest theo bàn giao, cùng protected
-main volume và reviewed original environment; không restore/drop main DB để xóa
-operational writes. Baseline images cũ không có OCI revision label nên không dùng
-`release.ps1` để triển khai chúng. Chạy reviewed manual Compose sequence, rồi kiểm
-image IDs, main identity, Google session/history và schema/data. Source verifier
-sẽ báo drift khi baseline image khác source V2 hiện tại; đó là kết quả dự kiến
-cho rollback capability, không phải bằng chứng V2 đạt nghiệm thu.
+Nếu postdeploy FAIL, dùng rollback pin digest ở đầu runbook, cùng protected main
+volume và reviewed environment; kiểm image IDs, main identity, Google session/history
+và schema/data. Source drift của rollback phải được báo trung thực.
