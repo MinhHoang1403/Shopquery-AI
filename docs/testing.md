@@ -1,11 +1,11 @@
 # Kiểm thử
 
-Giai đoạn 1 chỉ offline regression/smoke, không benchmark 150 câu hoặc live AI.
-Kết quả thực chạy nằm trong báo cáo Giai đoạn 1; test counts lịch sử không đại diện
-source hiện tại.
+Chọn targeted tests theo phần thay đổi. Docs/cleanup không cần chạy lại toàn bộ
+regression/golden hoặc gọi provider. Kết quả live theo phạm vi nằm trong
+[nghiệm thu V2](v2_final_acceptance.md); test counts lịch sử không đại diện source hiện tại.
 
 ```powershell
-./scripts/test.ps1
+./scripts/test.ps1 -Tests tests/test_plan_binding.py
 ./scripts/test.ps1 -Integration -Tests tests/test_hybrid_evidence_integration.py
 cd backend
 uv run --no-sync ruff check app scripts tests
@@ -13,7 +13,7 @@ cd ../frontend
 npm ci
 npm run lint
 npm run typecheck
-npm test
+npm test -- --run src/components/DatasetUploadDialog.test.tsx
 npm run build
 $env:SHOPQUERY_E2E_START_SERVER='1'
 $env:SHOPQUERY_E2E_BASE_URL='http://127.0.0.1:5173'
@@ -29,8 +29,9 @@ Test DB `shopquery_test_stage1` nằm trên devdb:15433, tạo cùng volume dev 
 có thể tạo/drop fixtures ở đó; không reset/re-ingest main hoặc xóa volumes.
 
 CI: Ruff/unit, PostgreSQL service `shopquery_ci` + reader riêng, frontend quality/
-mock browser. Draft PR vào main kích hoạt workflow; feature push đơn thuần không
-chạy workflow hiện hữu. CI regression không phải Stage 2 live acceptance.
+mock browser. Push main và PR vào main kích hoạt workflow; feature push đơn thuần
+không chạy workflow hiện hữu. Docs-only commit có thể dùng `[skip ci]`.
+CI regression không phải Stage 2 live acceptance.
 
 Targeted checks: plan IDs/binds/COUNT/JOIN/NULL/Decimal; local model load/cache/
 ranking/scope/fallback; Hybrid evidence sequence, binding, decisions/citations;

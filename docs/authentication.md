@@ -4,7 +4,7 @@
 
 Tài liệu này mô tả authentication và migration hiện hữu. Trạng thái MVP/runtime hiện tại nằm trong [nghiệm thu V2](v2_final_acceptance.md), [architecture](architecture.md) và [deployment](deployment.md). Các mốc triển khai/nghiệm thu cũ không chứng nhận runtime development mới.
 
-Google OIDC invite-only, PostgreSQL opaque sessions, CSRF, owner-scoped repositories, optional login và quota beta được giữ. Logout thành công về Guest trống. Không suy ra callback/logout live PASS từ browser mock. Lịch sử main upgrade/Guest nằm trong [archive](archive/README.md).
+Google OIDC invite-only, PostgreSQL opaque sessions, CSRF, owner-scoped repositories, optional login và quota beta được giữ. Logout thành công về Guest trống. Không suy ra callback/logout live PASS từ browser mock.
 
 ## Google OIDC
 
@@ -76,7 +76,8 @@ PostgreSQL lưu counters/leases để dùng chung giữa workers; không Redis. 
 |---|---:|
 | BETA_LOGIN_PER_IP_HOUR | 20, login và callback cùng budget |
 | BETA_CHAT_PER_USER_HOUR | 30 |
-| BETA_UPLOAD_PER_USER_HOUR | 10, gồm preview/import/create |
+| BETA_UPLOAD_PER_USER_HOUR | 60, gồm import/create |
+| BETA_PREVIEW_PER_USER_HOUR | 180 |
 | BETA_USER_CONCURRENCY | 1 |
 | BETA_SYSTEM_CONCURRENCY | 4 |
 | BETA_MAX_DATASETS | 20 |
@@ -138,10 +139,6 @@ npm run test:e2e
 ```
 
 Mọi live browser suite yêu cầu opt-in riêng và SHOPQUERY_LIVE_STORAGE_STATE trỏ file phiên của tài khoản test trong DB cô lập. File đó là secret: lưu ngoài repo hoặc .auth/ bị ignore. Backend live tests cũng yêu cầu explicit test DB và BETA_PROVIDER_DATA_ENABLED=true. Không chạy live cho tới khi người dùng cho phép; test mặc định không gọi upstream.
-
-## Bằng chứng lịch sử
-
-Xem [main authentication upgrade](archive/2026-10/main_auth_upgrade.md) cho rehearsal, fingerprints và test counts tháng 10/2026. Đây không phải trạng thái current runtime.
 
 ## Chưa sẵn sàng public VPS
 

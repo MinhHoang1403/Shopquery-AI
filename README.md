@@ -15,8 +15,7 @@ không coi đó là bảo đảm cho mọi dữ liệu. Auto-JOIN hiện chỉ n
 bảo thủ; khóa nghiệp vụ như `ma_tram`/`ma_goi` cần xác nhận quan hệ trong UI.
 BGE tạm hoãn, retrieval dùng vector-only. Chưa tag hoặc tuyên bố nghiệm thu V2 đầy đủ.
 Nguồn trạng thái hiện tại: [nghiệm thu V2](docs/v2_final_acceptance.md).
-Chi tiết QueryPlan/CUDA development: [báo cáo Giai đoạn 1](docs/archive/2026-10/stage1_implementation_report.md).
-Các báo cáo trong `docs/archive/` chỉ phản ánh thời điểm lịch sử.
+Các báo cáo lịch sử đã bỏ khỏi checkout; có thể tra tại Git commit `87cdf40`.
 
 ## Tài liệu hiện hành
 

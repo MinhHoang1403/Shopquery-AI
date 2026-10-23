@@ -334,5 +334,6 @@ git push origin main
 Invoke-RestMethod http://127.0.0.1:8080/api/health
 ```
 
-Historical preparation: [archived handoff](archive/2026-10/v2_release_handoff.md).
+Historical preparation reports remain available in Git at commit `87cdf40`;
+they were removed from the current checkout during the operator-requested cleanup.
 No tag or complete Stage2 acceptance until mandatory live and BGE gates pass.

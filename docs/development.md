@@ -70,7 +70,8 @@ một model diagnostic mỗi lần; không giữ thêm GPU copy khi worker API �
 | Python/npm dependency | Lock + targeted tests, `dev.ps1 -Build` |
 | Environment/key | Controlled API/web recreate; source reload không nạp env mới |
 | Schema | Reviewed migration riêng, không tự migrate main |
-| Release | Reviewed pinned image; chưa merge/release trong Giai đoạn 1 |
+| Release | Build service thay đổi từ main, pin digest, controlled deploy8080 theo runbook |
 
-`requirements.txt` là export runtime mặc định từ uv.lock, không bao gồm optional
-reranker. Native dùng `uv sync --locked --extra reranker`. Không commit `.env`/weights.
+Dependency manifests chính là `backend/pyproject.toml` và `backend/uv.lock`;
+không có `requirements.txt` riêng. Native dùng `uv sync --locked --extra reranker`.
+Không commit `.env`/weights. Các báo cáo smoke lịch sử có trong Git tại `87cdf40`.

@@ -7,6 +7,19 @@ Archived/test volumes được giữ, không dùng làm main. Exact release orde
 `compose.yaml`, `.env.compose-ui.yaml`, `.env.join-v1.yaml`, `compose.release.yaml`;
 env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 
+| File | Vai trò hiện hành |
+| --- | --- |
+| `.env` | Credentials và cấu hình nền private; không commit |
+| `.env.release` | Pin API/Web digest, main volume và release gates private |
+| `.env.compose-ui.yaml` | Override cổng loopback của deployment này |
+| `.env.join-v1.yaml` | Bật approved JOIN; tên v1 là tên cấu hình, không phải app cũ |
+| `.env.example` | Template không có credentials cho người phát triển |
+| `compose.yaml`, `compose.release.yaml` | Base và override của deployment chính |
+| `compose.dev.yaml`, `compose.gpu.yaml`, `compose.release.gpu.yaml` | Công cụ test/maintenance hoặc GPU opt-in; không phải stack đang chạy |
+
+Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
+tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
+
 API source `ac369738f152ad2f685fbbd86fb71cdfa51fad8d`, digest `f161d7f5a441e7d036e4ecf97c3e4bd864edeefaf00820c577bb3c8cf31a2fa9`.
 Web source `e76dfed2ebcfaebcf37e36485d3041eda68f4209`, digest `e4a8c96c742bfaf2e6ff834fb320f457dc443ad4df4fedcf797094461e99bfb1`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
@@ -40,7 +53,7 @@ không được coi là exact rollback dù image giống nhau.
 ## Release
 
 Trạng thái nghiệm thu hiện hành nằm trong [nghiệm thu V2](v2_final_acceptance.md);
-baseline và image rollback được bảo tồn trong [bàn giao V2](archive/2026-10/v2_release_handoff.md).
+Image rollback hiện hành được ghi ở đầu hướng dẫn này; báo cáo lịch sử có trong Git tại `87cdf40`.
 Operator đã duyệt controlled acceptance cutover8080 ở chế độ vector-only để dùng
 Google/history/upload trong khi Gate C tạm hoãn. Đây chưa phải Stage2/full release
 acceptance. PR#1 đã merge theo chỉ đạo consolidation riêng; chưa tag V2. Không lặp GPU benchmark.

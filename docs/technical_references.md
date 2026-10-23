@@ -11,12 +11,11 @@ K/N/batch/length là giới hạn khởi đầu, chưa phải benchmark tối ư
 - [Python Decimal](https://docs.python.org/3.11/library/decimal.html): exact numeric decisions, không qua float.
 - [pgvector](https://github.com/pgvector/pgvector): cosine distance và exact vector retrieval; scope dùng SQL predicates.
 - [Pydantic models](https://docs.pydantic.dev/latest/concepts/models/): typed contracts; schema validation không chứng minh business semantics.
-- [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output): structured response handling; live compatibility chưa nghiệm thu cho plan candidate.
+- [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output): structured response handling; bằng chứng live của compact generation contract nằm trong [nghiệm thu V2](v2_final_acceptance.md).
 - [Google OIDC](https://developers.google.com/identity/openid-connect/openid-connect): issuer/audience/nonce/PKCE và callback handling.
 - [Compose merge](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/): explicit file order/override; [volumes](https://docs.docker.com/reference/compose-file/volumes/): external protected persistence.
 - [Uvicorn reload](https://www.uvicorn.org/settings/#development) và [Vite server](https://vite.dev/config/server-options): development reload/HMR, không coi là production deployment.
 - [RAG paper](https://arxiv.org/abs/2005.11401): retrieval-grounded generation; không chứng minh candidate answers luôn đúng.
 
-Các tài liệu parser/upload và migration chi tiết trong archive vẫn có giá trị lịch sử;
-capabilities/security hiện hành được ghi riêng ở canonical docs. Không dùng test count
-hoặc thông tin chưa có authentication trong báo cáo cũ để mô tả source hiện tại.
+Capabilities/security hiện hành được ghi riêng ở canonical docs. Các báo cáo cũ
+có trong Git tại `87cdf40`; không dùng test count lịch sử để mô tả source hiện tại.
