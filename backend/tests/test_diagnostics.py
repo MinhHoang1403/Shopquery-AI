@@ -10,8 +10,7 @@ from app.core.diagnostics import diagnostic_request, diagnostic_stage, record_fa
 from app.core.errors import ResourceConflictError, SqlExecutionError, StructuredResponseError
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
 from app.routing.service import DatasetChatService
-from app.text_to_sql.generator import SqlDraft, SqlGenerator
-from app.text_to_sql.pipeline import TextToSqlPipeline
+from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 from tests.test_three_table_join import validator
 
 BASE = (
@@ -58,7 +57,7 @@ def test_failure_stage_is_precise_and_has_no_raw_evidence(stage):
                 route=RouteLabel.UNSUPPORTED if stage == "router_unsupported" else RouteLabel.SQL,
                 reason="Synthetic",
             )
-        return SqlDraft(
+        return SqlFixture(
             sql=sql,
             unsupported_reason="private refusal" if stage == "generator_unsupported" else None,
         )
@@ -80,8 +79,12 @@ def test_failure_stage_is_precise_and_has_no_raw_evidence(stage):
     checked = validator(
         relations=() if stage == "join_relationship" else validator()._approved_joins
     )
-    pipeline = TextToSqlPipeline(
-        SqlGenerator(gateway, "2026-10-20", "Synthetic schema"), checked, executor, gateway, guard
+    pipeline = ValidationPipeline(
+        FixtureGenerator(gateway, "2026-10-20", "Synthetic schema"),
+        checked,
+        executor,
+        gateway,
+        guard,
     )
     service = DatasetChatService(QueryRouter(gateway, "Synthetic"), pipeline, None, None)
     with diagnostic_request() as trace:

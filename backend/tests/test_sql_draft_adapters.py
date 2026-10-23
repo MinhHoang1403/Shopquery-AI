@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision, PlanField, QueryPlan
 from tests.test_gemini import _build_harness
 from tests.test_providers import completion, harness
 
@@ -17,8 +17,10 @@ def test_sql_draft_schema_survives_both_adapter_serializers(
     provider: str,
     supported: bool,
 ) -> None:
-    expected = SqlDraft(
-        sql="SELECT id FROM uploaded_data.synthetic" if supported else "",
+    expected = PlanDecision(
+        plan=QueryPlan(source="t0", fields=[PlanField(reference="t0.c0", alias="id")])
+        if supported
+        else None,
         unsupported_reason=None if supported else "Synthetic unsupported grain",
     )
     content = expected.model_dump_json()
@@ -39,7 +41,7 @@ def test_sql_draft_schema_survives_both_adapter_serializers(
     else:
         gateway, calls = harness(monkeypatch, [completion(content)])
     try:
-        actual = gateway.generate_structured("Synthetic SQL contract only", SqlDraft)
+        actual = gateway.generate_structured("Synthetic plan contract only", PlanDecision)
     finally:
         gateway.close()
     assert actual == expected
@@ -47,5 +49,5 @@ def test_sql_draft_schema_survives_both_adapter_serializers(
     payload = json.loads(calls[0].content)
     serialized = json.dumps(payload)
     assert "unsupported_reason" in serialized
-    assert "empty string when unsupported" in serialized
-    assert "null on success" in serialized
+    assert "PlanDecision" in serialized
+    assert "sql" not in PlanDecision.model_fields

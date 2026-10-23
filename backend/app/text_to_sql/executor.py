@@ -18,7 +18,9 @@ class SqlExecutor:
         self._timeout_ms = timeout_ms
         self._max_rows = max_rows
 
-    def execute(self, validated: ValidatedSql) -> list[dict[str, Any]]:
+    def execute(
+        self, validated: ValidatedSql, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         try:
             with self._engine.connect() as connection:
                 transaction = connection.begin()
@@ -32,7 +34,7 @@ class SqlExecutor:
                         text("SELECT set_config('TimeZone', :timezone, true)"),
                         {"timezone": BUSINESS_TIME_ZONE},
                     )
-                    result = connection.execute(text(validated.statement))
+                    result = connection.execute(text(validated.statement), parameters or {})
                     raw_rows = result.mappings().fetchmany(self._max_rows + 1)
                     if len(raw_rows) > self._max_rows:
                         raise SqlExecutionError(

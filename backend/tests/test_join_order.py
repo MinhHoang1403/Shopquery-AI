@@ -13,10 +13,13 @@ from app.datasets.parser import ColumnSpec
 from app.datasets.repository import DatasetInfo, DatasetTableInfo
 from app.routing.router import RouteDecision, RouteLabel
 from app.routing.service import DatasetChatService, _sql_refusal
-from app.text_to_sql.generator import SqlDraft, SqlGenerator
+from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.join_policy import ApprovedJoin, validate_uploaded_join
-from app.text_to_sql.pipeline import TextToSqlPipeline
+from app.text_to_sql.planner import QueryPlanner
+from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import SqlValidator
+from tests.plan_fixtures import decision_from_sql
+from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 
 DIMENSION = "dataset_11111111111111111111111111111111"
 FACT = "dataset_22222222222222222222222222222222"
@@ -111,13 +114,13 @@ def test_policy_distinguishes_direction_key_aggregate_and_missing_relation(
     "suffix", [FORWARD, REVERSE, REVERSE.replace("p.student_id=s.id", "(s.id=p.student_id)")]
 )
 def test_equivalent_inner_join_draft_is_canonicalized_without_changing_aliases(suffix: str) -> None:
-    draft = SqlDraft(
+    draft = SqlFixture(
         sql="SELECT s.name, SUM(p.amount) AS total, AVG(p.amount) AS average, "
         "COUNT(*) AS fact_row_count " + suffix + " GROUP BY s.id,s.name ORDER BY s.name"
     )
     gateway = Mock()
     gateway.generate_structured.return_value = draft
-    generated = SqlGenerator(gateway, "2026-10-20", authenticated_context().schema_context)
+    generated = FixtureGenerator(gateway, "2026-10-20", authenticated_context().schema_context)
     validated = validator().validate(generated.generate("Synthetic students/payments"))
     root = parse_one(validated.statement, read="postgres")
     assert root.args["from_"].this.name == FACT
@@ -164,7 +167,7 @@ def test_count_verified_fact_join_key_has_row_semantics(bindings, alias):
 )
 def test_reversed_join_never_relabels_dimension_or_invalid_alias_as_fact(projection: str) -> None:
     executor, gateway = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(generate=Mock(return_value=f"SELECT {projection} {REVERSE}")),
         validator(),
         executor,
@@ -241,25 +244,26 @@ def test_assembled_aggregate_contract_and_structured_intent_drafts(
 
     class Gateway:
         def generate_structured(self, prompt, schema):
-            assert schema is SqlDraft and context.schema_context in prompt
-            assert "COUNT(*) AS fact_row_count" in prompt
-            assert "COUNT(f.column) AS fact_value_count" in prompt
-            assert "Never infer NOT NULL from a column named id" in prompt
-            assert "Never swap these aliases" in prompt
-            assert "Do not change the requested metric to fit the supported subset" in prompt
-            assert "Prefer one table when it suffices" in prompt
+            assert schema is PlanDecision
+            assert all(f'"name": "{name}"' in prompt for name in context.table_columns)
+            assert "Row count has zero arguments" in prompt
+            assert "value count requires a direct source column" in prompt
+            assert "Do not confuse COUNT rows with non-NULL value counts" in prompt
+            assert "aliases as semantic proof" in prompt
+            assert "No relationships means exactly one table" in prompt
             assert "Question: " + question in prompt
-            return SqlDraft(
-                sql=sql if projection else "",
-                unsupported_reason=None if projection else "No order source",
+            return (
+                decision_from_sql(sql, prompt)
+                if projection
+                else PlanDecision(unsupported_reason="No order source")
             )
 
-    generator = SqlGenerator(Gateway(), "2026-10-20", context.schema_context)
+    generator = QueryPlanner(Gateway(), "2026-10-20", context)
     if projection is None:
         with pytest.raises(SqlUnsupportedError):
             generator.generate(question)
     else:
-        validated = validator().validate(generator.generate(question))
+        validated = QueryCompiler(context).compile(generator.generate(question)).validated
         assert len(validated.tables) == (2 if joined else 1)
         assert (validated.fact_table == FACT) is joined
 
@@ -312,10 +316,10 @@ def test_aggregate_diagnostic_branch_is_private_and_stops_before_execution(
     )
     sql = f"SELECT {projection} {bindings}"
     gateway = Mock()
-    gateway.generate_structured.return_value = SqlDraft(sql=sql)
+    gateway.generate_structured.return_value = SqlFixture(sql=sql)
     executor, guard = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
-        SqlGenerator(gateway, "2026-10-20", context.schema_context),
+    pipeline = ValidationPipeline(
+        FixtureGenerator(gateway, "2026-10-20", context.schema_context),
         scoped_validator,
         executor,
         gateway,
@@ -346,14 +350,14 @@ def test_aggregate_diagnostic_branch_is_private_and_stops_before_execution(
 
 
 @pytest.mark.parametrize("route", [RouteLabel.SQL, RouteLabel.HYBRID])
-def test_aggregate_diagnosis_never_continues_to_rag_or_hybrid_answer(route, caplog) -> None:
+def test_aggregate_diagnosis_never_executes_or_composes_a_hybrid_answer(route, caplog) -> None:
     sql_gateway = Mock()
-    sql_gateway.generate_structured.return_value = SqlDraft(
+    sql_gateway.generate_structured.return_value = SqlFixture(
         sql=f"SELECT COUNT(p.id) AS fact_row_count {REVERSE}"
     )
     executor, answer_gateway = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
-        SqlGenerator(sql_gateway, "2026-10-20", authenticated_context().schema_context),
+    pipeline = ValidationPipeline(
+        FixtureGenerator(sql_gateway, "2026-10-20", authenticated_context().schema_context),
         validator(),
         executor,
         answer_gateway,
@@ -361,6 +365,9 @@ def test_aggregate_diagnosis_never_continues_to_rag_or_hybrid_answer(route, capl
     from app.routing.hybrid import HybridPipeline
 
     rag, router = Mock(), Mock()
+    from app.rag.repository import RetrievedChunk
+
+    rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
     router.route.return_value = RouteDecision(route=route, reason="Synthetic branch")
     with caplog.at_level("INFO", logger="app.routing.service"):
         result = DatasetChatService(
@@ -369,7 +376,10 @@ def test_aggregate_diagnosis_never_continues_to_rag_or_hybrid_answer(route, capl
     assert result.route == RouteLabel.UNSUPPORTED
     assert result.sql is None and result.rows == [] and result.sources == []
     assert "join_aggregate (count_wrong_argument_semantics)" in caplog.text
-    rag.retrieve.assert_not_called()
+    if route == RouteLabel.HYBRID:
+        rag.retrieve.assert_called_once()
+    else:
+        rag.retrieve.assert_not_called()
     executor.execute.assert_not_called()
     answer_gateway.generate_text.assert_not_called()
     answer_gateway.generate_structured.assert_not_called()

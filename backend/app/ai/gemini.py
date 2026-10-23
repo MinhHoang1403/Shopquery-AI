@@ -7,10 +7,15 @@ from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import Settings
-from app.core.errors import ConfigurationError, ModelResponseError, StructuredResponseError
+from app.core.errors import (
+    TRANSIENT_PROVIDER_STATUSES,
+    ConfigurationError,
+    ModelResponseError,
+    StructuredResponseError,
+)
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
-TRANSIENT_HTTP_STATUS_CODES = [408, 429, 500, 502, 503, 504]
+TRANSIENT_HTTP_STATUS_CODES = list(TRANSIENT_PROVIDER_STATUSES)
 
 
 class GenerationGateway(Protocol):

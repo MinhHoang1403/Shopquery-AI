@@ -6,8 +6,8 @@ import pytest
 
 from app.core.errors import SqlValidationError
 from app.text_to_sql.join_policy import ApprovedJoin
-from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.validator import SqlValidator
+from tests.sql_validation_fixtures import ValidationPipeline
 
 
 def join_validator() -> SqlValidator:
@@ -108,7 +108,7 @@ def test_approved_fact_aggregates(projection: str, reverse: bool) -> None:
 )
 def test_unsafe_join_patterns_are_rejected_before_execution(sql: str) -> None:
     executor, gateway = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(generate=Mock(return_value=sql)), join_validator(), executor, gateway
     )
     with pytest.raises(SqlValidationError):

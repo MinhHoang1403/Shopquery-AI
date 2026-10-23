@@ -8,10 +8,11 @@ from typing import Any
 
 from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage, record_facts
+from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.count_contract import CountMetric, count_evidence
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.generator import SqlGenerator
-from app.text_to_sql.validator import SqlValidator, ValidatedSql
+from app.text_to_sql.planner import QueryPlanner
+from app.text_to_sql.validator import ValidatedSql
 
 
 @dataclass
@@ -26,22 +27,29 @@ class SqlResult:
 class TextToSqlPipeline:
     def __init__(
         self,
-        generator: SqlGenerator,
-        validator: SqlValidator,
+        planner: QueryPlanner,
+        compiler: QueryCompiler,
         executor: SqlExecutor,
         gateway: GenerationGateway,
         execution_guard: Callable[[ValidatedSql], AbstractContextManager] | None = None,
     ) -> None:
-        self._generator = generator
-        self._validator = validator
+        self._planner = planner
+        self._compiler = compiler
         self._executor = executor
         self._gateway = gateway
         self._execution_guard = execution_guard
 
-    def run(self, question: str) -> SqlResult:
+    def run(
+        self, question: str, *, evidence_context: str | None = None, ground_answer: bool = True
+    ) -> SqlResult:
         with diagnostic_stage("generator_unsupported"):
-            sql = self._generator.generate(question)
-        validated = self._validator.validate(sql)
+            plan = (
+                self._planner.generate(question, evidence_context=evidence_context)
+                if evidence_context is not None
+                else self._planner.generate(question)
+            )
+        compiled = self._compiler.compile(plan)
+        validated = compiled.validated
         record_facts(sql_validated=True)
         guard = self._execution_guard(validated) if self._execution_guard else nullcontext()
         with ExitStack() as stack:
@@ -49,15 +57,17 @@ class TextToSqlPipeline:
                 stack.enter_context(guard)
             with diagnostic_stage("sql_execution"):
                 record_facts(execution_reached=True)
-                rows = self._executor.execute(validated)
+                rows = self._executor.execute(validated, compiled.parameters)
                 record_facts(result_rows=len(rows))
-        with diagnostic_stage("answer_grounding"):
-            answer = self._ground_answer(
-                question, rows, validated.fact_table, validated.count_metrics
-            )
+        answer = ""
+        if ground_answer:
+            with diagnostic_stage("answer_grounding"):
+                answer = self._ground_answer(
+                    question, rows, validated.fact_table, validated.count_metrics
+                )
         return SqlResult(
             answer=answer,
-            sql=validated.statement,
+            sql=compiled.evidence_sql,
             rows=rows,
             fact_table=validated.fact_table,
             count_metrics=validated.count_metrics,

@@ -16,9 +16,10 @@ from app.dependencies import build_workspace_context
 from app.rag.upload_parser import parse_document_file
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from tests.gate_d_fixture import POLICY, QUESTIONS, uploads
 from tests.hybrid_fixtures import classification_draft, rule_block
+from tests.plan_fixtures import decision_from_sql
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
@@ -167,15 +168,19 @@ def test_gate_d_questions_oracle_and_authenticated_history(
                     route=RouteLabel.HYBRID if level == "H" else RouteLabel.SQL,
                     reason="Scripted offline route, not model accuracy",
                 )
-            if schema is SqlDraft:
+            if schema is PlanDecision:
                 assert QUESTIONS[level] in prompt
                 assert all(name in prompt for name in context.table_columns)
-                assert "Never invent a document threshold" in prompt
+                assert (
+                    "Do not apply document thresholds as SQL filters or infer absent policies"
+                    in prompt
+                )
                 sql = draft_sql(dataset, level)
-                return SqlDraft(
-                    sql=sql.replace("AS fact_row_count", "AS delivery_count")
+                return decision_from_sql(
+                    sql.replace("AS fact_row_count", "AS delivery_count")
                     if business_alias
-                    else sql
+                    else sql,
+                    prompt,
                 )
             assert schema is HybridAnswerDraft
             if business_alias:
@@ -238,7 +243,7 @@ def test_gate_d_questions_oracle_and_authenticated_history(
         ("unsupported", "generator_unsupported", None),
     ],
 )
-def test_gate_d_hypotheses_stay_fail_closed_before_retrieval(
+def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
     gate_d_workspace, monkeypatch, mutation: str, code: str, reason: str | None
 ) -> None:
     accounts, dataset, _, embedder = gate_d_workspace  # noqa: F811
@@ -265,11 +270,11 @@ def test_gate_d_hypotheses_stay_fail_closed_before_retrieval(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.HYBRID, reason="Offline hypothesis")
-            assert schema is SqlDraft
+            assert schema is PlanDecision
             return (
-                SqlDraft(sql="", unsupported_reason="Private synthetic hypothesis")
+                PlanDecision(plan=None, unsupported_reason="Private synthetic hypothesis")
                 if mutation == "unsupported"
-                else SqlDraft(sql=sql)
+                else decision_from_sql(sql, prompt)
             )
 
         def generate_text(self, prompt: str) -> str:
@@ -284,9 +289,9 @@ def test_gate_d_hypotheses_stay_fail_closed_before_retrieval(
     assert (
         response["route"] == "UNSUPPORTED" and response["rows"] == [] and response["sources"] == []
     )
-    assert calls == ["RouteDecision", "SqlDraft"]
+    assert calls == ["RouteDecision", "PlanDecision"]
     assert not trace.facts["execution_reached"]
-    assert not any(e["stage"] == "document_retrieval" for e in trace.events)
+    assert any(e["stage"] == "document_retrieval" for e in trace.events)
     assert any(
         e["stage"] == code and (reason is None or e["reason"] == reason) for e in trace.events
     )
@@ -313,8 +318,8 @@ def test_structured_classification_api_history_and_failure_safety(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.HYBRID, reason="Offline evidence test")
-            if schema is SqlDraft:
-                return SqlDraft(sql=draft_sql(dataset, "H"))
+            if schema is PlanDecision:
+                return decision_from_sql(draft_sql(dataset, "H"), prompt)
             assert schema is HybridAnswerDraft
             ids = [int(value) for value in re.findall(r"\[chunk_id=(\d+)", prompt)]
             assert len(ids) == 1 and json.dumps(expected, ensure_ascii=False) in prompt
@@ -348,4 +353,4 @@ def test_structured_classification_api_history_and_failure_safety(
     before = list(calls)
     assert accounts.a.client.get(path).json()["messages"][-1]["response"] == response
     assert accounts.b.client.get(path).status_code == 404
-    assert calls == before == ["RouteDecision", "SqlDraft", "answer", "HybridAnswerDraft"]
+    assert calls == before == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]

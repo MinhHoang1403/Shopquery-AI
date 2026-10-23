@@ -467,6 +467,9 @@ def test_policy_errors_are_redacted_but_provider_errors_preserve_existing_behavi
         pipeline.run("Which qualify?")
     assert str(error.value) == EVIDENCE_REFUSAL
     assert "PRIVATE" not in str(error.value)
+    pipeline._sql_pipeline.run.assert_not_called()
+    gateway.generate_structured.assert_not_called()
+    pipeline._rag_pipeline.retrieve.return_value = fixture()[1]
     upstream = ProviderError("Synthetic transport error", fallback_allowed=True)
     gateway.generate_structured.side_effect = upstream
     with pytest.raises(ProviderError) as error:

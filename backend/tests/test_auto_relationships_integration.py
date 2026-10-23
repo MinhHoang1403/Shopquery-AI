@@ -13,8 +13,9 @@ from app.datasets.relationships import RelationshipConfirm
 from app.datasets.repository import DatasetRepository
 from app.dependencies import build_workspace_context
 from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from tests.auth_helpers import TEST_OWNER
+from tests.plan_fixtures import decision_from_sql
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 
@@ -121,7 +122,10 @@ def test_flag_off_owner_isolation_and_atomic_failure(workspace, monkeypatch):
 @pytest.mark.parametrize("model", ["gemini", "inetcloud-knowledge"])
 @pytest.mark.parametrize("reverse_join", [False, True])
 def test_upload_chat_and_history_with_automatic_relation(
-    accounts, monkeypatch, model, reverse_join  # noqa: F811
+    accounts,  # noqa: F811
+    monkeypatch,
+    model,
+    reverse_join,
 ):
     a = accounts.a
     accounts.settings.sql_join_v1_enabled = True
@@ -169,11 +173,11 @@ def test_upload_chat_and_history_with_automatic_relation(
             assert "Never JOIN tables" not in prompt
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.SQL, reason="Offline synthetic")
-            assert schema is SqlDraft
-            assert "COUNT(*) AS fact_row_count" in prompt
-            assert "SUM(f.amount_paid)" in prompt
-            assert "SUM(f.payment_id)" not in prompt
-            return SqlDraft(sql=sql)
+            assert schema is PlanDecision
+            assert "Row count has zero arguments" in prompt
+            assert '"name": "amount_paid"' in prompt
+            assert "Never sum identifiers" in prompt
+            return decision_from_sql(sql, prompt)
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -190,7 +194,7 @@ def test_upload_chat_and_history_with_automatic_relation(
     response = response.json()["assistant_message"]["response"]
     assert response["route"] == "SQL" and response["used_model"] == model
     assert response["fallback_used"] is False and not response["error"]
-    assert calls == ["RouteDecision", "SqlDraft", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision", "answer"]
     assert response["rows"] == [
         {"student_id": "S1", "student_name": "An", "total": "20.00", "fact_row_count": 2},
         {"student_id": "S2", "student_name": "Binh", "total": None, "fact_row_count": 1},

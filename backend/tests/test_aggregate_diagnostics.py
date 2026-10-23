@@ -10,8 +10,7 @@ from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.routing.hybrid import HybridPipeline
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
 from app.routing.service import DatasetChatService
-from app.text_to_sql.generator import SqlDraft, SqlGenerator
-from app.text_to_sql.pipeline import TextToSqlPipeline
+from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 from tests.test_three_table_join import CHAIN_ORDERS, PC, PS, validator
 
 
@@ -223,15 +222,18 @@ def test_star_both_verified_root_keys_count_the_same_matched_fact_rows():
         ("COUNT(*) FILTER(WHERE p.amount>0) AS fact_row_count", ""),
     ],
 )
-def test_hybrid_fake_drafts_stop_before_execution_grounding_or_retrieval(projection, suffix):
+def test_hybrid_unsafe_drafts_stop_after_evidence_before_execution_or_answer(projection, suffix):
     gateway, executor, rag = Mock(), Mock(), Mock()
+    from app.rag.repository import RetrievedChunk
+
+    rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
     sql = f"SELECT s.student_id,{projection} {CHAIN_ORDERS[0]} GROUP BY s.student_id" + suffix
     gateway.generate_structured.side_effect = [
         RouteDecision(route=RouteLabel.HYBRID, reason="Scripted offline"),
-        SqlDraft(sql=sql),
+        SqlFixture(sql=sql),
     ]
-    pipeline = TextToSqlPipeline(
-        SqlGenerator(gateway, "2026-10-21", "Synthetic metadata"),
+    pipeline = ValidationPipeline(
+        FixtureGenerator(gateway, "2026-10-21", "Synthetic metadata"),
         validator(),
         executor,
         gateway,
@@ -248,4 +250,4 @@ def test_hybrid_fake_drafts_stop_before_execution_grounding_or_retrieval(project
     assert gateway.generate_structured.call_count == 2
     executor.execute.assert_not_called()
     gateway.generate_text.assert_not_called()
-    rag.retrieve.assert_not_called()
+    rag.retrieve.assert_called_once()

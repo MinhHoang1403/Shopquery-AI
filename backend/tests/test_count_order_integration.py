@@ -8,9 +8,10 @@ from app.database.session import get_readonly_engine
 from app.dependencies import build_dataset_chat_service
 from app.routing.router import RouteDecision, RouteLabel
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import ValidatedSql
 from tests.join_domains import DOMAINS
+from tests.plan_fixtures import decision_from_sql
 from tests.test_join_domains_integration import (
     domain_workspace,  # noqa: F401
     golden_sql,
@@ -55,8 +56,8 @@ def test_selected_count_sort_matches_independent_oracle(
             calls.append(response_model.__name__)
             if response_model is RouteDecision:
                 return RouteDecision(route=RouteLabel.SQL, reason="Offline scripted route")
-            assert response_model is SqlDraft
-            return SqlDraft(sql=repeated)
+            assert response_model is PlanDecision
+            return decision_from_sql(repeated, prompt)
 
         def generate_text(self, prompt: str) -> str:
             calls.append("answer")
@@ -78,5 +79,5 @@ def test_selected_count_sort_matches_independent_oracle(
     assert response.rows == expected
     assert json.loads(response.answer) == expected
     assert response.used_model == model and response.fallback_used is False
-    assert calls == ["RouteDecision", "SqlDraft", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision", "answer"]
     assert f"ORDER BY {alias}" in response.sql

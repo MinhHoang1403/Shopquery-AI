@@ -16,6 +16,7 @@ from app.routing.hybrid_evidence import (
     compose_answer,
     decision_prompt,
 )
+from app.routing.hybrid_policy import numeric_policies
 from app.routing.hybrid_policy_binding import policy_evidence
 from app.text_to_sql.count_contract import count_evidence
 from app.text_to_sql.pipeline import TextToSqlPipeline
@@ -45,8 +46,26 @@ class HybridPipeline:
         self._context = context
 
     def run(self, question: str) -> HybridResult:
-        sql_result = self._sql_pipeline.run(question)
         chunks = self._rag_pipeline.retrieve(question)
+        try:
+            requirements = [p.model_dump() for p, _ in numeric_policies(chunks).values()]
+        except ModelResponseError:
+            raise ModelResponseError(EVIDENCE_REFUSAL) from None
+        planning_evidence = json.dumps(
+            {
+                "policy_candidates_not_verified": requirements,
+                "chunks": [
+                    {"chunk_id": c.chunk_id, "content": c.content, "title": c.section_title}
+                    for c in chunks
+                ],
+            },
+            ensure_ascii=False,
+        )
+        if len(planning_evidence) > 60000:
+            raise ModelResponseError(EVIDENCE_REFUSAL)
+        sql_result = self._sql_pipeline.run(
+            question, evidence_context=planning_evidence, ground_answer=False
+        )
         try:
             policies = policy_evidence(sql_result, chunks, self._context)
         except (ModelResponseError, ValueError, TypeError, KeyError):

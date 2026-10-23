@@ -1,6 +1,7 @@
 """PostgreSQL schema, seed, read-only, and pgvector integration tests."""
 
 from collections.abc import Iterator
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import Engine, func, select, text
@@ -61,9 +62,9 @@ def test_schema_counts_constraints_and_revenue(database: Engine) -> None:
         assert session.scalar(select(func.count()).select_from(Order)) == 2_000
         assert session.scalar(select(func.count()).select_from(OrderItem)) == 4_019
         invalid_statuses = session.scalar(
-            select(func.count()).select_from(Order).where(
-                Order.status.not_in(["pending", "completed", "cancelled"])
-            )
+            select(func.count())
+            .select_from(Order)
+            .where(Order.status.not_in(["pending", "completed", "cancelled"]))
         )
         assert invalid_statuses == 0
         revenue = session.scalar(
@@ -75,16 +76,94 @@ def test_schema_counts_constraints_and_revenue(database: Engine) -> None:
 
 
 @pytest.mark.integration
+def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, monkeypatch):
+    from app.dependencies import _build_chat_service
+    from app.text_to_sql.compiler import QueryCompiler
+    from app.text_to_sql.query_plan import (
+        PlanDecision,
+        PlanExpression,
+        PlanField,
+        PlanFilter,
+        PlanSort,
+        QueryPlan,
+    )
+    from app.text_to_sql.schema_context import default_sql_context
+    from tests.test_providers import completion, harness
+    from tests.test_query_compiler import field, source
+
+    context = default_sql_context()
+    compiler = QueryCompiler(context, default_schema=True)
+    category = field(compiler, "categories", "category_code")
+    decision = PlanDecision(
+        plan=QueryPlan(
+            source=source(compiler, "order_items"),
+            relationships=list(compiler.references.relationships),
+            expressions=[
+                PlanExpression(
+                    operation="multiply",
+                    arguments=[
+                        field(compiler, "order_items", "quantity"),
+                        field(compiler, "order_items", "unit_price"),
+                    ],
+                )
+            ],
+            fields=[
+                PlanField(reference=category, alias="category"),
+                PlanField(reference="e0", alias="revenue", aggregate="sum"),
+            ],
+            filters=[
+                PlanFilter(
+                    reference=field(compiler, "orders", "status"),
+                    operator="eq",
+                    values=["completed"],
+                )
+            ],
+            group_by=[category],
+            sort=[PlanSort(field="category")],
+        )
+    )
+    gateway, calls = harness(
+        monkeypatch,
+        [
+            completion('{"route":"SQL","reason":"Revenue"}'),
+            completion(decision.model_dump_json()),
+            completion("Controlled revenue evidence"),
+        ],
+    )
+    try:
+        result = _build_chat_service(get_settings(), gateway).chat("Revenue per category")
+    finally:
+        gateway.close()
+    with database.connect() as connection:
+        oracle = connection.execute(
+            text(
+                "SELECT c.category_code, SUM(i.quantity*i.unit_price) FROM order_items i "
+                "JOIN products p ON p.product_id=i.product_id "
+                "JOIN categories c ON c.category_id=p.category_id "
+                "JOIN orders o ON o.order_id=i.order_id WHERE o.status='completed' "
+                "GROUP BY c.category_code ORDER BY c.category_code"
+            )
+        ).all()
+    assert [(r["category"], Decimal(r["revenue"])) for r in result.rows] == oracle
+    assert sum(Decimal(r["revenue"]) for r in result.rows) == 151_687_001_000
+    assert len(calls) == 3
+
+
+@pytest.mark.integration
 def test_seed_load_is_idempotent(database: Engine) -> None:
     settings = get_settings()
     first = load_seed_csv(database, settings.seed_directory)
     second = load_seed_csv(database, settings.seed_directory)
-    assert first == second == {
-        "categories": 8,
-        "products": 150,
-        "orders": 2_000,
-        "order_items": 4_019,
-    }
+    assert (
+        first
+        == second
+        == {
+            "categories": 8,
+            "products": 150,
+            "orders": 2_000,
+            "order_items": 4_019,
+        }
+    )
 
 
 @pytest.mark.integration

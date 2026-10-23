@@ -15,10 +15,12 @@ from app.rag.pipeline import RagAnswerDraft, RagPipeline
 from app.rag.repository import RetrievedChunk
 from app.routing.hybrid import HybridAnswerDraft, HybridPipeline
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft, SqlGenerator
 from app.text_to_sql.pipeline import SqlResult
+from app.text_to_sql.planner import QueryPlanner
+from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import SqlValidator
 from tests.hybrid_fixtures import explanation_draft
+from tests.plan_fixtures import decision_from_sql
 
 
 class RecordingGateway:
@@ -30,8 +32,10 @@ class RecordingGateway:
         self.prompt = prompt
         if response_model is RouteDecision:
             return RouteDecision(route=self.route, reason="fixture")
-        if response_model is SqlDraft:
-            return SqlDraft(sql="SELECT SUM(da_dong) FROM uploaded_data.tuition_fixture")
+        if response_model is PlanDecision:
+            return decision_from_sql(
+                "SELECT SUM(da_dong) FROM uploaded_data.tuition_fixture", prompt
+            )
         if response_model is RagAnswerDraft:
             return RagAnswerDraft(answer="Ngưỡng nợ trên 1000000.", used_chunk_ids=[41])
         if response_model is HybridAnswerDraft:
@@ -138,17 +142,13 @@ def test_uploaded_sql_prompt_has_no_default_store_schema_or_policy_requirements(
     gateway = RecordingGateway()
     context = tuition_context()
 
-    SqlGenerator(gateway, "2026-10-01", context.schema_context).generate(
-        "Học viên nào còn nợ học phí?"
-    )
+    QueryPlanner(gateway, "2026-10-01", context).generate("Học viên nào còn nợ học phí?")
 
-    assert context.schema_context in gateway.prompt
-    assert "Never JOIN tables" in gateway.prompt
-    assert "SQL table identifier (copy exactly): uploaded_data.tuition_fixture" in gateway.prompt
-    assert "Display labels, worksheet names and file names are never SQL table identifiers" in (
-        gateway.prompt
-    )
-    assert "Do not invent tables, columns" in gateway.prompt
+    assert '"relationships": []' in gateway.prompt
+    assert '"name": "tuition_fixture"' in gateway.prompt
+    assert '"header": "Đã đóng"' in gateway.prompt
+    assert "Schema IDs are the only allowed" in gateway.prompt
+    assert "never return sql" in gateway.prompt.lower()
     assert "category_code belongs only to categories" not in gateway.prompt
     assert "include category_code and category_name" not in gateway.prompt
     assert "status is 'completed'" not in gateway.prompt
@@ -186,7 +186,7 @@ def test_generalized_prompts_do_not_expand_sql_permissions(sql: str) -> None:
 
 
 class TuitionSqlPipeline:
-    def run(self, question: str) -> SqlResult:
+    def run(self, question: str, **kwargs) -> SqlResult:
         return SqlResult(
             answer="Rows only",
             sql="SELECT ma_hoc_vien, hoc_phi_phai_nop - da_dong AS con_no "
@@ -203,7 +203,7 @@ class TuitionRagPipeline:
 @pytest.mark.parametrize("joined", [False, True])
 def test_hybrid_prompt_grounds_non_product_entities_in_rows_and_documents(joined: bool) -> None:
     class SqlPipeline(TuitionSqlPipeline):
-        def run(self, question: str) -> SqlResult:
+        def run(self, question: str, **kwargs) -> SqlResult:
             result = super().run(question)
             result.fact_table = "synthetic_fact" if joined else None
             return result

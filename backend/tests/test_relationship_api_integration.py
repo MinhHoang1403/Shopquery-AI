@@ -1,9 +1,11 @@
 """Real sessions, CSRF and two owners protect relationship mutations."""
 
+import json
 from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlglot import parse_one
 
 from app.auth.limits import ResourceControl
 from app.datasets.relationship_repository import RelationshipRepository
@@ -128,7 +130,8 @@ def test_join_api_pipelines_and_persisted_history(
     from app.rag.pipeline import RagAnswerDraft
     from app.routing.hybrid import HybridAnswerDraft
     from app.routing.router import RouteDecision, RouteLabel
-    from app.text_to_sql.generator import SqlDraft
+    from app.text_to_sql.query_plan import PlanDecision
+    from tests.plan_fixtures import decision_from_sql
     from tests.test_guest_integration import OfflineEmbedder
 
     a = relationship_accounts.a
@@ -155,13 +158,15 @@ def test_join_api_pipelines_and_persisted_history(
             if schema is RouteDecision:
                 assert fact in prompt and dim in prompt
                 return RouteDecision(route=RouteLabel(pipeline), reason="Offline JOIN test")
-            if schema is SqlDraft:
+            if schema is PlanDecision:
                 bindings = (
                     f"FROM uploaded_data.{dim} d INNER JOIN uploaded_data.{fact} f"
                     if reverse
                     else f"FROM uploaded_data.{fact} f INNER JOIN uploaded_data.{dim} d"
                 )
-                return SqlDraft(sql=f"SELECT SUM(f.amount) AS total {bindings} ON f.key=d.value")
+                return decision_from_sql(
+                    f"SELECT SUM(f.amount) AS total {bindings} ON f.key=d.value", prompt
+                )
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(answer="Synthetic policy", used_chunk_ids=[chunk_id])
             if schema is HybridAnswerDraft:
@@ -192,13 +197,12 @@ def test_join_api_pipelines_and_persisted_history(
     response = result.json()["assistant_message"]["response"]
     assert response["error"] is None and response["route"] == pipeline
     assert response["used_model"] == model and selected == [model]
-    assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 4}[pipeline]
+    assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 3}[pipeline]
     if pipeline != "RAG":
-        assert response["rows"] == [{"total": "5"}] and "INNER JOIN" in response["sql"]
-        assert (
-            f"FROM uploaded_data.{fact} AS f INNER JOIN uploaded_data.{dim} AS d"
-            in (response["sql"])
-        )
+        assert response["rows"] == [{"total": "5"}] and " JOIN " in response["sql"]
+        root = parse_one(response["sql"], read="postgres")
+        assert root.args["from_"].this.name == fact
+        assert root.args["joins"][0].this.name == dim
     if pipeline != "SQL":
         assert response["sources"][0]["source_file"] == "policy.md"
     detail = a.client.get(path).json()
@@ -213,7 +217,8 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
     from app.rag.pipeline import RagAnswerDraft
     from app.routing.hybrid import HybridAnswerDraft
     from app.routing.router import RouteDecision, RouteLabel
-    from app.text_to_sql.generator import SqlDraft
+    from app.text_to_sql.query_plan import PlanDecision
+    from tests.plan_fixtures import decision_from_sql
     from tests.test_guest_integration import OfflineEmbedder
 
     a = relationship_accounts.a
@@ -223,11 +228,12 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
         def generate_structured(self, prompt, schema):
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel(pipeline), reason="Negative synthetic case")
-            if schema is SqlDraft:
-                return SqlDraft(
-                    sql="SELECT * FROM public.users"
+            if schema is PlanDecision:
+                return decision_from_sql(
+                    "SELECT * FROM public.users"
                     if pipeline == "SQL"
-                    else f"SELECT SUM(amount) AS total FROM uploaded_data.{fact}"
+                    else f"SELECT SUM(amount) AS total FROM uploaded_data.{fact}",
+                    prompt,
                 )
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(
@@ -260,7 +266,7 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
     relationship_accounts, monkeypatch, caplog, model: str, route: str
 ) -> None:
     from app.routing.router import RouteDecision, RouteLabel
-    from app.text_to_sql.generator import SqlDraft
+    from app.text_to_sql.query_plan import PlanDecision
 
     a = relationship_accounts.a
     relations = RelationshipRepository(relationship_accounts.engine, a.user_id)
@@ -280,10 +286,25 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
         f"INNER JOIN uploaded_data.{fact} f ON f.key=d.value"
     )
     gateway, embedder = Mock(), Mock()
-    gateway.generate_structured.side_effect = [
-        RouteDecision(route=RouteLabel(route), reason="Synthetic aggregate refusal"),
-        SqlDraft(sql=sql),
-    ]
+    embedder.embed_query.return_value = [1.0] + [0.0] * 767
+
+    def structured(prompt, schema):
+        from app.text_to_sql.query_plan import PlanField, QueryPlan
+
+        if schema is RouteDecision:
+            return RouteDecision(route=RouteLabel(route), reason="Synthetic aggregate refusal")
+        assert schema is PlanDecision
+        catalog = json.JSONDecoder().raw_decode(prompt.split("Authorized catalog JSON:\n")[1])[0]
+        source = next(table["id"] for table in catalog["tables"] if table["name"] == fact)
+        return PlanDecision(
+            plan=QueryPlan(
+                source=source,
+                fields=[PlanField(alias="fact_value_count", aggregate="row_count")],
+                relationships=[relation["id"] for relation in catalog["relationships"]],
+            )
+        )
+
+    gateway.generate_structured.side_effect = structured
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: gateway)
     monkeypatch.setattr("app.dependencies.build_embedding_gateway", lambda _: embedder)
     created = a.client.post(
@@ -317,4 +338,7 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
         assert private not in sent.text and private not in history.text
     assert gateway.generate_structured.call_count == 2
     gateway.generate_text.assert_not_called()
-    embedder.embed_query.assert_not_called()
+    if route == "HYBRID":
+        embedder.embed_query.assert_called_once_with("Synthetic count")
+    else:
+        embedder.embed_query.assert_not_called()

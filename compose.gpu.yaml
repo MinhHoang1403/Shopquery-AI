@@ -1,0 +1,20 @@
+services:
+  api:
+    image: shopquery-ai-api:development-cuda
+    build:
+      args:
+        INSTALL_RERANKER: "true"
+        RERANKER_EXTRA: reranker-cuda
+    command: ["uvicorn", "scripts.gpu_api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app", "--no-access-log", "--no-proxy-headers"]
+    environment:
+      RAG_RERANKER_DEVICE: cuda:0
+      RAG_RERANKER_BATCH_SIZE: "2"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      start_period: 120s

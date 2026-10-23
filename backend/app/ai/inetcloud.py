@@ -10,9 +10,9 @@ from pydantic import ValidationError
 
 from app.ai.gemini import StructuredModel
 from app.core.config import Settings
-from app.core.errors import ConfigurationError, ProviderError
+from app.core.errors import TRANSIENT_PROVIDER_STATUSES, ConfigurationError, ProviderError
 
-TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+TRANSIENT_STATUS_CODES = frozenset(TRANSIENT_PROVIDER_STATUSES)
 
 
 class StructuredOutputError(ProviderError):

@@ -1,10 +1,10 @@
 # Authentication & multi-user isolation
 
-## Phạm vi và trạng thái
+## Phạm vi hướng dẫn
 
-Chặng 1 giữ React → Nginx → FastAPI → PostgreSQL/pgvector. Không triển khai VPS, không đổi model/embedding, JOIN policy hoặc SQL/RAG/Hybrid architecture.
+Tài liệu này mô tả authentication và migration hiện hữu. Trạng thái MVP/runtime hiện tại nằm trong [báo cáo Giai đoạn 1](stage1_implementation_report.md), [architecture](architecture.md) và [deployment](deployment.md). Các mốc triển khai/nghiệm thu cũ không chứng nhận runtime development mới.
 
-Code có Google OIDC, invite-only beta, PostgreSQL opaque sessions, CSRF, owner-scoped repositories, frontend auth boundary và quota beta. Main local đã chuyển sang volume/database sạch, không backfill dữ liệu legacy; người dùng đã xác nhận Google login thành công trước đợt Guest. Bản mới vào thẳng Guest chat, Google login tùy chọn, logout thành công về Guest trống. Không suy ra Google callback/logout live đã pass chỉ từ browser mock. Xem [báo cáo nâng cấp main trước đó](main_auth_upgrade.md) và [Guest Mode](guest_mode.md).
+Google OIDC invite-only, PostgreSQL opaque sessions, CSRF, owner-scoped repositories, optional login và quota beta được giữ. Logout thành công về Guest trống. Không suy ra callback/logout live PASS từ browser mock. Lịch sử main upgrade/Guest nằm trong [archive](archive/README.md).
 
 ## Google OIDC
 
@@ -37,7 +37,7 @@ BETA_PROVIDER_DATA_ENABLED=false
 2. Vào Google Auth Platform → Get started/Branding, đặt tên ShopQuery AI và support/contact email.
 3. Audience: chọn External nếu dùng Gmail cá nhân, giữ Testing. Có thể thêm tài khoản kiểm thử trong Test users; ứng dụng vẫn bắt buộc allowlist backend, không dựa vào Google test-user list để cấp quyền. Với chỉ openid/email/profile, Google có ngoại lệ đối với hạn chế testing, nên allowlist backend là lớp bắt buộc.
 4. Clients → Create client → Web application. Không chọn Desktop app hoặc service account.
-5. Authorized redirect URIs: thêm `http://127.0.0.1:8080/api/auth/callback` cho local sau nâng cấp. Thêm `http://127.0.0.1:18080/api/auth/callback` cho bản Docker test cô lập hiện tại. URI phải khớp scheme/host/port/path, không thêm dấu `/` cuối callback. Không cần Google Drive/Gmail scopes; chỉ openid/email/profile.
+5. Authorized redirect URIs phải khớp chính xác `${APP_ORIGIN}/api/auth/callback`, không thêm dấu `/` cuối. Chỉ thêm origin thực sự được dùng; development Giai đoạn 1 hiện tắt Google credentials. Không cần Google Drive/Gmail scopes; chỉ openid/email/profile.
 6. Lưu Client ID và Client secret vào file private .env, điền AUTH_INVITED_EMAILS bằng JSON list email được phép. Secret không phải Gemini API key. Không gửi secret hoặc file download OAuth vào chat/Git.
 7. Báo đã cấu hình để operator đưa các giá trị vào backend test và restart đúng test container. Không tự restart stack chính, không trỏ test backend vào database chính. Cấu hình .env không tự cập nhật environment của container đang chạy.
 8. Đăng nhập Google bằng browser thông thường trên bản test. Kiểm tra /auth/me, logout và tài khoản ngoài allowlist, xác nhận issuer/sub của owner thật. Chỉ sau đó mới xin phép migration chính.
@@ -82,7 +82,7 @@ PostgreSQL lưu counters/leases để dùng chung giữa workers; không Redis. 
 | BETA_MAX_DATASETS | 20 |
 | BETA_MAX_USER_BYTES | 104857600 |
 
-Counters theo fixed hour, lease hết hạn sau 30 phút nếu process chết. Quota storage đo kích thước bảng vật lý và text/vector chunks, không phải tổng dung lượng PostgreSQL hoặc billing. Repository dùng owner lock và kiểm tra budget trước commit; vượt budget rollback bảng/metadata. Không tính history vào quota storage hiện tại. Toàn request deadline và tải production chưa nghiệm thu. Per-IP dùng peer address, không tin X-Forwarded-For từ client; public proxy trust/IP policy còn ở Chặng 2.
+Counters theo fixed hour, lease hết hạn sau 30 phút nếu process chết. Quota storage đo kích thước bảng vật lý và text/vector chunks, không phải tổng dung lượng PostgreSQL hoặc billing. Repository dùng owner lock và kiểm tra budget trước commit; vượt budget rollback bảng/metadata. Không tính history vào quota storage hiện tại. Toàn request deadline và tải production chưa nghiệm thu. Per-IP dùng peer address, không tin X-Forwarded-For từ client; proxy trust chỉ dùng các peers được cấu hình; public deployment chưa nghiệm thu.
 
 `BETA_PROVIDER_DATA_ENABLED=false` mặc định chặn chat và document embeddings trước provider call. Chỉ bật sau khi quản trị xác nhận dữ liệu beta được phép gửi providers. Knowledge generation nhận câu hỏi/schema/rows/evidence; Gemini generation nhận tương tự nếu chọn hoặc fallback được phép. Query embedding và document ingestion vẫn gửi text tới Google kể cả chọn Knowledge. Không hứa xử lý hoàn toàn nội bộ. Không tự bật Gemini fallback; model preference/attribution giữ nguyên. Đây là gate vận hành, không thay thế policy pháp lý/consent theo loại dữ liệu.
 
@@ -139,18 +139,12 @@ npm run test:e2e
 
 Mọi live browser suite yêu cầu opt-in riêng và SHOPQUERY_LIVE_STORAGE_STATE trỏ file phiên của tài khoản test trong DB cô lập. File đó là secret: lưu ngoài repo hoặc .auth/ bị ignore. Backend live tests cũng yêu cầu explicit test DB và BETA_PROVIDER_DATA_ENABLED=true. Không chạy live cho tới khi người dùng cho phép; test mặc định không gọi upstream.
 
-## Bằng chứng triển khai local 19/10/2026
+## Bằng chứng lịch sử
 
-- Baseline main c022a9b, không có thay đổi sẵn trước triển khai.
-- Backup riêng `shopquery_before_auth_20261019_c022a9b.dump` ngoài repo, 231102 bytes; restore thành công vào container test riêng cổng loopback 15433.
-- Clone trước/sau rehearsal: categories 8, products 150, orders 2000, order_items 4019, datasets 7, dataset_tables 7, dataset_documents 1, chunks 28, conversations 12, messages 72; 7 uploaded tables. Fingerprints trước/sau/repeat khớp; không re-embed.
-- Local: Ruff pass; 221 backend unit/contract tests, 96 PostgreSQL integration tests, 37 Vitest tests; ESLint/typecheck/build pass; 55 Playwright offline cases pass trên 5 viewport. Tổng backend không-live 317 passed, 8 live deselected, không tính deselected là pass.
-- Backend/frontend Docker images build thành công. Stack test dùng DB/container riêng: web 18080, API 18001, PostgreSQL 15433 trên loopback; app/health 200, private models/datasets/conversations/me 401, login 503 rõ khi chưa cấu hình Google, API OpenAPI 404. Không gọi Google/Knowledge/Gemini live.
-- Đối chiếu read-only DB chính với clone đã migration: fingerprints cả 17 bảng legacy/upload khớp. Đây là kiểm chứng dữ liệu thời điểm đo, không phải cam kết cho các thay đổi sau đó.
-- Chưa migration DB chính; chưa rebuild ứng dụng đang dùng dữ liệu cũ; chưa cấu hình Google OAuth thực tế.
+Xem [main authentication upgrade](archive/2026-10/main_auth_upgrade.md) cho rehearsal, fingerprints và test counts tháng 10/2026. Đây không phải trạng thái current runtime.
 
 ## Chưa sẵn sàng public VPS
 
-Backlog Chặng 2: runtime DB least privilege thay superuser; HTTPS và proxy trust; production Compose/resource/restart/log limits; Nginx upload-size alignment; scheduled/offsite backups và restore; monitoring/alerting; whole-request deadlines, blocking parser/embedding workload và capacity tests; provider privacy policy. Chặng 1 không triển khai Nginx/TLS/VPS hoặc RLS vội vàng.
+Public-deployment backlog riêng (không phải tuyên bố Giai đoạn 2 đã bắt đầu): runtime DB least privilege thay superuser; HTTPS và proxy trust; production Compose/resource/restart/log limits; Nginx upload-size alignment; scheduled/offsite backups và restore; monitoring/alerting; whole-request deadlines, blocking parser/embedding workload và capacity tests; provider privacy policy. Nhiệm vụ MVP V2 hiện tại không triển khai public TLS/VPS/RLS mới.
 
-Image mới tắt Uvicorn access log và Nginx access log; Nginx error output cũng bị tắt để không lưu callback query chứa code. Không bật lại log request thô khi thử OAuth. Đây là lựa chọn local; redaction có kiểm chứng, log rotation và observability production vẫn thuộc Chặng 2 trước public deployment. Không chia sẻ logs hoặc callback URL thô.
+Image mới tắt Uvicorn access log và Nginx access log; Nginx error output cũng bị tắt để không lưu callback query chứa code. Không bật lại log request thô khi thử OAuth. Đây là lựa chọn local; redaction có kiểm chứng, log rotation và observability production cần được nghiệm thu trước public deployment. Không chia sẻ logs hoặc callback URL thô.

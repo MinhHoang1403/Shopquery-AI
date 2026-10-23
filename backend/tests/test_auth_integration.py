@@ -399,10 +399,13 @@ def test_owned_pipelines_execute_real_sql_retrieval_with_offline_providers(
             assert accounts.b.dataset.table.physical_table_name not in prompt
             if response_model.__name__ == "RouteDecision":
                 return response_model(route=route, reason="Offline fixture")
-            if response_model.__name__ == "SqlDraft":
-                return response_model(
-                    sql=f"SELECT SUM(value) AS total, COUNT(*) AS matched_row_count "
-                    f"FROM uploaded_data.{table}"
+            if response_model.__name__ == "PlanDecision":
+                from tests.plan_fixtures import decision_from_sql
+
+                return decision_from_sql(
+                    f"SELECT SUM(value) AS total, COUNT(*) AS matched_row_count "
+                    f"FROM uploaded_data.{table}",
+                    prompt,
                 )
             ids = [int(value) for value in re.findall(r"chunk_id=(\d+)", prompt)]
             assert ids

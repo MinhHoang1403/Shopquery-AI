@@ -13,10 +13,11 @@ from app.datasets.context import DatasetSqlContext, build_dataset_sql_context
 from app.datasets.parser import ColumnSpec
 from app.datasets.repository import DatasetInfo, DatasetTableInfo
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft, SqlGenerator
 from app.text_to_sql.join_policy import ApprovedJoin
-from app.text_to_sql.pipeline import TextToSqlPipeline
+from app.text_to_sql.planner import QueryPlanner
+from app.text_to_sql.query_plan import PlanDecision, PlanField, QueryPlan
 from app.text_to_sql.validator import SqlValidator
+from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 from tests.test_join_order import authenticated_context
 from tests.test_three_table_join import CHAIN_ORDERS, PS, SC, validator
 from tests.test_workspace_prompts import tuition_context
@@ -74,11 +75,11 @@ def test_router_keeps_relationship_facts_without_sql_generation_instructions(edg
 
 
 def test_structured_schema_describes_success_and_empty_sql_refusal_consistently() -> None:
-    properties = SqlDraft.model_json_schema()["properties"]
-    assert "empty string" in properties["sql"]["description"]
-    assert "null" in properties["unsupported_reason"]["description"]
-    assert SqlDraft(sql="", unsupported_reason="missing relationship").sql == ""
-    assert SqlDraft(sql="SELECT 1", unsupported_reason=None).unsupported_reason is None
+    properties = PlanDecision.model_json_schema()["properties"]
+    assert "sql" not in properties and "plan" in properties
+    assert PlanDecision(plan=None, unsupported_reason="missing relationship").plan is None
+    plan = QueryPlan(source="t0", fields=[PlanField(alias="n", aggregate="row_count")])
+    assert PlanDecision(plan=plan).unsupported_reason is None
 
 
 @pytest.mark.parametrize("context", [tuition_context(1), authenticated_context()])
@@ -86,16 +87,18 @@ def test_sql_generation_explicitly_defers_unretrieved_document_conditions(
     context: DatasetSqlContext,
 ) -> None:
     gateway = Mock()
-    gateway.generate_structured.return_value = SqlDraft(sql="SELECT fixture")
-    SqlGenerator(gateway, "2026-10-21", context.schema_context).generate(
+    gateway.generate_structured.return_value = PlanDecision(
+        plan=QueryPlan(source="t0", fields=[PlanField(alias="n", aggregate="row_count")])
+    )
+    QueryPlanner(gateway, "2026-10-21", context).generate(
         "Lấy tổng và số dòng theo từng mã để đối chiếu KPI trong tài liệu."
     )
     prompt = gateway.generate_structured.call_args.args[0]
-    assert "SQL evidence only" in prompt
-    assert "document conditions are applied after SQL execution" in prompt
-    assert "Never invent a document threshold" in prompt
-    assert "unsupported_reason=null" in prompt
-    assert "Never silently drop a required table" in prompt
+    assert "retrieve required metrics, grouping identifiers" in prompt
+    assert "Do not apply document thresholds as SQL filters" in prompt
+    assert "infer absent policies" in prompt
+    assert "nonempty unsupported_reason" in prompt
+    assert "never silently drop a required table" in prompt
 
 
 @pytest.mark.parametrize("three", [False, True])
@@ -149,7 +152,7 @@ def test_count_order_does_not_repair_wrong_semantics_or_unselected_aggregates(
     ordering: str,
 ) -> None:
     executor, gateway = Mock(), Mock()
-    pipeline = TextToSqlPipeline(
+    pipeline = ValidationPipeline(
         Mock(
             generate=Mock(
                 return_value=(
@@ -170,11 +173,13 @@ def test_count_order_does_not_repair_wrong_semantics_or_unselected_aggregates(
 
 def test_generator_refusal_remains_fail_closed_without_echoing_raw_reason() -> None:
     gateway = Mock()
-    gateway.generate_structured.return_value = SqlDraft(
+    gateway.generate_structured.return_value = SqlFixture(
         sql="", unsupported_reason="synthetic private reason"
     )
     with pytest.raises(SqlUnsupportedError) as caught:
-        SqlGenerator(gateway, "2026-10-21", authenticated_context().schema_context).generate("KPI?")
+        FixtureGenerator(gateway, "2026-10-21", authenticated_context().schema_context).generate(
+            "KPI?"
+        )
     assert caught.value.code == "generator_unsupported"
     assert "synthetic private reason" not in str(caught.value)
     gateway.generate_structured.assert_called_once()

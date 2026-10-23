@@ -2,6 +2,8 @@
 
 from typing import Literal
 
+TRANSIENT_PROVIDER_STATUSES = (408, 429, 500, 502, 503, 504)
+
 JoinAggregateReason = Literal[
     "filter",
     "projection_expression",

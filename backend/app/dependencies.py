@@ -1,5 +1,6 @@
 """Application object graph construction kept outside request handlers."""
 
+from dataclasses import replace
 from functools import partial
 from uuid import UUID
 
@@ -15,13 +16,15 @@ from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.repository import DatasetInfo, DatasetRepository
 from app.rag.pipeline import RagPipeline
 from app.rag.repository import DocumentRepository
+from app.rag.reranker import build_reranker
 from app.routing.hybrid import HybridPipeline
 from app.routing.router import QueryRouter
 from app.routing.service import ChatService, DatasetChatService
+from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.generator import SqlGenerator
 from app.text_to_sql.pipeline import TextToSqlPipeline
-from app.text_to_sql.validator import SqlValidator
+from app.text_to_sql.planner import QueryPlanner
+from app.text_to_sql.schema_context import default_sql_context
 
 
 def build_chat_service(settings: Settings) -> ModelChatService:
@@ -32,9 +35,10 @@ def _build_chat_service(settings: Settings, gateway: GenerationGateway) -> ChatS
     """Create request-safe stateless pipelines around shared connection pools."""
 
     readonly_engine = get_readonly_engine()
+    context = default_sql_context()
     sql_pipeline = TextToSqlPipeline(
-        generator=SqlGenerator(gateway, settings.demo_reference_date),
-        validator=SqlValidator(),
+        planner=QueryPlanner(gateway, settings.demo_reference_date, context),
+        compiler=QueryCompiler(context, default_schema=True),
         executor=SqlExecutor(
             readonly_engine,
             settings.sql_statement_timeout_ms,
@@ -46,6 +50,9 @@ def _build_chat_service(settings: Settings, gateway: GenerationGateway) -> ChatS
         embedder=build_embedding_gateway(settings),
         gateway=gateway,
         repository=DocumentRepository(get_setup_engine(), readonly_engine),
+        reranker=build_reranker(settings),
+        candidate_top_k=settings.rag_candidate_top_k,
+        top_n=settings.rag_top_n,
     )
     return ChatService(
         router=QueryRouter(gateway),
@@ -98,18 +105,14 @@ def _build_dataset_chat_service(
     joins = context.approved_joins if settings.sql_join_v1_enabled else ()
     if context.table_columns:
         sql_pipeline = TextToSqlPipeline(
-            generator=SqlGenerator(
+            planner=QueryPlanner(
                 gateway,
                 settings.demo_reference_date,
-                schema_context=context.schema_context,
-            ),
-            validator=SqlValidator(
-                table_columns=context.table_columns,
-                allowed_schemas=context.allowed_schemas,
-                max_tables=3 if len(joins) >= 2 else 2 if joins else 1,
-                approved_joins=joins,
-                column_types=context.column_types,
+                replace(context, approved_joins=joins),
                 join_v1_enabled=settings.sql_join_v1_enabled,
+            ),
+            compiler=QueryCompiler(
+                replace(context, approved_joins=joins), join_v1_enabled=settings.sql_join_v1_enabled
             ),
             executor=SqlExecutor(
                 get_readonly_engine(),
@@ -134,6 +137,9 @@ def _build_dataset_chat_service(
                 get_setup_engine(), get_readonly_engine(), context.owner_user_id
             ),
             dataset_id=context.dataset_id,
+            reranker=build_reranker(settings),
+            candidate_top_k=settings.rag_candidate_top_k,
+            top_n=settings.rag_top_n,
         )
     hybrid_pipeline = (
         HybridPipeline(sql_pipeline, rag_pipeline, gateway, context)

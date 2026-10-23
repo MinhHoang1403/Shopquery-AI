@@ -16,8 +16,9 @@ from app.guest.worker import parse_guest_file, run_isolated
 from app.rag.pipeline import RagAnswerDraft
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from tests.hybrid_fixtures import explanation_draft
+from tests.plan_fixtures import decision_from_sql
 from tests.test_guest import guest_api as guest_api_fixture  # noqa: F401
 from tests.test_guest import new_guest
 from tests.test_guest_integration import OfflineEmbedder
@@ -100,12 +101,13 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(route=route, reason="Offline remapped JOIN")
-            if schema is SqlDraft:
+            if schema is PlanDecision:
                 # Input list is reversed below: payments becomes table_1, students table_2.
-                assert "pg_temp.table_1.key = pg_temp.table_2.id" in prompt
-                return SqlDraft(
-                    sql="SELECT SUM(f.amount) AS total FROM pg_temp.table_1 f "
-                    "INNER JOIN pg_temp.table_2 d ON f.key=d.id"
+                assert '"source": "t0.c' in prompt and '"target": "t1.c' in prompt
+                return decision_from_sql(
+                    "SELECT SUM(f.amount) AS total FROM pg_temp.table_1 f "
+                    "INNER JOIN pg_temp.table_2 d ON f.key=d.id",
+                    prompt,
                 )
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(answer="Threshold 40", used_chunk_ids=[1])
@@ -133,7 +135,7 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
         relationships=(record,),
     )
     assert result.route == route and result.used_model == model and selected == [model]
-    assert len(calls) == {RouteLabel.SQL: 3, RouteLabel.RAG: 2, RouteLabel.HYBRID: 4}[route]
+    assert len(calls) == {RouteLabel.SQL: 3, RouteLabel.RAG: 2, RouteLabel.HYBRID: 3}[route]
     if route != RouteLabel.RAG:
         assert result.rows == [{"total": "50"}]
     if route != RouteLabel.SQL:
@@ -162,12 +164,13 @@ def test_guest_upload_detects_then_chats_without_manual_confirmation(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.SQL, reason="Synthetic guest auto relation")
-            assert schema is SqlDraft and "Never JOIN tables" not in prompt
-            return SqlDraft(
-                sql="SELECT d.name, SUM(f.amount) AS total, "
+            assert schema is PlanDecision and "Never JOIN tables" not in prompt
+            return decision_from_sql(
+                "SELECT d.name, SUM(f.amount) AS total, "
                 "COUNT(f.student_id) AS fact_row_count FROM pg_temp.table_1 d "
                 "INNER JOIN pg_temp.table_2 f ON f.student_id=d.id "
-                "GROUP BY d.id,d.name ORDER BY d.id"
+                "GROUP BY d.id,d.name ORDER BY d.id",
+                prompt,
             )
 
         def generate_text(self, prompt):
@@ -216,5 +219,5 @@ def test_guest_upload_detects_then_chats_without_manual_confirmation(
         {"name": "An", "total": "20.00", "fact_row_count": 2},
         {"name": "Binh", "total": "0.00", "fact_row_count": 1},
     ]
-    assert calls == ["RouteDecision", "SqlDraft", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision", "answer"]
     assert legacy_fingerprints(get_setup_engine()) == before

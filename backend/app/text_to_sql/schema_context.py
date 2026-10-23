@@ -1,5 +1,10 @@
 """The compact schema and business context supplied to SQL generation."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.datasets.context import DatasetSqlContext
+
 BUSINESS_TIME_ZONE = "Asia/Ho_Chi_Minh"
 
 SCHEMA_CONTEXT = f"""
@@ -54,3 +59,51 @@ TABLE_COLUMNS: dict[str, set[str]] = {
         "unit_price",
     },
 }
+
+
+def default_sql_context() -> "DatasetSqlContext":
+    """Only the four public demo models and their declared foreign keys are exposed."""
+    from sqlalchemy import Boolean, DateTime, Integer, Numeric
+
+    from app.database.models import Category, Order, OrderItem, Product
+    from app.datasets.context import DatasetSqlContext
+    from app.text_to_sql.join_policy import ApprovedJoin
+
+    models = (Category, Product, Order, OrderItem)
+    types = {}
+    joins = []
+    for model in models:
+        table = model.__table__
+        types[table.name] = {}
+        for column in table.columns:
+            kind = column.type
+            types[table.name][column.name] = (
+                "BOOLEAN"
+                if isinstance(kind, Boolean)
+                else "BIGINT"
+                if isinstance(kind, Integer)
+                else "NUMERIC"
+                if isinstance(kind, Numeric)
+                else "TIMESTAMPTZ"
+                if isinstance(kind, DateTime) and kind.timezone
+                else "TEXT"
+            )
+            for foreign_key in column.foreign_keys:
+                target = foreign_key.column
+                joins.append(
+                    ApprovedJoin(
+                        f"{table.name}.{column.name}",
+                        table.name,
+                        column.name,
+                        target.table.name,
+                        target.name,
+                        "declared-demo-schema",
+                    )
+                )
+    return DatasetSqlContext(
+        schema_context=SCHEMA_CONTEXT,
+        table_columns=TABLE_COLUMNS,
+        allowed_schemas={},
+        column_types=types,
+        approved_joins=tuple(joins),
+    )

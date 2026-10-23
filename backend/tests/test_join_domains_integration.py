@@ -21,7 +21,7 @@ from app.rag.pipeline import RagAnswerDraft
 from app.rag.upload_parser import parse_document_file
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.generator import SqlDraft
+from app.text_to_sql.query_plan import PlanDecision
 from tests.auth_helpers import TEST_OWNER
 from tests.hybrid_fixtures import (
     assert_decision_summary,
@@ -30,6 +30,7 @@ from tests.hybrid_fixtures import (
     rule_block,
 )
 from tests.join_domains import DOMAINS, uploads
+from tests.plan_fixtures import decision_from_sql
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
 
@@ -162,8 +163,8 @@ def test_domain_golden_results_and_metamorphic_uploads(
             assert all(t.physical_table_name in prompt for t in dataset.tables)
             if schema is RouteDecision:
                 return RouteDecision(route=RouteLabel.SQL, reason="Golden offline")
-            assert schema is SqlDraft
-            return SqlDraft(sql=sql)
+            assert schema is PlanDecision
+            return decision_from_sql(sql, prompt)
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -180,8 +181,8 @@ def test_domain_golden_results_and_metamorphic_uploads(
         result.route == RouteLabel.SQL and result.used_model == model and not result.fallback_used
     )
     assert result.rows == expected and json.loads(result.answer) == expected
-    assert result.sql.count("INNER JOIN") == tables_count - 1
-    assert calls == ["RouteDecision", "SqlDraft", "answer"]
+    assert result.sql.count("JOIN") == tables_count - 1
+    assert calls == ["RouteDecision", "PlanDecision", "answer"]
     assert trace.events[-1]["sql_validated"] and trace.events[-1]["execution_reached"]
     assert trace.events[-1]["result_rows"] == len(expected)
     if domain.name == "logistics":
@@ -240,8 +241,8 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(route=route, reason="Golden document evidence")
-            if schema is SqlDraft:
-                return SqlDraft(sql=golden_sql(domain, dataset, 3))
+            if schema is PlanDecision:
+                return decision_from_sql(golden_sql(domain, dataset, 3), prompt)
             ids = [int(value) for value in re.findall(r"\[chunk_id=(\d+)", prompt)]
             assert ids and "40.00" in prompt
             if schema is RagAnswerDraft:
@@ -266,7 +267,7 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
         assert result.rows == expected
         assert_decision_summary(result.answer, expected, statuses)
     else:
-        assert result.rows == [] and "SqlDraft" not in calls
+        assert result.rows == [] and "PlanDecision" not in calls
     if route != RouteLabel.UNSUPPORTED:
         assert len(result.sources) == 1 and result.sources[0].source_file == filename
     else:
