@@ -1,6 +1,6 @@
 # ShopQuery AI V2 — current acceptance
 
-**MAIN CONSOLIDATED — 8080 ACTIVE — ACCEPTANCE PARTIAL — PAID GATE CLOSED**
+**MAIN CONSOLIDATED — 8080 ACTIVE — ACCEPTANCE PARTIAL — PROVIDER GATE OPEN**
 
 Updated 2026-10-23 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
@@ -90,8 +90,9 @@ the other backup evidence. No broad prune or volume deletion was used.
 | Owner security | PARTIAL live | Existing offline checks PASS; two-account live acceptance not performed |
 | BGE GPU / Gate C | DEFERRED/BLOCKED | Memory guard retained, no new load/benchmark, no BGE PASS claim |
 
-Paid data gate, Guest AI and fallback are OFF. Google/history/tabular operations
-remain available; new paid AI requests/document embeddings are disabled.
+The authenticated provider data gate is ON after the operator's later approval
+for normal use (section F). Document embeddings and Knowledge/Gemini chat are
+enabled. Guest AI and fallback remain OFF; Google/history/tabular operations work.
 
 Minimal fixes already on main and in the current API image:
 
@@ -285,7 +286,34 @@ This proves the four requested natural questions in the verified synthetic
 workspace, not all possible SQL/policy shapes. Gate C/BGE and two-account live
 owner acceptance remain open; no release tag or Stage2 completion is claimed.
 
-## F. Future workflow
+## F. Authenticated document upload/provider operation enabled
+
+After the bounded acceptance window closed, the operator reported a403 when
+adding documents and explicitly requested normal provider operation: "Bật tất cả
+lên cho tôi." The403 came from the existing `allow_provider_data` guard, because
+document ingestion immediately calls Gemini Embedding before persistence. CSV/XLSX
+ingestion does not require a provider, so it remained available.
+
+`RELEASE_PROVIDER_DATA_ENABLED=true` is now active on the same pinned API image
+after an API-only recreate and graceful Nginx reload. No source, model, parser or
+database change was required. The current shared gate enables authenticated
+document embeddings and Knowledge/Gemini chat; this is normal operation, not an
+extension of the closed synthetic four-question budget. No numeric operating
+budget was specified; existing application quotas remain unchanged. Guest AI and
+fallback stay OFF, and BGE is not loaded. Do not automatically close this
+operational gate using the earlier bounded-window instruction.
+
+Verification: strict release verifier and API8080 HTTP200 PASS; authenticated UI
+shows the document input without the provider-disabled notice. Web/main DB were
+not recreated and schema/all table fingerprints remained unchanged. No private
+document was uploaded or provider request made by the agent for this config-only
+change. Supported uploads remain PDF with text layer, DOCX, TXT and UTF-8 MD;
+legacy DOC and scanned PDF/OCR remain unsupported.
+
+Private operational evidence is under
+`C:\Users\admin\.codex\backups\shopquery-ai\provider-operation-20261023`.
+
+## G. Future workflow
 
 Use the existing [PowerShell deployment runbook](deployment.md#runbook-vận-hành-và-promotion):
 main → minimal fix → related tests → commit/push → build only changed service →

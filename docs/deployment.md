@@ -133,10 +133,13 @@ rồi recreate service chịu ảnh hưởng trong cửa sổ đã duyệt. Bậ
 phê duyệt riêng trước `RELEASE_GUEST_AI_ENABLED=true`. Fallback giữ OFF.
 Không thử key bằng request ngoài ngân sách. Sau thay đổi chạy verification và
 kiểm chức năng tương ứng; health200 không thay thế Google/provider acceptance.
-Trong bounded live window hiện tại, SDK retry attempts đặt1 cho cả Gemini và
+Trong các bounded live window, SDK retry attempts đặt1 cho cả Gemini và
 Knowledge; không manual retry. Chỉ dùng verified synthetic fixture; hết cửa sổ
 hoặc gặp blocker thì tắt `RELEASE_PROVIDER_DATA_ENABLED` và recreate riêng API.
 Điều đó giữ Google/history/tabular upload, chặn paid chats/document embeddings.
+Sau nghiệm thu, operator đã yêu cầu bật lại để sử dụng bình thường: provider gate
+hiện ON cho tài khoản đăng nhập, Guest AI/fallback OFF, vector-only/no BGE. Đây
+không phải cửa sổ test phải tự đóng; xem mục F trong [acceptance](v2_final_acceptance.md).
 
 Một sửa đổi nhỏ: targeted tests → push/CI đúng SHA → build image service bị đổi
 hoặc reuse digest nếu build inputs không đổi → cập nhật private image ref →
