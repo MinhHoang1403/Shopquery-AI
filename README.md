@@ -5,9 +5,10 @@
 Trợ lý phân tích bảng và tài liệu bằng FastAPI, React/TypeScript, PostgreSQL/pgvector.
 Hỗ trợ SQL, RAG, Hybrid, Google OIDC, không gian cá nhân và Guest tạm thời.
 
-**STAGE 1 COMPLETED — READY FOR STAGE 2.** QueryPlan production và BGE CUDA development
-đã qua bounded gates; chưa thực hiện Giai đoạn 2 hoặc deploy release.
-Nguồn trạng thái hiện tại: [báo cáo triển khai](docs/stage1_implementation_report.md).
+**V2 CONSOLIDATION PREPARED — MERGE/DEPLOY PENDING ACCEPTANCE.** Giai đoạn 1 đã hoàn
+thành; release candidate dùng cùng source đang được chuẩn bị cho nghiệm thu Giai đoạn 2.
+Nguồn trạng thái hiện tại: [bàn giao V2](docs/v2_release_handoff.md).
+Chi tiết QueryPlan/CUDA development: [báo cáo Giai đoạn 1](docs/stage1_implementation_report.md).
 Các báo cáo trong `docs/archive/` chỉ phản ánh thời điểm lịch sử.
 
 ## Tài liệu hiện hành
