@@ -20,6 +20,7 @@ function client(valid = true): RelationshipClient {
     preview: vi.fn().mockResolvedValue({ ...preview, valid, reasons: valid ? [] : ["Khóa đích bị trùng"] }),
     confirm: vi.fn().mockResolvedValue({ ...preview, relationship_id: "confirmed", confirmed: true }),
     remove: vi.fn().mockResolvedValue(undefined),
+    discover: vi.fn().mockResolvedValue({ relationships: [], suggestions: [], truncated: false }),
   };
 }
 async function choose() {
@@ -83,4 +84,43 @@ it("refreshes automatic links after upload without pretending the user confirmed
   expect(api.remove).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("button", { name: "Xác nhận xóa liên kết" }));
   expect(api.remove).toHaveBeenCalledWith("automatic");
+});
+
+it("rescans old uploads and displays automatic activation without manual confirmation", async () => {
+  const api = client();
+  vi.mocked(api.discover!).mockResolvedValue({ relationships: [
+    { ...preview, relationship_id: "found", confirmed: false, origin: "automatic" },
+  ], suggestions: [], truncated: false });
+  render(<RelationshipPanel tables={tables} client={api} />);
+  await userEvent.click(screen.getByText("Liên kết bảng", { exact: true }));
+  await userEvent.click(await screen.findByRole("button", { name: "Tự tìm liên kết" }));
+  expect(await screen.findByText(/Quét xong: 1 liên kết đang hoạt động/)).toBeVisible();
+  expect(screen.getByText("Tự động kiểm chứng từ tên khóa và toàn bộ dữ liệu")).toBeVisible();
+  expect(api.confirm).not.toHaveBeenCalled();
+});
+
+it("keeps uncertain suggestions inactive and rechecks before offering confirmation", async () => {
+  const api = client();
+  vi.mocked(api.discover!).mockResolvedValue({ relationships: [], truncated: false, suggestions: [
+    { relationship: { source_table_id: "fact", source_column: "student_id", target_table_id: "dim", target_column: "id" }, preview, reason: "Có ứng viên cạnh tranh." },
+  ] });
+  render(<RelationshipPanel tables={tables} client={api} />);
+  await userEvent.click(screen.getByText("Liên kết bảng", { exact: true }));
+  await userEvent.click(await screen.findByRole("button", { name: "Tự tìm liên kết" }));
+  expect(await screen.findByText("Có ứng viên cạnh tranh.")).toBeVisible();
+  expect(api.confirm).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Kiểm tra gợi ý" }));
+  expect(await screen.findByRole("button", { name: "Xác nhận liên kết" })).toBeVisible();
+  expect(api.preview).toHaveBeenCalledOnce();
+  expect(api.confirm).not.toHaveBeenCalled();
+});
+
+it("reports scan failures and leaves existing links intact", async () => {
+  const api = client();
+  vi.mocked(api.discover!).mockRejectedValue(new Error("Không thể quét."));
+  render(<RelationshipPanel tables={tables} client={api} />);
+  await userEvent.click(screen.getByText("Liên kết bảng", { exact: true }));
+  await userEvent.click(await screen.findByRole("button", { name: "Tự tìm liên kết" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Không thể quét.");
+  expect(api.confirm).not.toHaveBeenCalled();
 });

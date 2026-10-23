@@ -12,13 +12,15 @@ from sqlalchemy.orm import Session
 from app.core.errors import ConfigurationError, ResourceConflictError, ResourceNotFoundError
 from app.database.models import Dataset, DatasetRelationship, DatasetTable
 from app.datasets.parser import ColumnSpec
-from app.datasets.relationship_detection import detect_relationships
+from app.datasets.relationship_detection import RelationshipDiscovery, discover_relationships
 from app.datasets.relationships import (
     MAX_RELATIONSHIPS,
     RelationshipConfirm,
+    RelationshipDiscoveryResponse,
     RelationshipInput,
     RelationshipPreview,
     RelationshipRecord,
+    RelationshipSuggestion,
     RelationshipTable,
     relationship_revision,
     relationship_tables,
@@ -71,6 +73,14 @@ class RelationshipRepository:
     @staticmethod
     def detect_on_upload(connection: Connection, dataset_id: int, new_table_id: int) -> None:
         """Called inside the owner-locked upload transaction, never from model output."""
+        RelationshipRepository._discover_and_store(connection, dataset_id, str(new_table_id))
+
+    @staticmethod
+    def _discover_and_store(
+        connection: Connection,
+        dataset_id: int,
+        new_table_id: str | None,
+    ) -> RelationshipDiscovery:
         connection.execute(text("SET LOCAL statement_timeout='5s'"))
         tables = RelationshipRepository._tables(connection, dataset_id)
         existing = list(
@@ -81,19 +91,27 @@ class RelationshipRepository:
             )
         )
         if len(existing) >= MAX_RELATIONSHIPS:
-            return
-        previews = detect_relationships(
+            return RelationshipDiscovery(truncated=True)
+        discovery = discover_relationships(
             connection,
             tables,
-            str(new_table_id),
+            new_table_id,
             {
                 frozenset({str(item.source_table_id), str(item.target_table_id)})
                 for item in existing
             },
         )
-        if len(existing) + len(previews) > MAX_RELATIONSHIPS:
-            return
-        for preview in previews:
+        if len(existing) + len(discovery.automatic) > MAX_RELATIONSHIPS:
+            discovery.suggestions.extend(
+                RelationshipSuggestion(
+                    relationship=preview,
+                    preview=preview,
+                    reason="Workspace đã chạm giới hạn liên kết; không tự kích hoạt thêm.",
+                )
+                for preview in discovery.automatic
+            )
+            discovery.automatic.clear()
+        for preview in discovery.automatic:
             record = RelationshipRecord(
                 **preview.model_dump(),
                 relationship_id=str(uuid4()),
@@ -111,6 +129,16 @@ class RelationshipRepository:
                     revision=record.revision,
                     statistics=record.model_dump(exclude={"relationship_id"}),
                 )
+            )
+        return discovery
+
+    def discover(self, dataset_id: int) -> RelationshipDiscoveryResponse:
+        with self._session(dataset_id) as session:
+            discovery = self._discover_and_store(session.connection(), dataset_id, None)
+            return RelationshipDiscoveryResponse(
+                relationships=self._records(session, dataset_id, self._tables(session, dataset_id)),
+                suggestions=discovery.suggestions,
+                truncated=discovery.truncated,
             )
 
     def preview(self, dataset_id: int, request: RelationshipInput) -> RelationshipPreview:

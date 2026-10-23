@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import type { DatasetColumn, RelationshipClient, RelationshipInput, RelationshipPreview, RelationshipRecord } from "../types";
+import type { DatasetColumn, RelationshipClient, RelationshipInput, RelationshipPreview, RelationshipRecord, RelationshipSuggestion } from "../types";
 
 export interface RelationshipTableOption { id: string; name: string; columns: DatasetColumn[] }
 
@@ -14,12 +14,17 @@ export function RelationshipPanel({ tables, client, disabled = false }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<RelationshipSuggestion[]>([]);
+  const [discoveryStatus, setDiscoveryStatus] = useState("");
   const tableVersion = tables.map((table) => table.id).join(",");
 
   useEffect(() => {
     const controller = new AbortController();
     client.list(controller.signal).then((value) => {
-      if (!controller.signal.aborted) { setEnabled(value.enabled); setRecords(value.relationships); }
+      if (!controller.signal.aborted) {
+        setEnabled(value.enabled); setRecords(value.relationships);
+        setSuggestions([]); setDiscoveryStatus(""); setPreview(null);
+      }
     }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Không tải được liên kết."); });
     return () => controller.abort();
   }, [client, tableVersion]);
@@ -44,6 +49,25 @@ export function RelationshipPanel({ tables, client, disabled = false }: {
     {error ? <p role="alert" className="form-error">{error}</p> : null}
     {!enabled ? <p role="status">Liên kết bảng chưa được bật hoặc chưa sẵn sàng.</p> : <fieldset disabled={busy || disabled}>
       <legend>Chọn quan hệ cần kiểm tra</legend>
+      {client.discover ? <button className="secondary-button" type="button" disabled={tables.length < 2} onClick={() => void action(async () => {
+        setPreview(null); setDiscoveryStatus(""); setSuggestions([]);
+        const value = await client.discover!();
+        setRecords(value.relationships); setSuggestions(value.suggestions);
+        setDiscoveryStatus(value.truncated
+          ? "Đã chạm giới hạn quét. Các quan hệ chưa đủ bằng chứng cần kiểm tra thủ công."
+          : `Quét xong: ${value.relationships.filter((item) => item.valid).length} liên kết đang hoạt động; ${value.suggestions.length} gợi ý cần kiểm tra.`);
+      })}>Tự tìm liên kết</button> : null}
+      {discoveryStatus ? <p role="status">{discoveryStatus}</p> : null}
+      {suggestions.length ? <section aria-label="Gợi ý liên kết chưa kích hoạt"><h4>Gợi ý cần xác nhận</h4><ul>
+        {suggestions.map((item) => <li key={JSON.stringify(item.relationship)}>
+          <p>{tableName(item.relationship.source_table_id)}.{item.relationship.source_column} → {tableName(item.relationship.target_table_id)}.{item.relationship.target_column}</p>
+          <p>{item.reason}</p>
+          <button className="secondary-button" type="button" onClick={() => void action(async () => {
+            setSelection(item.relationship); setPreview(null);
+            setPreview(await client.preview(item.relationship));
+          })}>Kiểm tra gợi ý</button>
+        </li>)}
+      </ul></section> : null}
       {(["source", "target"] as const).map((side) => {
         const field = `${side}_table_id` as const;
         const keyField = `${side}_column` as const;

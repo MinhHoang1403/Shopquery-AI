@@ -60,6 +60,17 @@ def preview_relationship(dataset_id: int, user: CurrentUser, request: Relationsh
         )
 
 
+@router.post("/discover")
+def discover_relationships(dataset_id: int, user: CurrentUser) -> dict:
+    require_join_enabled()
+    with relationship_errors(), resource_control().work(user.user_id, "preview"):
+        return (
+            RelationshipRepository(get_setup_engine(), user.user_id)
+            .discover(dataset_id)
+            .model_dump()
+        )
+
+
 @router.post("")
 def confirm_relationship(dataset_id: int, user: CurrentUser, request: RelationshipConfirm) -> dict:
     require_join_enabled()

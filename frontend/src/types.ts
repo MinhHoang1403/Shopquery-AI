@@ -13,11 +13,14 @@ export interface RelationshipPreview extends RelationshipInput {
   target_duplicates: number; orphan_rows: number | null; reasons: string[];
 }
 export interface RelationshipRecord extends RelationshipPreview { relationship_id: string; confirmed: boolean; origin?: "manual" | "automatic" }
+export interface RelationshipSuggestion { relationship: RelationshipInput; preview: RelationshipPreview; reason: string }
+export interface RelationshipDiscovery { relationships: RelationshipRecord[]; suggestions: RelationshipSuggestion[]; truncated: boolean }
 export interface RelationshipClient {
   list: (signal?: AbortSignal) => Promise<{ enabled: boolean; relationships: RelationshipRecord[] }>;
   preview: (input: RelationshipInput) => Promise<RelationshipPreview>;
   confirm: (input: RelationshipInput & { revision: string; confirmed: true }) => Promise<RelationshipRecord>;
   remove: (id: string) => Promise<void>;
+  discover?: () => Promise<RelationshipDiscovery>;
 }
 
 export interface ModelOption {

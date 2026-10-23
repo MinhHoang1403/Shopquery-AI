@@ -11,6 +11,7 @@ import type {
   ModelsResponse,
   RouteLabel,
   RelationshipClient,
+  RelationshipDiscovery,
   RelationshipPreview,
   RelationshipRecord,
   SourceReference,
@@ -337,6 +338,7 @@ export async function getDataset(datasetId: number): Promise<Dataset> {
 export function createRelationshipClient(datasetId: number): RelationshipClient {
   const path = `/api/datasets/${datasetId}/relationships`;
   return {
+    discover: async () => await requestJson(`${path}/discover`, { method: "POST" }) as RelationshipDiscovery,
     list: async (signal) => await requestJson(path, { signal }) as Awaited<ReturnType<RelationshipClient["list"]>>,
     preview: async (input) => await requestJson(`${path}/preview`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),

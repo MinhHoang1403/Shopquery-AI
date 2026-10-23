@@ -62,6 +62,18 @@ class RelationshipRecord(RelationshipPreview):
         return self
 
 
+class RelationshipSuggestion(BaseModel):
+    relationship: RelationshipInput
+    preview: RelationshipPreview
+    reason: str
+
+
+class RelationshipDiscoveryResponse(BaseModel):
+    relationships: list[RelationshipRecord]
+    suggestions: list[RelationshipSuggestion]
+    truncated: bool
+
+
 @dataclass(frozen=True)
 class RelationshipTable:
     table_id: str

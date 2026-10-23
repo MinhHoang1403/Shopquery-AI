@@ -11,8 +11,9 @@ operator đã bật Knowledge, Gemini và document embeddings cho tài khoản �
 Giữ provider gate ON cho sử dụng thường ngày, cùng authentication, quota và rate limit.
 Guest preview hoạt động; Guest AI chưa được duyệt. Fallback OFF là lựa chọn cấu hình.
 SQL/RAG/Hybrid và follow-up đã có bằng chứng live trong phạm vi KPI synthetic;
-không coi đó là bảo đảm cho mọi dữ liệu. Auto-JOIN hiện chỉ nhận tên khóa theo quy tắc
-bảo thủ; khóa nghiệp vụ như `ma_tram`/`ma_goi` cần xác nhận quan hệ trong UI.
+không coi đó là bảo đảm cho mọi dữ liệu. Auto-JOIN dùng tên khóa, metadata và kiểm
+toàn bộ dữ liệu; hỗ trợ cả `ma_*`/camelCase. Dùng “Tự tìm liên kết” để quét workspace
+đã upload; các ứng viên mơ hồ vẫn cần kiểm tra và xác nhận trong UI.
 BGE tạm hoãn, retrieval dùng vector-only. Chưa tag hoặc tuyên bố nghiệm thu V2 đầy đủ.
 Nguồn trạng thái hiện tại: [nghiệm thu V2](docs/v2_final_acceptance.md).
 Các báo cáo lịch sử đã bỏ khỏi checkout; có thể tra tại Git commit `87cdf40`.

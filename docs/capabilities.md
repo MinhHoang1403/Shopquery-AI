@@ -11,6 +11,22 @@ Backend kiểm exact ON, fact → dimension, uniqueness/no fanout, GROUP BY enti
 Chain/star ba bảng chỉ aggregate fact gốc. Shared-dimension two-fact, many-to-many,
 composite/outer/self joins, chu trình và đường mơ hồ bị từ chối.
 
+Automatic discovery dùng header gốc để tách snake_case/camelCase/PascalCase, bỏ dấu
+tiếng Việt, tiền tố số và các wrapper danh sách/catalog. Nhận `id`, `code`, `ma`/`mã`,
+`ref`, `key` ở đầu/cuối tên; `number`/`no` cần metadata bổ sung xác nhận định danh.
+Khóa nguồn phải có tên thực thể; `id` trống nghĩa ở cả hai bảng không đủ bằng chứng.
+Không dịch/đoán tên khác ngôn ngữ hoặc dùng trùng giá trị làm bằng chứng nghiệp vụ.
+Tên bảng mở rộng cần thêm cột tên thực thể và một vai trò khóa rõ ràng. Chỉ tự kích
+hoạt TEXT/BIGINT cùng kiểu sau full-data N:1 verification, không NULL/trùng/orphan,
+không ứng viên cạnh tranh hoặc đường nối khác. Score chỉ sắp thứ tự kiểm tra.
+
+Tải bảng mới và nút “Tự tìm liên kết” dùng chung detector. Quét lại không re-ingest,
+không sửa bảng gốc, không gọi AI và không ghi đè liên kết đã có. API owner-scoped
+`POST /api/datasets/{dataset_id}/relationships/discover` giữ CSRF/quota/dataset lock.
+Mỗi lượt kiểm tối đa20 cặp, ngừng bắt đầu kiểm tiếp sau2 giây, từng SQL statement
+vẫn chịu timeout5 giây. Quét chưa đủ không tự kích hoạt kết quả một phần. Gợi ý cần
+kiểm tra lại và explicit confirmation bằng revision hiện tại; 1:1 không tự chọn chiều.
+
 COUNT(*) đếm matched fact rows; COUNT(nullable column) đếm non-NULL values; verified
 INNER fact key có thể row-equivalent. SUM/AVG NULL không đổi thành zero. Calendar
 executor là `Asia/Ho_Chi_Minh`; boundaries giữ offset và khoảng `>= start AND < end`.
