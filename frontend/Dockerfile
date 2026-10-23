@@ -18,13 +18,12 @@ RUN npm run build
 
 FROM nginx:1.31.6-alpine3.24
 
-ARG SOURCE_REVISION=unknown
-LABEL org.opencontainers.image.revision=$SOURCE_REVISION
-
 COPY infrastructure/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
   CMD wget --quiet --spider http://127.0.0.1/ || exit 1
