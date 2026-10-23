@@ -20,8 +20,8 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-API source `ac369738f152ad2f685fbbd86fb71cdfa51fad8d`, digest `f161d7f5a441e7d036e4ecf97c3e4bd864edeefaf00820c577bb3c8cf31a2fa9`.
-Web source `e76dfed2ebcfaebcf37e36485d3041eda68f4209`, digest `e4a8c96c742bfaf2e6ff834fb320f457dc443ad4df4fedcf797094461e99bfb1`.
+API source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`, digest `5db99157ab742e200a9ab5e24c757d7ac7fa16ddf05db12a8078451837c70bf6`.
+Web source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`, digest `e888860e87a1baff7149fbe5d7b354dedba7b9e0888bca9c1c9f654e108ab744`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
 
@@ -38,10 +38,12 @@ Không seed/ingest/fake Google user trên main.
 
 ## Rollback đã giữ
 
-Rollback API gần nhất là `shopquery-ai-api@sha256:1a57c0d151944309951bd32a2e9f21baca79ad3b82caf05683a81c3c2f7659a9`,
-source `5ba7669535e05d3779a0f2b5832be781405f9000`, đã từng phục vụ cùng Web hiện hành.
-Web không đổi trong các patch API; giữ thêm Web legacy `5ca6e17125f12574cf8cdf4d030b6a0a209007e9469b264e94e6d98056090146`
-làm bản dự phòng cuối. Private rollback/environment evidence được giữ ngoài Git.
+Rollback API gần nhất là `shopquery-ai-api@sha256:f161d7f5a441e7d036e4ecf97c3e4bd864edeefaf00820c577bb3c8cf31a2fa9`,
+source `ac369738f152ad2f685fbbd86fb71cdfa51fad8d`. Web tương ứng là
+`shopquery-ai-web@sha256:e4a8c96c742bfaf2e6ff834fb320f457dc443ad4df4fedcf797094461e99bfb1`,
+source `e76dfed2ebcfaebcf37e36485d3041eda68f4209`. Cả hai đã phục vụ cùng main DB
+trước khi nâng cấp discovery và nút quét lại. Private rollback/environment evidence
+được giữ ngoài Git; rollback image không tự xóa các metadata liên kết đã lưu.
 Không giữ mọi image patch cũ; không dùng tag `latest` để chọn bản chạy.
 
 Rollback phải kiểm active work, pin đúng digest/private config và kiểm source drift.
