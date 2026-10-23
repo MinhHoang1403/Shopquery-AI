@@ -8,13 +8,13 @@ Operator authorized consolidation before completion of AI/BGE acceptance.
 ## A. Consolidation and data safety
 
 - PR #1 merged at `a55acb25162529b1b6b7d44d6b0bde5d4fcc8c96`.
-- Application source on main: `5ba7669535e05d3779a0f2b5832be781405f9000`.
+- Application source on main: `ac369738f152ad2f685fbbd86fb71cdfa51fad8d`.
   Later documentation commits do not require rebuilding this image.
-- API: `shopquery-ai-api@sha256:1a57c0d151944309951bd32a2e9f21baca79ad3b82caf05683a81c3c2f7659a9`,
-  OCI source revision `5ba7669535e05d3779a0f2b5832be781405f9000`.
+- API: `shopquery-ai-api@sha256:f161d7f5a441e7d036e4ecf97c3e4bd864edeefaf00820c577bb3c8cf31a2fa9`,
+  OCI source revision `ac369738f152ad2f685fbbd86fb71cdfa51fad8d`.
 - Web: `shopquery-ai-web@sha256:e4a8c96c742bfaf2e6ff834fb320f457dc443ad4df4fedcf797094461e99bfb1`,
   OCI source revision `e76dfed2ebcfaebcf37e36485d3041eda68f4209`.
-- Strict release verifier PASS: all 80 API module hashes match main, no effective
+- Strict release verifier PASS: all 83 API module hashes match main, no effective
   environment drift, one worker, no reload/source bind/GPU requests. One release
   API8001/Web8080/main PostgreSQL15432. Direct Web/API8080 both HTTP200.
 - Main container `511c4f5aacccd1ac42261aaa2a7173ae40c5c5e3aa673bb4898d988a8206a3c8`
@@ -24,11 +24,16 @@ Operator authorized consolidation before completion of AI/BGE acceptance.
   backup SHA256 `42d8c6a181d2844ab2b5db6b4fa98156feef9460e2e641c06d67a198272a8160`.
   Backup/private evidence remain outside Git at
   `C:\Users\admin\.codex\backups\shopquery-ai\stage2-20261023T025413Z`.
-- Current audit: all 34 existing tables retained, 27 unchanged table fingerprints,
+- Prior consolidation audit: all 34 existing tables retained, 27 unchanged fingerprints,
   all three KPI upload tables unchanged, all 86 original historical messages
   byte-for-byte equal to backup. Live activity added one upload table plus reader
   SELECT grant; existing schema matches backup. Metadata/session/rate/chat tables
   changed during UI activity. Do not claim the complete database is unchanged.
+- Root-correction audit: all 35 current tables and schema retained. Only chat
+  conversations/messages and resource limits changed during the four-question
+  window; data/documents/relationships/uploads stayed unchanged. All messages
+  preceding this window remain byte-for-byte equal to the pre-correction snapshot.
+  The image retains the same 118 installed package versions as the previous API.
 - API-only deployment now waits for health then validates and gracefully reloads
   existing Nginx to refresh the upstream address. This fixes stale-IP 8080 API
   failures after API recreation, without recreating Web or DB. Actual deploy and
@@ -64,8 +69,10 @@ DevDB has no active work and is stopped, container/volume retained for tests.
 Only serving API/Web/main DB remain running for ShopQuery.8080 health/runtime
 verification PASS after cleanup; no serving container restart for cleanup.
 
-Recursive cache removal was blocked by automatic approval review (`blocked by
-policy`); cache directories remain. No bypass, broad clean/prune or volume delete.
+An earlier cache removal was blocked by automatic approval review. Subsequent
+explicitly authorized deep cleanup removed reviewed project caches and unused
+images/build records; its private manifest is under `deep-cleanup-20261023` beside
+the other backup evidence. No broad prune or volume deletion was used.
 
 ## C. Functionality and fixes
 
@@ -74,10 +81,10 @@ policy`); cache directories remain. No bypass, broad clean/prune or volume delet
 | Google login/logout/relogin | PASS bounded | One invited account; operator confirmed real flow; current authenticated UI reload works |
 | History/citations | PASS bounded | Persist across API recreation/reload; original 86 messages unchanged |
 | CSV/XLSX upload | PASS smoke | Prior Guest CSV upload/preview and XLSX preview; no new authenticated upload acceptance |
-| Knowledge SQL | PARTIAL | Basic SUM/filter/count matched PostgreSQL oracle; latest warehouse JOIN/count falsely refused at join_grain before execution |
-| Gemini SQL | BLOCKED acceptance | Latest highest-fee warehouse question rejected HTTP400 at QueryPlan; router succeeds |
+| Knowledge SQL | PASS bounded | Natural warehouse fee/count question returns five exact PostgreSQL oracle rows with COUNT(*) and stable warehouse IDs |
+| Gemini SQL | PASS bounded | Native compact QueryPlan request accepted live; highest-fee warehouse KHO02/598000.00 matches oracle |
 | RAG | PASS bounded | Knowledge/Gemini policy answers with real persisted citation22, existing vector-only retrieval |
-| Hybrid | BLOCKED | Latest Gemini retrieval succeeds but QueryPlan HTTP400; Knowledge follow-up routed UNSUPPORTED |
+| Hybrid/context | PASS bounded | Gemini KPI classification and Knowledge follow-up in the same conversation match all five rows/statuses and citation22; follow-up still shows the full table |
 | Model selection | PASS observed | Actual requested/used attribution checked; new chat defaults to Knowledge by existing design |
 | Guest | PASS bounded | RAM upload/reset and private-data denial; Guest AI remains OFF |
 | Owner security | PARTIAL live | Existing offline checks PASS; two-account live acceptance not performed |
@@ -92,7 +99,8 @@ Minimal fixes already on main and in the current API image:
   expression IDs. This removes the duplicate field/expression aggregate contract
   from the provider schema. Row-count reference validation remains strict.
 - Approved relationship target IDs are explicit grouping keys in the planner
-  catalog. No inferred keys, plan repair, free-form SQL fallback or weaker guards.
+  catalog. The backend now completes only a unique approved path/fact/key; there
+  are no invented keys, free-form SQL fallbacks or weaker compiler/COUNT guards.
 - Knowledge makes one structured attempt instead of a hidden second schema call.
 - Gemini native Schema dictionaries omit the specifically rejected
   `additionalProperties` keyword; original Pydantic extra-field/bounds validation
@@ -105,9 +113,9 @@ Validation: 341 targeted core checks and Ruff PASS at `acd6639`; its
 The subsequent grouping-key metadata delta at `5ba7669` passed 49 focused checks;
 full CI was intentionally not rerun for that delta. Do not call it exact-head CI.
 Existing large regression/golden suites were not rerun locally for small patches.
-Offline success is not live accuracy acceptance. Later interactive logs on the
-current image still show two Gemini HTTP400 request rejections and Hybrid failures;
-no more precise upstream cause is established by those logs.
+Offline success is not live accuracy acceptance. Historical interactive logs on
+the previous `5ba7669` image show Gemini HTTP400 rejections and Hybrid failures;
+their more precise upstream cause remains unknown. New bounded live proof is in E.
 
 Schema compatibility follows official
 [Gemini structured-output guidance](https://ai.google.dev/gemini-api/docs/structured-output)
@@ -186,17 +194,18 @@ chat_conversations, chat_messages and resource_limits fingerprints changed.
 Data/document/upload tables stayed unchanged. The real authenticated history was
 reloaded after closure, without fake auth or cookie extraction.
 
-Remaining factual blockers: Knowledge emitted a plan rejected at join_grain;
+At the end of that previous window: Knowledge emitted a plan rejected at join_grain;
 the exact plan is not retained, so the specific source/group-key error cannot be
-asserted from the stage code alone. Gemini still returns generic HTTP400 at the
+asserted from the stage code alone. Gemini returned generic HTTP400 at the
 QueryPlan boundary; no more precise upstream cause is established. No speculative
 new patch, weakened guard, paid retry or extra diagnostic was made in this window.
 
-## E. Root-cause correction prepared on main (23 October)
+## E. Root-cause correction and bounded live proof (23 October)
 
-The following source changes are offline-verified and pending a new approved
-API-only cutover and paid acceptance window. They do not change the historical
-live failures above into PASS results.
+Source `ac36973` was pushed to main, built and deployed API-only with operator
+approval. A NEW independent window was approved for four synthetic UI questions,
+at most12 generation stages/4 query embeddings/0 document embeddings. Historical
+failures above remain failures; the results below are new acceptance evidence.
 
 - JOIN/grain: all four original rejection branches now identify `fact_source`,
   `dimension_measure`, `subtotal_group` or `dimension_group_key` in sanitized
@@ -215,8 +224,10 @@ live failures above into PASS results.
   The new flat typed generation contract uses the same native `response_schema`
   request format, no nullable nodes or provider-side bounds, and deterministic
   conversion into the original validated QueryPlan. Actual installed SDK wire
-  serialization passes offline transport tests; server/model acceptance still
-  requires live proof. No free-form SQL, repair call or fallback is introduced.
+  serialization passes offline transport tests. The same native request was also
+  accepted live for Gemini SQL and Hybrid below. No free-form SQL, repair call or
+  fallback is introduced. The old generic400's exact rejected constraint remains
+  unproven; live success establishes this contract's bounded compatibility.
 - Hybrid: the verified simple policy previously still required a model verdict
   and could fail final evidence consistency. A uniquely source-bound policy now
   uses existing Decimal evaluation and the same authoritative answer composer.
@@ -230,6 +241,11 @@ live failures above into PASS results.
   context is untrusted reference data and current evidence must be retrieved and
   verified again. Stored user messages remain the original question.
 
+Changed modules: `text_to_sql/plan_binding.py`, `generation_contract.py`, planner,
+QueryPlan, compiler/JOIN policy/pipeline; `ai/gemini.py`; routing Hybrid evidence
+and composer integration; conversation context/repository and `api/routes.py`;
+bounded core error/diagnostics fields. Related tests cover these boundaries.
+
 Validation: 386 targeted unit checks PASS, 37 scoped PostgreSQL integration
 checks PASS, a related 34-check PostgreSQL run PASS, and the final 134-check
 diagnostics/schema/context delta PASS. These groups overlap and are not an
@@ -240,11 +256,34 @@ and diff whitespace checks PASS. No full regression/golden or GPU benchmark was
 rerun. Full CI is intentionally skipped for this bounded patch; targeted checks
 are not exact-head full CI evidence.
 
-No paid calls were made for this correction (0 generation, 0 query/document
-embeddings). Runtime remains the closed-gate API source `5ba7669` until controlled
-deployment is approved. Google sessions/history and the protected main database
-remain in place. Gate C/BGE and mandatory live SQL/Hybrid acceptance remain open;
-no release tag or Stage2 completion is claimed.
+All four questions were sent exactly once through Computer Use on8080, in one
+new dataset13 conversation. The fourth was sent only after the third supplied a
+valid KPI premise. Persisted SQL, rows, answers, provider attribution and citation
+were checked against the independent PostgreSQL oracle and the original policy:
+
+| Provider / natural question | Actual evidence |
+| --- | --- |
+| Knowledge: Cho tôi tổng phí và số đơn của từng kho. | PASS SQL: five exact warehouse totals, ten orders each, COUNT(*), warehouse ID grouping |
+| Gemini: Kho nào thu tổng phí cao nhất? | PASS SQL: KHO02/Hải Phòng/598000.00; native structured request accepted |
+| Gemini: Theo tài liệu, kho nào đang đạt và kho nào chưa đạt KPI? | PASS Hybrid: exact five fees and statuses; qualified KHO02/KHO03/KHO05, not qualified KHO01/KHO04; citation22 |
+| Knowledge: Vậy còn những kho chưa đạt KPI? | PASS bounded context/Hybrid: same conversation, fresh retrieval/SQL, correct KHO01/KHO04 and citation22; answer also includes the complete five-row classification table |
+
+Actual use:4 chats,10 generation stages (4 routers,4 planners,2 SQL answer calls),
+2 query embeddings,0 document embeddings. Two Hybrid policy-verification stages
+are backend work and are excluded from provider usage. No additional diagnostics,
+retry, fallback or question was used. Guest AI stayed OFF and the gate is CLOSED.
+There were no source changes or broader test runs during the live window.
+
+Initial browser permission failure was resolved before any paid call. After gate
+closure and API-only recreation, strict verifier PASS, Web/API8080 HTTP200, real
+Google session/history reload PASS, and saved citation content opens correctly.
+Web/main DB identities, uploads, relationships, data/document tables and schema
+remain intact. All pre-window messages are byte-for-byte unchanged. The current
+API image and its rollback image remain local; no new stack was created.
+
+This proves the four requested natural questions in the verified synthetic
+workspace, not all possible SQL/policy shapes. Gate C/BGE and two-account live
+owner acceptance remain open; no release tag or Stage2 completion is claimed.
 
 ## F. Future workflow
 
