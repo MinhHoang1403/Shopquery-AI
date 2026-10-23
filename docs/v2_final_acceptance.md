@@ -199,6 +199,12 @@ Computer Use became available after operator restart; real existing Google sessi
 and synthetic history visible. DevDB restarted with the machine and was stopped
 again only after verifying no clients; its container/volume remain preserved.
 
+The planner catalog additionally lists grouping key IDs taken only from approved
+relationship targets, so warehouse names are accompanied by their actual identity.
+No name-based key inference;49 focused workspace/provider checks PASS after this
+metadata-only adjustment. Four final UI cases will exercise Knowledge JOIN/count,
+Gemini SQL/Hybrid and an ambiguous follow-up; no extra diagnostic calls remain.
+
 Schema descriptions and backend validation follow the official
 [Gemini structured-output guidance](https://ai.google.dev/gemini-api/docs/structured-output).
 Standard JSON-schema request configuration follows the

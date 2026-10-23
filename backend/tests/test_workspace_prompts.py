@@ -1,12 +1,14 @@
 """Domain-independent workspace prompts and unchanged SQL boundaries."""
 
+import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 
 from app.core.config import Settings
-from app.core.errors import SqlValidationError
+from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.datasets.context import DatasetSqlContext, build_dataset_sql_context
 from app.datasets.parser import ColumnSpec
 from app.datasets.repository import DatasetInfo, DatasetTableInfo
@@ -21,6 +23,7 @@ from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import SqlValidator
 from tests.hybrid_fixtures import explanation_draft
 from tests.plan_fixtures import decision_from_sql
+from tests.test_three_table_join import PS, SC, TYPES
 
 
 class RecordingGateway:
@@ -153,6 +156,38 @@ def test_uploaded_sql_prompt_has_no_default_store_schema_or_policy_requirements(
     assert "include category_code and category_name" not in gateway.prompt
     assert "status is 'completed'" not in gateway.prompt
     assert "Asia/Ho_Chi_Minh" in gateway.prompt
+
+
+def test_planner_grouping_keys_come_only_from_approved_dimension_targets():
+    context = replace(
+        tuition_context(),
+        table_columns={table: set(columns) for table, columns in TYPES.items()},
+        column_types=TYPES,
+        allowed_schemas={table: "uploaded_data" for table in TYPES},
+        approved_joins=(PS, SC),
+    )
+    prompts = []
+
+    class Gateway:
+        def generate_structured(self, prompt, response_model):
+            prompts.append(prompt)
+            return response_model(unsupported_reason="Contract capture only")
+
+    planner = QueryPlanner(Gateway(), "2026-10-01", context)
+    with pytest.raises(SqlUnsupportedError):
+        planner.generate("So sánh các khóa học")
+    catalog, _ = json.JSONDecoder().raw_decode(
+        prompts[0].split("Authorized catalog JSON:\n", 1)[1]
+    )
+    actual = {
+        table["name"]: [planner.references.columns[key] for key in table["grouping_keys"]]
+        for table in catalog["tables"]
+    }
+    assert actual == {
+        "payments": [],
+        "students": [("students", "student_id")],
+        "courses": [("courses", "course_id")],
+    }
 
 
 def test_uploaded_router_receives_schema_through_dependency_construction(monkeypatch) -> None:

@@ -27,10 +27,22 @@ class QueryPlanner:
 
     def generate(self, question: str, *, evidence_context: str | None = None) -> QueryPlan:
         references = self.references
+        dimension_keys = {
+            (edge.target_table, edge.target_column) for edge in self._context.approved_joins
+        }
         catalog = {
             "joins_enabled": self._join_v1_enabled,
             "tables": [
-                {"id": key, "name": table, "label": self._context.table_labels.get(table, table)}
+                {
+                    "id": key,
+                    "name": table,
+                    "label": self._context.table_labels.get(table, table),
+                    "grouping_keys": [
+                        column_id
+                        for column_id, location in references.columns.items()
+                        if location[0] == table and location in dimension_keys
+                    ],
+                }
                 for key, table in references.tables.items()
             ],
             "columns": [
@@ -94,6 +106,8 @@ No aggregate nesting. Uploaded JOIN metrics allow only direct root-fact SUM/AVG 
 counts; no aggregate arithmetic, MIN/MAX, dimension measures or COUNT HAVING. Include each
 dimension entity key in group_by when selecting/grouping its attributes. Use identifiers
 from authorized headers, never infer entity keys or units from examples.
+The catalog's grouping_keys are backend-approved dimension IDs. When grouping a dimension,
+include its listed keys in group_by and project them alongside its requested name/attributes.
 At most three tables are allowed for uploaded queries. Never sum identifiers or infer NOT NULL
 from a column name. The default demo catalog alone permits its declared four-table fact tree
 and root-fact numeric aggregate expressions, including its explicit revenue formula.
