@@ -2,10 +2,11 @@
 
 from collections.abc import Iterator
 from io import BytesIO
+from uuid import UUID, uuid4
 
 import pytest
 from openpyxl import Workbook
-from sqlalchemy import Engine, func, select, text
+from sqlalchemy import Engine, delete, func, insert, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -16,7 +17,7 @@ from app.core.errors import (
     SqlExecutionError,
     SqlValidationError,
 )
-from app.database.models import Dataset, DatasetDocument, DocumentChunk
+from app.database.models import Dataset, DatasetDocument, DocumentChunk, User
 from app.database.session import get_readonly_engine, get_setup_engine
 from app.database.setup import create_schema
 from app.datasets.context import build_dataset_sql_context
@@ -27,7 +28,6 @@ from app.rag.repository import DocumentRepository
 from app.rag.upload_parser import ParsedDocument
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.validator import SqlValidator
-from tests.auth_helpers import TEST_OWNER
 
 
 @pytest.fixture(scope="module")
@@ -35,6 +35,54 @@ def management_database() -> Iterator[Engine]:
     engine = get_setup_engine()
     create_schema(engine)
     yield engine
+
+
+@pytest.fixture
+def management_owner(management_database: Engine) -> Iterator[UUID]:
+    owner = uuid4()
+    with management_database.begin() as connection:
+        connection.execute(
+            insert(User).values(
+                user_id=owner,
+                issuer="https://accounts.google.com",
+                subject=uuid4().hex,
+                email=f"management-{owner}@example.invalid",
+                display_name="Management fixture",
+                active=True,
+            )
+        )
+    try:
+        yield owner
+    finally:
+        conversations = ConversationRepository(management_database, owner)
+        for conversation in conversations.list(100, 0):
+            conversations.delete(conversation.conversation_id)
+        datasets = DatasetRepository(management_database, get_readonly_engine(), owner)
+        for dataset in datasets.list():
+            datasets.delete(dataset.dataset_id, delete_conversations=True)
+        with management_database.begin() as connection:
+            connection.execute(delete(User).where(User.user_id == owner))
+
+
+@pytest.fixture
+def default_chunk(management_database: Engine) -> Iterator[int]:
+    with Session(management_database) as session:
+        chunk = DocumentChunk(
+            source_file="default-policy.md",
+            section_title="Default",
+            content="Default corpus must stay isolated.",
+            content_hash=uuid4().hex + uuid4().hex,
+            embedding=[1.0, 0.0, *([0.0] * 766)],
+        )
+        session.add(chunk)
+        session.flush()
+        chunk_id = chunk.chunk_id
+        session.commit()
+    try:
+        yield chunk_id
+    finally:
+        with management_database.begin() as connection:
+            connection.execute(delete(DocumentChunk).where(DocumentChunk.chunk_id == chunk_id))
 
 
 def parsed_csv(name: str, content: str) -> ParsedTable:
@@ -83,8 +131,9 @@ class FailingEmbedder:
 @pytest.mark.integration
 def test_conversations_persist_rename_isolate_and_delete(
     management_database: Engine,
+    management_owner: UUID,
 ) -> None:
-    repository = ConversationRepository(management_database, TEST_OWNER)
+    repository = ConversationRepository(management_database, management_owner)
     first = repository.create(None)
     second = repository.create(None)
 
@@ -124,8 +173,9 @@ def test_conversations_persist_rename_isolate_and_delete(
 @pytest.mark.integration
 def test_dataset_import_query_isolation_permissions_and_rollback(
     management_database: Engine,
+    management_owner: UUID,
 ) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
+    repository = DatasetRepository(management_database, get_readonly_engine(), management_owner)
     first = repository.create(
         "Doanh số fixture A",
         parsed_csv(
@@ -204,8 +254,10 @@ def test_dataset_import_query_isolation_permissions_and_rollback(
 
 
 @pytest.mark.integration
-def test_dataset_executor_keeps_row_limit(management_database: Engine) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
+def test_dataset_executor_keeps_row_limit(
+    management_database: Engine, management_owner: UUID
+) -> None:
+    repository = DatasetRepository(management_database, get_readonly_engine(), management_owner)
     dataset = repository.create(
         "Giới hạn dòng fixture",
         parsed_csv("rows.csv", "Giá trị\n1\n2\n3\n"),
@@ -223,8 +275,9 @@ def test_dataset_executor_keeps_row_limit(management_database: Engine) -> None:
 @pytest.mark.integration
 def test_dataset_aggregates_distinguish_matches_null_and_zero(
     management_database: Engine,
+    management_owner: UUID,
 ) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
+    repository = DatasetRepository(management_database, get_readonly_engine(), management_owner)
     dataset = repository.create(
         "Aggregate semantics fixture",
         parsed_csv(
@@ -271,8 +324,9 @@ def test_dataset_aggregates_distinguish_matches_null_and_zero(
 @pytest.mark.integration
 def test_xlsx_dataset_is_persisted_with_sheet_metadata(
     management_database: Engine,
+    management_owner: UUID,
 ) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
+    repository = DatasetRepository(management_database, get_readonly_engine(), management_owner)
 
     dataset = repository.create("Tồn kho XLSX fixture", parsed_xlsx())
 
@@ -298,8 +352,9 @@ def test_xlsx_dataset_is_persisted_with_sheet_metadata(
 @pytest.mark.integration
 def test_empty_workspace_multiple_tables_and_join_rejection(
     management_database: Engine,
+    management_owner: UUID,
 ) -> None:
-    repository = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
+    repository = DatasetRepository(management_database, get_readonly_engine(), management_owner)
     workspace = repository.create_workspace("Multi source workspace fixture")
 
     assert workspace.table is None
@@ -336,9 +391,11 @@ def test_empty_workspace_multiple_tables_and_join_rejection(
 @pytest.mark.integration
 def test_document_isolation_delete_and_embedding_rollback(
     management_database: Engine,
+    management_owner: UUID,
+    default_chunk: int,
 ) -> None:
-    datasets = DatasetRepository(management_database, get_readonly_engine(), TEST_OWNER)
-    documents = DocumentRepository(management_database, get_readonly_engine(), TEST_OWNER)
+    datasets = DatasetRepository(management_database, get_readonly_engine(), management_owner)
+    documents = DocumentRepository(management_database, get_readonly_engine(), management_owner)
     dataset_a = datasets.create_workspace("Document isolation A fixture")
     dataset_b = datasets.create_workspace("Document isolation B fixture")
     parsed_a = ParsedDocument(
@@ -354,17 +411,7 @@ def test_document_isolation_delete_and_embedding_rollback(
 
     document_a = documents.add_document(dataset_a.dataset_id, parsed_a, FixtureEmbedder())
     document_b = documents.add_document(dataset_b.dataset_id, parsed_b, FixtureEmbedder())
-    with Session(management_database) as session:
-        session.add(
-            DocumentChunk(
-                source_file="default-policy.md",
-                section_title="Default",
-                content="Default corpus must stay isolated.",
-                content_hash="d" * 64,
-                embedding=[1.0, 0.0, *([0.0] * 766)],
-            )
-        )
-        session.commit()
+    assert default_chunk > 0
     chunks_a = documents.retrieve([1.0, 0.0, *([0.0] * 766)], dataset_id=dataset_a.dataset_id)
     chunks_b = documents.retrieve([1.0, 0.0, *([0.0] * 766)], dataset_id=dataset_b.dataset_id)
 

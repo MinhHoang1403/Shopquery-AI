@@ -36,8 +36,9 @@ baseline sẽ được verify-runtime báo rõ. Không down -v/prune hoặc trá
 
 ## Release
 
-Trạng thái candidate, acceptance gates và lệnh merge/deploy/rollback nằm trong
-[bàn giao V2](v2_release_handoff.md). Chưa merge hoặc chuyển release vào 8080.
+Trạng thái nghiệm thu hiện hành nằm trong [nghiệm thu V2](v2_final_acceptance.md);
+baseline và image rollback được bảo tồn trong [bàn giao V2](v2_release_handoff.md).
+Chưa merge hoặc chuyển release vào 8080 khi các gate bắt buộc còn BLOCKED.
 
 `compose.release.yaml` dùng cùng Dockerfiles/source với development nhưng chỉ nhận
 `SHOPQUERY_API_IMAGE`, `SHOPQUERY_WEB_IMAGE` đã pin digest; không build khi deploy.
@@ -66,4 +67,65 @@ Cấu hình GPU/Compose theo [Docker GPU reservations](https://docs.docker.com/c
 và [Compose merge](https://docs.docker.com/reference/compose-file/merge/).
 
 verify-runtime chỉ xuất tên biến drift, source hashes/differences, health/IDs/mounts;
-không resolved env/key/token. Health là liveness, không chứng minh DB/AI readiness.
+không resolved env/key/token. Mismatch source, image, environment hoặc service
+thiếu/unhealthy làm lệnh exit khác0. Health là liveness, không chứng minh DB/AI readiness.
+
+## Runbook vận hành và promotion
+
+Hot reload chỉ thuộc development. Production/release cần triển khai image đã kiểm tra.
+Giữ một repository, một deployment chính8080 và test DB riêng. Không tạo stack mới
+cho mỗi sửa đổi. `.env` và `.env.release` là active private config, không commit.
+
+`.env.release` giữ hai image refs pin `@sha256:…`, `BGE_MODEL_PATH`,
+`POSTGRES_VOLUME_NAME=shopquery-ai_postgres_auth_20261019` và hai release provider
+gates. Compose nhận `.env` trước, `.env.release` sau; không in resolved config ra log.
+GPU dùng đúng existing local snapshot read-only và image CUDA đã được nghiệm thu.
+
+Các lệnh sau tại root chỉ dùng cho release sau khi được duyệt cutover:
+
+```powershell
+# Read-only: source/image/environment drift phải làm lệnh FAIL.
+./scripts/release.ps1 -Gpu
+
+# Start/promote API/Web; không build, pull hoặc recreate main DB.
+./scripts/release.ps1 -Gpu -Deploy
+./scripts/release.ps1 -Gpu -Deploy -Service api
+./scripts/release.ps1 -Gpu -Deploy -Service web
+
+# Liveness, process và logs; không đưa logs chứa nội dung riêng tư lên Git.
+Invoke-RestMethod http://127.0.0.1:8001/api/health
+docker top shopquery-ai-api-1 -eo pid,ppid,args
+docker logs --tail 50 shopquery-ai-api-1
+docker logs --tail 50 shopquery-ai-web-1
+git rev-parse HEAD
+docker inspect --format '{{.Image}} {{index .Config.Labels "org.opencontainers.image.revision"}}' shopquery-ai-api-1
+docker inspect --format '{{.Image}} {{index .Config.Labels "org.opencontainers.image.revision"}}' shopquery-ai-web-1
+```
+
+Trước stop/recreate phải kiểm active leases, Guest workers và thông báo gián đoạn;
+Guest RAM mất khi API dừng. Sau đó chỉ stop exact API/Web bằng `docker stop
+shopquery-ai-api-1 shopquery-ai-web-1`; giữ main DB chạy. Script promotion kiểm
+active work, main identity, image revision, một worker, no reload/source bind và
+ports loopback; chỉ thực hiện `up` API/Web `--no-deps --no-build --pull never`.
+Phần deploy của script chưa được nghiệm thu khi controlled cutover còn pending.
+
+Sửa `.env`/`.env.release` trong vùng private, kiểm diff tên biến mà không lộ giá trị,
+rồi recreate service chịu ảnh hưởng trong cửa sổ đã duyệt. Bật
+`RELEASE_PROVIDER_DATA_ENABLED=true` chỉ sau phê duyệt dữ liệu/ngân sách; Guest cần
+phê duyệt riêng trước `RELEASE_GUEST_AI_ENABLED=true`. Fallback giữ OFF.
+Không thử key bằng request ngoài ngân sách. Sau thay đổi chạy verification và
+kiểm chức năng tương ứng; health200 không thay thế Google/provider acceptance.
+
+Một sửa đổi nhỏ: targeted tests → push/CI đúng SHA → build image service bị đổi
+hoặc reuse digest nếu build inputs không đổi → cập nhật private image ref →
+verify identity → deploy API-only/Web-only → postdeploy health/auth/data smoke.
+Chạy `./scripts/test.ps1` theo [testing](testing.md), integration chỉ dùng
+`shopquery_test_stage1` trên DevDB. Không chạy test destructive trên main.
+
+Nếu postdeploy FAIL, dùng rollback API/Web pin digest theo bàn giao, cùng protected
+main volume và reviewed original environment; không restore/drop main DB để xóa
+operational writes. Baseline images cũ không có OCI revision label nên không dùng
+`release.ps1` để triển khai chúng. Chạy reviewed manual Compose sequence, rồi kiểm
+image IDs, main identity, Google session/history và schema/data. Source verifier
+sẽ báo drift khi baseline image khác source V2 hiện tại; đó là kết quả dự kiến
+cho rollback capability, không phải bằng chứng V2 đạt nghiệm thu.

@@ -23,8 +23,10 @@ def source_manifest(directory: Path, suffixes: tuple[str, ...]) -> dict[str, str
     }
 
 
-def verify(files: list[str]) -> dict:
+def verify(files: list[str], env_files: list[str] | None = None) -> dict:
     compose = ["docker", "compose", "-p", "shopquery-ai"]
+    for env_file in env_files or []:
+        compose.extend(["--env-file", env_file])
     for file in files:
         compose.extend(["-f", file])
     effective = json.loads(command([*compose, "config", "--format", "json"]))
@@ -33,6 +35,7 @@ def verify(files: list[str]) -> dict:
         "head": command(["git", "rev-parse", "HEAD"]).strip(),
         "tracked_changes": bool(command(["git", "diff", "HEAD", "--name-only"])),
         "services": {},
+        "failures": [],
     }
     for service in ("api", "web", "db", "devdb"):
         container_id = (
@@ -60,6 +63,47 @@ def verify(files: list[str]) -> dict:
                 for m in container["Mounts"]
             ],
         }
+        if container["State"]["Status"] != "running":
+            report["failures"].append(f"{service}: not running")
+        if item["health"] not in {"healthy", "none"}:
+            report["failures"].append(f"{service}: unhealthy")
+        if drift:
+            report["failures"].append(f"{service}: environment drift")
+        image_ref = effective["services"][service].get("image")
+        if image_ref:
+            expected_image = command(
+                ["docker", "image", "inspect", image_ref, "--format", "{{.Id}}"]
+            ).strip()
+            if expected_image != container["Image"]:
+                report["failures"].append(f"{service}: image drift")
+        revision = (container["Config"].get("Labels") or {}).get(
+            "org.opencontainers.image.revision"
+        )
+        item["source_revision"] = revision
+        if service in {"api", "web"} and revision and revision != "unknown":
+            paths = (
+                [
+                    "backend/app",
+                    "backend/pyproject.toml",
+                    "backend/uv.lock",
+                    "backend/Dockerfile",
+                    "data",
+                ]
+                if service == "api"
+                else [
+                    "frontend/src",
+                    "frontend/index.html",
+                    "frontend/vite.config.ts",
+                    "frontend/tsconfig.json",
+                    "frontend/package.json",
+                    "frontend/package-lock.json",
+                    "frontend/Dockerfile",
+                    "infrastructure/nginx",
+                ]
+            )
+            source_changes = command(["git", "diff", "--name-only", revision, "--", *paths])
+            if source_changes.strip():
+                report["failures"].append(f"{service}: source revision drift")
         if service == "api":
             item["gpu_requests"] = container["HostConfig"].get("DeviceRequests") or []
             if actual.get("RAG_RERANKER_DEVICE", "").startswith("cuda"):
@@ -122,6 +166,12 @@ def verify(files: list[str]) -> dict:
             )
             item["source_files"] = len(remote)
         report["services"][service] = item
+        if item.get("source_mismatches"):
+            report["failures"].append(f"{service}: source drift")
+    required = {"api", "web"} | set(effective["services"]["api"].get("depends_on", {}))
+    for service in sorted(required - report["services"].keys()):
+        report["failures"].append(f"{service}: missing service")
+    report["ok"] = not report["failures"]
     return report
 
 
@@ -130,5 +180,8 @@ if __name__ == "__main__":
         description="Read-only source and config comparison; no AI calls"
     )
     parser.add_argument("--compose-file", action="append", required=True)
+    parser.add_argument("--env-file", action="append")
     arguments = parser.parse_args()
-    print(json.dumps(verify(arguments.compose_file), indent=2, ensure_ascii=False))
+    result = verify(arguments.compose_file, arguments.env_file)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    raise SystemExit(0 if result["ok"] else 1)

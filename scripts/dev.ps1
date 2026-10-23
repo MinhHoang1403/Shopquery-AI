@@ -30,7 +30,7 @@ try {
             if ($LASTEXITCODE -ne 0 -or [int]$taskLeases -gt 0) {
                 throw 'Main has active work or its activity could not be verified.'
             }
-            $taskProcesses = & docker top $taskExisting -eo args
+            $taskProcesses = & docker top $taskExisting -eo pid,ppid,args
             if ($LASTEXITCODE -ne 0 -or ($taskProcesses -match 'spawn_main|multiprocessing')) {
                 throw 'Guest work is running or process activity could not be verified.'
             }
