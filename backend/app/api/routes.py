@@ -31,6 +31,7 @@ from app.api.models import (
 )
 from app.auth.dependencies import CurrentUser
 from app.auth.limits import allow_provider_data, resource_control
+from app.conversations.context import contextual_question
 from app.conversations.repository import ConversationRecord, ConversationRepository, MessageRecord
 from app.core.config import get_settings
 from app.core.diagnostics import diagnosed, diagnostic_stage, record_facts
@@ -247,7 +248,10 @@ def _persist_chat_turn(
                 settings,
                 build_workspace_context(settings, dataset, dataset_repository),
             )
-        response = _chat_response(service.chat(request.message))
+        question = contextual_question(
+            request.message, conversation, user_id, conversation.dataset_id
+        )
+        response = _chat_response(service.chat(question))
     except ShopQueryError as exc:
         response = _chat_error(exc, selected_model)
     assistant_message = repository.add_response_message(

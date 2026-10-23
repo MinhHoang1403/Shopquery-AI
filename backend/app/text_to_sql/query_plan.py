@@ -2,41 +2,43 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+ExpressionOperation = Literal[
+    "literal",
+    "add",
+    "subtract",
+    "multiply",
+    "divide",
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "row_count",
+    "value_count",
+    "eq",
+    "ne",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "and",
+    "or",
+    "is_null",
+    "is_not_null",
+    "in",
+    "day",
+    "month",
+    "year",
+    "month_label",
+    "date_label",
+]
+
 
 class PlanExpression(BaseModel):
     """A flat DAG: e0, e1, ... may reference only earlier nodes or schema columns."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    operation: Literal[
-        "literal",
-        "add",
-        "subtract",
-        "multiply",
-        "divide",
-        "sum",
-        "avg",
-        "min",
-        "max",
-        "row_count",
-        "value_count",
-        "eq",
-        "ne",
-        "gt",
-        "gte",
-        "lt",
-        "lte",
-        "and",
-        "or",
-        "is_null",
-        "is_not_null",
-        "in",
-        "day",
-        "month",
-        "year",
-        "month_label",
-        "date_label",
-    ]
+    operation: ExpressionOperation
     arguments: list[str] = Field(
         default_factory=list,
         max_length=100,
@@ -61,9 +63,7 @@ def _projection_schema(schema: dict[str, Any]) -> None:
 
 
 class PlanField(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid", frozen=True, json_schema_extra=_projection_schema
-    )
+    model_config = ConfigDict(extra="forbid", frozen=True, json_schema_extra=_projection_schema)
 
     reference: str | None = Field(
         default=None,

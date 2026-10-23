@@ -367,6 +367,7 @@ def _validate_entity_groups(
             "Entity aggregation does not support subtotal grouping sets",
             reason="calculation",
             code="join_grain",
+            grain_reason="subtotal_group",
         )
     for expression in group.expressions if group else ():
         if isinstance(expression, exp.Literal) and expression.is_int:
@@ -399,4 +400,5 @@ def _validate_entity_groups(
             "Dimension aggregates require the verified entity key in GROUP BY",
             reason="calculation",
             code="join_grain",
+            grain_reason="dimension_group_key",
         )

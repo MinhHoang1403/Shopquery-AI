@@ -133,10 +133,12 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
             context,
         ).chat(question)
     assert response.route == RouteLabel.HYBRID and response.rows == expected
-    assert_decision_summary(response.answer, expected, statuses)
+    assert_decision_summary(
+        response.answer, expected, statuses, language="en" if filtered else "vi"
+    )
     assert response.used_model == model and not response.fallback_used
     assert len(response.sources) == 1 and response.sources[0].source_file == filename
     assert response.sources[0].content == policy
-    assert calls == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]
+    assert calls == ["RouteDecision", "PlanDecision"] + (["HybridAnswerDraft"] if filtered else [])
     assert trace.facts["sql_validated"] and trace.facts["execution_reached"]
     assert ("2025-09-01" in response.sql) is filtered

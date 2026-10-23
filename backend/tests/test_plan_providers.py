@@ -21,6 +21,48 @@ from tests.test_workspace_prompts import tuition_context
 def response(provider, text):
     if provider == "knowledge":
         return completion(text)
+    try:
+        payload = json.loads(text)
+    except (ValueError, TypeError):
+        payload = None
+    if isinstance(payload, dict) and "plan" in payload:
+        plan = payload.get("plan") or {}
+        plan = {
+            **plan,
+            "fields": [dict(field) for field in plan.get("fields", [])],
+            "expressions": list(plan.get("expressions", [])),
+        }
+        for field in plan["fields"]:
+            if field.get("aggregate") is None:
+                field.pop("aggregate", None)
+            elif field.get("aggregate") == "row_count" and field.get("reference") is None:
+                field.pop("aggregate")
+                field["reference"] = f"e{len(plan['expressions'])}"
+                plan["expressions"].append({"operation": "row_count", "arguments": []})
+        payload = {
+            **{k: v for k, v in payload.items() if k not in {"plan", "unsupported_reason"}},
+            "outcome": "query" if payload.get("plan") else "unsupported",
+            "reason": payload.get("unsupported_reason") or "",
+            "source": plan.get("source", ""),
+            "fields": plan.get("fields", []),
+            "expressions": [
+                {
+                    **node,
+                    "arguments": node.get("arguments", []),
+                    "value": node.get("value") or "",
+                    "value_type": node.get("value_type") or "none",
+                }
+                for node in plan.get("expressions", [])
+            ],
+            "filters": plan.get("filters", []),
+            "group_by": plan.get("group_by", []),
+            "sort": plan.get("sort", []),
+            "limit": plan.get("limit") or 0,
+            "relationships": plan.get("relationships", []),
+            "where": plan.get("where") or "",
+            "having": plan.get("having") or "",
+        }
+        text = json.dumps(payload)
     return httpx.Response(
         200,
         json={
@@ -65,8 +107,12 @@ def test_actual_adapter_serializes_plan_and_compiles(monkeypatch, provider):
         assert len(calls) == 1
         body = json.loads(calls[0].content)
         serialized = json.dumps(body)
-        assert "PlanDecision" in serialized and "expressions" in serialized
-        assert "Aggregation belongs to expression nodes" in serialized
+        assert ("PlanDecision" if provider == "knowledge" else "GenerationDecision") in serialized
+        assert "expressions" in serialized
+        if provider == "knowledge":
+            assert "Aggregation belongs to expression nodes" in serialized
+        else:
+            assert "GenerationDecision" in serialized
         assert "Fields only select values" in serialized
         assert 'sql"' not in json.dumps(PlanDecision.model_json_schema())
         if provider == "gemini":
@@ -75,9 +121,9 @@ def test_actual_adapter_serializes_plan_and_compiles(monkeypatch, provider):
             assert "responseSchema" in config
             assert "additional_properties" not in serialized
             assert "additionalProperties" not in json.dumps(config)
-            assert config["responseSchema"]["properties"]["plan"]["properties"]["limit"][
-                "maximum"
-            ] == 1000
+            assert "plan" not in config["responseSchema"]["properties"]
+            assert "nullable" not in json.dumps(config["responseSchema"])
+            assert "maximum" not in json.dumps(config["responseSchema"])
     finally:
         gateway.close()
 
@@ -112,7 +158,7 @@ def test_aggregate_expression_is_not_aggregated_again(monkeypatch, provider, fie
         monkeypatch, provider, [response(provider, json.dumps(payload))]
     )
     try:
-        if field_aggregate == "row_count":
+        if field_aggregate == "row_count" or provider == "gemini" and field_aggregate is not None:
             with pytest.raises((ProviderError, ModelResponseError)):
                 QueryPlanner(gateway, "2026-10-01", context).generate("Số dòng đã đóng?")
             assert len(calls) == 1

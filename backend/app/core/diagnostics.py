@@ -24,6 +24,7 @@ STAGES = frozenset(
         "generator_unsupported",
         "structured_output_invalid",
         "sql_parse_error",
+        "plan_compilation",
         "column_resolution",
         "join_graph",
         "join_relationship",
@@ -34,6 +35,7 @@ STAGES = frozenset(
         "execution_guard",
         "sql_execution",
         "answer_grounding",
+        "policy_verification",
         "frontend_rendering",
         "document_retrieval",
         "request",
@@ -62,6 +64,11 @@ REASONS = STAGES | frozenset(
         "count_having_unsupported",
         "count_clause_unsupported",
         "count_group_reference",
+        "fact_source",
+        "dimension_measure",
+        "subtotal_group",
+        "dimension_group_key",
+        "multiple_fact_measures",
     }
 )
 AGGREGATE_FACTS = {
@@ -238,7 +245,11 @@ def diagnostic_stage(stage: str) -> Iterator[None]:
         failed_stage = code if isinstance(code, str) and code in STAGES else stage
         if getattr(exc, "structured_output_invalid", False):
             failed_stage = "structured_output_invalid"
-        reason = getattr(exc, "aggregate_reason", None) or failed_stage
+        reason = (
+            getattr(exc, "grain_reason", None)
+            or getattr(exc, "aggregate_reason", None)
+            or failed_stage
+        )
         _event(failed_stage, "failure", reason, perf_counter() - start)
         raise
     else:

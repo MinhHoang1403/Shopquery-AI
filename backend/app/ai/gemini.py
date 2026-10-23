@@ -14,6 +14,8 @@ from app.core.errors import (
     ModelResponseError,
     StructuredResponseError,
 )
+from app.text_to_sql.generation_contract import GenerationDecision
+from app.text_to_sql.query_plan import PlanDecision
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 TRANSIENT_HTTP_STATUS_CODES = list(TRANSIENT_PROVIDER_STATUSES)
@@ -30,6 +32,28 @@ def _without_additional_properties(value: Any) -> Any:
         }
     if isinstance(value, list):
         return [_without_additional_properties(item) for item in value]
+    return value
+
+
+def _generation_schema(value: Any) -> Any:
+    """Bound output locally; avoid multiplying grammar states with array/string bounds."""
+    if isinstance(value, dict):
+        return {
+            key: _generation_schema(item)
+            for key, item in value.items()
+            if key
+            not in {
+                "additionalProperties",
+                "minItems",
+                "maxItems",
+                "minLength",
+                "maxLength",
+                "minimum",
+                "maximum",
+            }
+        }
+    if isinstance(value, list):
+        return [_generation_schema(item) for item in value]
     return value
 
 
@@ -71,19 +95,33 @@ class GeminiGateway:
     def generate_structured(
         self, prompt: str, response_model: type[StructuredModel]
     ) -> StructuredModel:
+        wire_model = GenerationDecision if response_model is PlanDecision else response_model
+        prompt_suffix = (
+            "\nReturn the flat GenerationDecision schema: outcome=query with an empty reason; "
+            "zero limit and empty where/having mean absent. Every expression has value='' and "
+            "value_type=none unless it is a literal. For unsupported, give reason and make "
+            "source/where/having empty, limit=0, and all arrays empty. No enclosing plan object."
+            if wire_model is GenerationDecision
+            else ""
+        )
         try:
             response = self._client.models.generate_content(
                 model=self._settings.gemini_generation_model,
-                contents=prompt,
+                contents=prompt + prompt_suffix,
                 config=types.GenerateContentConfig(
                     temperature=0,
                     response_mime_type="application/json",
-                    response_schema=_without_additional_properties(
-                        response_model.model_json_schema()
+                    response_schema=(
+                        _generation_schema(wire_model.model_json_schema())
+                        if wire_model is GenerationDecision
+                        else _without_additional_properties(wire_model.model_json_schema())
                     ),
                 ),
             )
-            return response_model.model_validate_json(response.text)
+            parsed = wire_model.model_validate_json(response.text)
+            if isinstance(parsed, GenerationDecision):
+                return response_model.model_validate(parsed.decision())
+            return response_model.model_validate(parsed)
         except (ValidationError, ValueError, TypeError) as exc:
             raise StructuredResponseError("Gemini returned an invalid structured response") from exc
         except errors.APIError as exc:

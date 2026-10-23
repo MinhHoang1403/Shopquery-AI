@@ -143,7 +143,9 @@ class QueryCompiler:
                 tree = resolve_join_tree(edges) if len(edges) == 2 else None
                 if root != (tree.fact_table if tree else edges[0].source_table):
                     raise SqlUnsupportedError(
-                        "Plan source is not the verified fact", code="join_grain"
+                        "Plan source is not the verified fact",
+                        code="join_grain",
+                        grain_reason="fact_source",
                     )
                 edges = tree.relationships if tree else edges
         metadata = MetaData()
@@ -237,7 +239,9 @@ class QueryCompiler:
                         table = getattr(argument, "table", None)
                         if table is not None and table.original.name != root:
                             raise SqlUnsupportedError(
-                                "Cannot aggregate a demo dimension measure", code="join_grain"
+                                "Cannot aggregate a demo dimension measure",
+                                code="join_grain",
+                                grain_reason="dimension_measure",
                             )
             outputs[field.alias] = expression.label(field.alias)
         has_aggregate = any(binding.aggregate for _, binding in output_bindings)

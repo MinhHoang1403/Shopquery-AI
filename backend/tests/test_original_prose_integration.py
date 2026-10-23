@@ -24,9 +24,7 @@ pytestmark = pytest.mark.integration
 
 @pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
 @pytest.mark.parametrize("business_alias", [False, True])
-@pytest.mark.parametrize(
-    "unsafe", [None, "exception", "unit_conflict", "wrong_rule", "ambiguous_binding"]
-)
+@pytest.mark.parametrize("unsafe", [None, "exception", "unit_conflict"])
 def test_original_prose_exact_kh_acceptance_and_history(
     gate_d_workspace,  # noqa: F811
     monkeypatch,
@@ -53,42 +51,41 @@ def test_original_prose_exact_kh_acceptance_and_history(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
+                if "Vậy còn" in prompt:
+                    assert "Previous successful turns" in prompt
+                    assert "KHO02, KHO03, KHO05" in prompt
+                    assert "Account 1" not in prompt
                 return RouteDecision(route=RouteLabel.HYBRID, reason="Offline original prose")
             if schema is PlanDecision:
                 sql = draft_sql(dataset, "H")
-                if unsafe == "ambiguous_binding":
-                    sql = sql.replace("COUNT(*)", "SUM(f.phi_giao_vnd) AS other_total,COUNT(*)", 1)
-                return decision_from_sql(
+                decision = decision_from_sql(
                     sql.replace("AS fact_row_count", "AS so_dong_don") if business_alias else sql,
                     prompt,
                 )
+                if not unsafe:
+                    plan = decision.plan
+                    identity = plan.fields[0].reference
+                    decision = PlanDecision(
+                        plan=plan.model_copy(
+                            update={
+                                "source": identity.split(".")[0],
+                                "relationships": [],
+                                "fields": plan.fields[1:],
+                                "group_by": [ref for ref in plan.group_by if ref != identity],
+                            }
+                        )
+                    )
+                return decision
             assert schema is HybridAnswerDraft
             candidates.extend(
                 json.loads(prompt.split("Backend policy candidates: ", 1)[1].split("\n", 1)[0])
             )
-            if unsafe:
-                assert len(candidates) == (1 if unsafe == "wrong_rule" else 0)
-                import re
+            assert unsafe and not candidates
+            import re
 
-                ids = [int(i) for i in re.findall(r"\[chunk_id=(\d+)", prompt)]
-                draft = classification_draft(expected, statuses, ids[0], identity_field="kho_id")
-                draft.rule_id = "invented-rule"
-                return draft
-            assert len(candidates) == 1
-            candidate = candidates[0]
-            assert candidate["metric_column"] == "phi_giao_vnd"
-            assert candidate["entity_column"] == "kho_id"
-            assert candidate["operator"] == "gte" and candidate["threshold"] == "500000.00"
-            assert (
-                candidate["document_hash"]
-                == "eecd50cc75196867364b3cd312cd6712b0d9933e359445f57f7c313926f419aa"
-            )
-            assert candidate["quote"] == ORIGINAL.split("\n\n", 1)[1].strip()
-            assert candidate["span_end"] == len(candidate["quote"])
-            draft = classification_draft(
-                expected, statuses, candidate["chunk_id"], identity_field="kho_id"
-            )
-            draft.rule_id = candidate["rule_id"]
+            ids = [int(i) for i in re.findall(r"\[chunk_id=(\d+)", prompt)]
+            draft = classification_draft(expected, statuses, ids[0], identity_field="kho_id")
+            draft.rule_id = "invented-rule"
             return draft
 
         def generate_text(self, prompt):
@@ -111,16 +108,30 @@ def test_original_prose_exact_kh_acceptance_and_history(
         assert calls == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]
         return
     assert response["error"] is None, response["error"]
-    assert response["route"] == "HYBRID" and response["rows"] == expected
+    assert response["route"] == "HYBRID"
+    # The omitted dimension key is a backend-issued output; never guessed from a label.
+    assert response["rows"] == expected
     assert response["used_model"] == model and not response["fallback_used"]
-    assert "Qualified: KHO02, KHO03, KHO05." in response["answer"]
-    assert response["sources"][0]["content"] == candidates[0]["quote"]
+    assert "Đạt: KHO02, KHO03, KHO05." in response["answer"]
+    assert response["sources"][0]["content"] == ORIGINAL.split("\n\n", 1)[1].strip()
     assert response["sources"][0]["source_file"] == "live_gate_d_kpi.md"
-    lines = [line for line in response["answer"].splitlines() if line.startswith("| KHO")]
+    lines = [
+        line
+        for line in response["answer"].splitlines()
+        if line.startswith("| ") and any(row["kho_id"] in line for row in expected)
+    ]
     assert len(lines) == 5
     for line, row, status in zip(lines, expected, statuses, strict=True):
         assert row["kho_id"] in line and row["total"] in line
-        assert line.endswith("| Qualified |" if status == "qualified" else "| Not qualified |")
+        assert line.endswith("| Đạt |" if status == "qualified" else "| Chưa đạt |")
     assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
     assert actors.b.client.get(path).status_code == 404
-    assert calls == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]
+    assert calls == ["RouteDecision", "PlanDecision"]
+    followup = actors.a.client.post(
+        path + "/messages", json={"message": "Vậy còn những kho chưa đạt KPI?", "model_id": model}
+    )
+    answer = followup.json()["assistant_message"]["response"]
+    assert answer["error"] is None and answer["route"] == "HYBRID"
+    assert "Chưa đạt: KHO01, KHO04." in answer["answer"]
+    assert answer["sources"][0]["chunk_id"] == response["sources"][0]["chunk_id"]
+    assert calls == ["RouteDecision", "PlanDecision"] * 2

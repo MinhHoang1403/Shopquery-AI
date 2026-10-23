@@ -192,7 +192,61 @@ asserted from the stage code alone. Gemini still returns generic HTTP400 at the
 QueryPlan boundary; no more precise upstream cause is established. No speculative
 new patch, weakened guard, paid retry or extra diagnostic was made in this window.
 
-## E. Future workflow
+## E. Root-cause correction prepared on main (23 October)
+
+The following source changes are offline-verified and pending a new approved
+API-only cutover and paid acceptance window. They do not change the historical
+live failures above into PASS results.
+
+- JOIN/grain: all four original rejection branches now identify `fact_source`,
+  `dimension_measure`, `subtotal_group` or `dimension_group_key` in sanitized
+  diagnostics. The last live plan was not retained, so its exact branch remains
+  unknown. Captured older synthetic plans separately demonstrate invalid COUNT
+  references, SUM on a text order ID and missing warehouse identity grouping.
+  `plan_binding.py` binds the sole direct measure source, unique approved N:1
+  path and referenced dimension identity keys before the unchanged compiler.
+  Missing/ambiguous paths, mixed fact measures, wrong COUNT provenance and fanout
+  still refuse; no table, relationship or measure is invented.
+- Gemini: the original native SDK PlanDecision schema has seven nullable nodes
+  and nine array constraints; Router/RAG have neither. SDK transformation already
+  removes `anyOf`/references, so their presence in Pydantic alone does not prove
+  the HTTP400 cause. The earlier explicit `additionalProperties` rejection is
+  confirmed; the later generic HTTP400 does not establish a more precise cause.
+  The new flat typed generation contract uses the same native `response_schema`
+  request format, no nullable nodes or provider-side bounds, and deterministic
+  conversion into the original validated QueryPlan. Actual installed SDK wire
+  serialization passes offline transport tests; server/model acceptance still
+  requires live proof. No free-form SQL, repair call or fallback is introduced.
+- Hybrid: the verified simple policy previously still required a model verdict
+  and could fail final evidence consistency. A uniquely source-bound policy now
+  uses existing Decimal evaluation and the same authoritative answer composer.
+  Multiple/exception rules, unknown scope, filtered/top-N SQL and ambiguous
+  bindings retain refusal/unverified behavior. Citation identity, NULL/zero,
+  owner/workspace scope and read-only SQL guards are preserved.
+- Context: `_persist_chat_turn` previously sent only the current message into
+  `service.chat`, leaving QueryRouter without the preceding successful KPI turn.
+  It now supplies at most two bounded successful pairs from the same server-owned
+  conversation/dataset. Failed or oversized intervening turns clear the premise;
+  context is untrusted reference data and current evidence must be retrieved and
+  verified again. Stored user messages remain the original question.
+
+Validation: 386 targeted unit checks PASS, 37 scoped PostgreSQL integration
+checks PASS, a related 34-check PostgreSQL run PASS, and the final 134-check
+diagnostics/schema/context delta PASS. These groups overlap and are not an
+additive unique-test count. Integration uses the existing isolated test DB,
+including the five-warehouse independent oracle, omitted identity/path binding,
+same-conversation follow-up, cross-owner denial and unsafe policy cases. Ruff
+and diff whitespace checks PASS. No full regression/golden or GPU benchmark was
+rerun. Full CI is intentionally skipped for this bounded patch; targeted checks
+are not exact-head full CI evidence.
+
+No paid calls were made for this correction (0 generation, 0 query/document
+embeddings). Runtime remains the closed-gate API source `5ba7669` until controlled
+deployment is approved. Google sessions/history and the protected main database
+remain in place. Gate C/BGE and mandatory live SQL/Hybrid acceptance remain open;
+no release tag or Stage2 completion is claimed.
+
+## F. Future workflow
 
 Use the existing [PowerShell deployment runbook](deployment.md#runbook-vận-hành-và-promotion):
 main → minimal fix → related tests → commit/push → build only changed service →

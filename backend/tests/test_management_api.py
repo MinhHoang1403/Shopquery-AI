@@ -188,6 +188,12 @@ def test_conversation_crud_and_message_contract(monkeypatch) -> None:
 
 
 def test_dataset_list_detail_and_scoped_chat(monkeypatch) -> None:
+    from app.datasets.context import build_dataset_sql_context
+
+    monkeypatch.setattr(
+        "app.api.routes.build_workspace_context",
+        lambda settings, dataset, repository: build_dataset_sql_context(dataset),
+    )
     repository = FakeDatasetRepository()
     monkeypatch.setattr("app.api.routes.build_dataset_repository", lambda owner: repository)
     monkeypatch.setattr(

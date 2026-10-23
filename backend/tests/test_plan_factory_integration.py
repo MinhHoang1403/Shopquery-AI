@@ -9,7 +9,7 @@ from app.guest.pipeline import run_guest_chat
 from app.guest.worker import parse_guest_file
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.planner import QueryPlanner
-from app.text_to_sql.query_plan import PlanDecision, PlanField, QueryPlan
+from app.text_to_sql.query_plan import PlanDecision, PlanExpression, PlanField, QueryPlan
 from tests.join_domains import DOMAINS
 from tests.test_join_domains_integration import domain_workspace  # noqa: F401
 from tests.test_plan_providers import gateway_harness, response
@@ -46,7 +46,9 @@ def test_real_provider_plan_through_authenticated_factory(monkeypatch, provider,
         assert isinstance(service._sql_pipeline._planner, QueryPlanner)
         assert isinstance(service._sql_pipeline._compiler, QueryCompiler)
         assert len(calls) == 3
-        assert "PlanDecision" in json.dumps(json.loads(calls[1].content))
+        assert ("PlanDecision" if provider == "knowledge" else "GenerationDecision") in json.dumps(
+            json.loads(calls[1].content)
+        )
     finally:
         gateway.close()
 
@@ -61,8 +63,9 @@ def test_real_provider_plan_through_guest_factory(monkeypatch, provider):
     decision = PlanDecision(
         plan=QueryPlan(
             source="t0",
+            expressions=[PlanExpression(operation="sum", arguments=["t0.c0"])],
             fields=[
-                PlanField(reference="t0.c0", alias="total", aggregate="sum"),
+                PlanField(reference="e0", alias="total"),
             ],
         )
     )

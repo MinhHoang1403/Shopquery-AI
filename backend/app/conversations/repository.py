@@ -36,6 +36,7 @@ class ConversationRecord:
     updated_at: datetime
     messages: tuple[MessageRecord, ...] = ()
     model_id: str = "gemini"
+    owner_user_id: UUID | None = None
 
 
 class ConversationRepository:
@@ -230,6 +231,7 @@ class ConversationRepository:
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
             model_id=conversation.model_id or "gemini",
+            owner_user_id=conversation.owner_user_id,
             messages=(
                 tuple(
                     ConversationRepository._message_record(message)

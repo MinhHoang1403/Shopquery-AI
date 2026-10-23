@@ -2,6 +2,7 @@
 
 import json
 import random
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -368,20 +369,21 @@ def test_explanation_mode_preserves_evidence_without_claiming_classification():
         compose_answer(result, chunks, draft)
 
 
-def test_wrong_decision_never_retries_or_publishes_raw_answer():
+def test_verified_policy_does_not_request_or_trust_a_model_verdict():
     result, chunks, draft = fixture()
     draft.decisions[0].status = "qualified"
     gateway = Mock(generate_structured=Mock(return_value=draft))
-    with pytest.raises(ModelResponseError):
-        HybridPipeline(
-            Mock(run=Mock(return_value=result)), Mock(retrieve=Mock(return_value=chunks)), gateway
-        ).run("Which qualify?")
-    gateway.generate_structured.assert_called_once()
+    actual = HybridPipeline(
+        Mock(run=Mock(return_value=result)), Mock(retrieve=Mock(return_value=chunks)), gateway
+    ).run("Which qualify?")
+    assert "Not qualified: E1, E3." in actual.answer
+    gateway.generate_structured.assert_not_called()
     gateway.generate_text.assert_not_called()
 
 
 def test_mutated_model_instance_is_revalidated_at_pipeline_boundary():
     result, chunks, draft = fixture()
+    chunks = [replace(chunks[0], document_scope=None)]
     draft.decisions[0].entity_values = [123]
     gateway = Mock(generate_structured=Mock(return_value=draft))
     with pytest.raises(ModelResponseError):
@@ -439,6 +441,7 @@ def test_semantic_refusal_does_not_fallback_even_when_provider_fallback_enabled(
     from app.core.errors import ChatTurnError
 
     result, chunks, draft = fixture()
+    result.sql += " LIMIT 1"
     draft.decisions[0].status = "qualified"
     gateway = Mock(generate_structured=Mock(return_value=draft))
     builder = Mock(return_value=gateway)
@@ -477,7 +480,7 @@ def test_policy_errors_are_redacted_but_provider_errors_preserve_existing_behavi
     assert "PRIVATE" not in str(error.value)
     pipeline._sql_pipeline.run.assert_not_called()
     gateway.generate_structured.assert_not_called()
-    pipeline._rag_pipeline.retrieve.return_value = fixture()[1]
+    pipeline._rag_pipeline.retrieve.return_value = [replace(fixture()[1][0], document_scope=None)]
     upstream = ProviderError("Synthetic transport error", fallback_allowed=True)
     gateway.generate_structured.side_effect = upstream
     with pytest.raises(ProviderError) as error:

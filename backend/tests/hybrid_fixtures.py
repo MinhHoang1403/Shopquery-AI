@@ -114,7 +114,9 @@ def classification_draft(
     )
 
 
-def assert_decision_summary(answer: str, rows: list[dict], statuses: list[str]) -> None:
+def assert_decision_summary(
+    answer: str, rows: list[dict], statuses: list[str], *, language: str = "en"
+) -> None:
     summary = answer.split("|", 1)[0]
     labels = {
         "qualified": "Qualified",
@@ -122,6 +124,13 @@ def assert_decision_summary(answer: str, rows: list[dict], statuses: list[str]) 
         "insufficient_evidence": "Insufficient evidence",
         "unverified": "Unverified",
     }
+    if language == "vi":
+        labels = {
+            "qualified": "Đạt",
+            "not_qualified": "Chưa đạt",
+            "insufficient_evidence": "Thiếu bằng chứng",
+            "unverified": "Chưa xác minh",
+        }
     for status, label in labels.items():
         expected = [
             str(row["entity_id"]) for row, s in zip(rows, statuses, strict=True) if s == status

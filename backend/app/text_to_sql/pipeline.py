@@ -48,7 +48,8 @@ class TextToSqlPipeline:
                 if evidence_context is not None
                 else self._planner.generate(question)
             )
-        compiled = self._compiler.compile(plan)
+        with diagnostic_stage("plan_compilation"):
+            compiled = self._compiler.compile(plan)
         validated = compiled.validated
         record_facts(sql_validated=True)
         guard = self._execution_guard(validated) if self._execution_guard else nullcontext()

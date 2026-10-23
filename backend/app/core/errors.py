@@ -90,8 +90,17 @@ class SqlUnsupportedError(SqlValidationError):
         ]
         | None = None,
         aggregate_reason: JoinAggregateReason | None = None,
+        grain_reason: Literal[
+            "fact_source",
+            "dimension_measure",
+            "subtotal_group",
+            "dimension_group_key",
+            "multiple_fact_measures",
+        ]
+        | None = None,
     ) -> None:
         super().__init__(message)
+        self.grain_reason = grain_reason
         self.reason = reason
         self.code = code
         self.aggregate_reason = aggregate_reason

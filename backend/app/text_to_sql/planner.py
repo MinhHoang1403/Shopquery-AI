@@ -4,6 +4,7 @@ from app.ai.gemini import GenerationGateway
 from app.core.errors import SqlUnsupportedError
 from app.datasets.context import DatasetSqlContext
 from app.text_to_sql.compiler import SchemaReferences
+from app.text_to_sql.plan_binding import bind_approved_grain
 from app.text_to_sql.query_plan import PlanDecision, QueryPlan
 from app.text_to_sql.schema_context import BUSINESS_TIME_ZONE
 
@@ -82,8 +83,8 @@ class QueryPlanner:
             else "Generic uploaded data; no default-store rules."
         )
         prompt = f"""
-Plan one read-only query using only the response schema. Return a PlanDecision with exactly
-one outcome: plan, or a nonempty unsupported_reason. Never return SQL or invent references.
+Plan one read-only query using only the response schema. Return exactly one query outcome
+or a nonempty unsupported reason as defined by that schema. Never return SQL or invent references.
 Schema IDs are the only allowed source/column/relationship references. Each relationship is
 backend-approved INNER N:1, source fact to target dimension. Use all required relationships;
 never silently drop a required table. No relationships means exactly one table, never JOIN.
@@ -134,4 +135,6 @@ Question: {question}
             raise SqlUnsupportedError(
                 "The planner could not produce a supported query", code="generator_unsupported"
             )
+        if self._context.dataset_id is not None and self._join_v1_enabled:
+            return bind_approved_grain(decision.plan, references)
         return decision.plan

@@ -29,7 +29,7 @@ def test_evidence_is_available_before_sql_and_redundant_grounding_is_skipped():
     gateway = Mock(generate_structured=Mock(return_value=draft))
     HybridPipeline(Mock(run=execute), Mock(retrieve=retrieve), gateway).run("Which qualify?")
     assert events == ["retrieve_and_rerank", "sql"]
-    gateway.generate_structured.assert_called_once()
+    gateway.generate_structured.assert_not_called()
     gateway.generate_text.assert_not_called()
 
 

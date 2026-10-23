@@ -279,6 +279,51 @@ def compose_answer(
     return "\n\n".join(parts)
 
 
+def verified_classification(
+    result: SqlResult,
+    chunks: list[RetrievedChunk],
+    context: DatasetSqlContext | None,
+    language: Literal["vi", "en"],
+) -> HybridAnswerDraft | None:
+    policies = verified_policies(result, chunks, context)
+    if len(policies) != 1:
+        return None
+    rule_id, (policy, chunk_id) = next(iter(policies.items()))
+    _, bindings = projection_bindings(result)
+    pairs = []
+    for identity, expression in bindings.items():
+        if not isinstance(expression, exp.Column) or expression.name != policy.entity_column:
+            continue
+        for metric in bindings:
+            try:
+                validate_policy_binding(result, [identity], metric, policy)
+            except (ModelResponseError, KeyError, TypeError):
+                continue
+            pairs.append((identity, metric))
+    if len(pairs) != 1:
+        _fail()
+    identity, metric = pairs[0]
+    identities = _identities(result, [identity], context)
+    chunk = next(chunk for chunk in chunks if chunk.chunk_id == chunk_id)
+    return HybridAnswerDraft(
+        mode="classification",
+        language=language,
+        identity_fields=[identity],
+        metric_field=metric,
+        rule_id=rule_id,
+        decisions=[
+            EntityDecision(
+                entity_values=list(entity),
+                status=evaluate(row[metric], policy),
+                supporting_chunk_ids=[chunk_id],
+            )
+            for entity, row in zip(identities, result.rows, strict=True)
+        ],
+        notes=[EvidenceNote(chunk_id=chunk_id, quote=chunk.content[:4000])],
+        used_chunk_ids=[chunk_id],
+    )
+
+
 def decision_prompt() -> str:
     return """
 Return mode=classification for per-entity qualification/eligibility/threshold decisions.

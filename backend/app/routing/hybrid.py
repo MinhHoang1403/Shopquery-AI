@@ -15,6 +15,7 @@ from app.routing.hybrid_evidence import (
     HybridAnswerDraft,
     compose_answer,
     decision_prompt,
+    verified_classification,
 )
 from app.routing.hybrid_policy import numeric_policies
 from app.routing.hybrid_policy_binding import policy_evidence
@@ -114,9 +115,17 @@ SQL rows: {json.dumps(sql_result.rows, ensure_ascii=False)}
 Document evidence:
 {evidence}
 """.strip()
-        with diagnostic_stage("answer_grounding"):
+        with diagnostic_stage("policy_verification"):
             try:
-                draft = self._gateway.generate_structured(prompt, HybridAnswerDraft)
+                language = (
+                    "en"
+                    if question.lower().startswith(("which ", "what ", "how ", "why "))
+                    else "vi"
+                )
+                draft = verified_classification(sql_result, chunks, self._context, language)
+                if draft is None:
+                    with diagnostic_stage("answer_grounding"):
+                        draft = self._gateway.generate_structured(prompt, HybridAnswerDraft)
                 draft = HybridAnswerDraft.model_validate(draft)
                 try:
                     answer = compose_answer(sql_result, chunks, draft, self._context)

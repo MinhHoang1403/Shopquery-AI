@@ -113,7 +113,7 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
     assert response.route == RouteLabel.HYBRID and response.rows == expected
     assert response.used_model == model and not response.fallback_used
     assert response.sql.count("JOIN") == tables_count - 1
-    assert_decision_summary(response.answer, expected, statuses)
+    assert_decision_summary(response.answer, expected, statuses, language="vi")
     assert len(response.sources) == 1 and response.sources[0].content == policy
-    assert calls == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]
+    assert calls == ["RouteDecision", "PlanDecision"]
     assert "Untrusted intermediate" not in response.answer
