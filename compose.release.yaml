@@ -2,6 +2,28 @@ services:
   api:
     image: ${SHOPQUERY_API_IMAGE:?Set a reviewed immutable API image digest or tag}
     build: !reset null
+    environment:
+      BETA_PROVIDER_DATA_ENABLED: ${RELEASE_PROVIDER_DATA_ENABLED:-false}
+      GUEST_AI_ENABLED: ${RELEASE_GUEST_AI_ENABLED:-false}
+      SQL_JOIN_V1_ENABLED: "true"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      OMP_NUM_THREADS: "2"
+      RAG_RERANKER_PATH: /models/bge
+      RAG_RERANKER_REVISION: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+      RAG_RERANKER_DEVICE: cpu
+      RAG_RERANKER_BATCH_SIZE: "2"
+      RAG_RERANKER_MAX_LENGTH: "512"
+      RAG_CANDIDATE_TOP_K: "12"
+      RAG_TOP_N: "3"
+    volumes:
+      - type: bind
+        source: ${BGE_MODEL_PATH:?Set BGE_MODEL_PATH to the verified local snapshot}
+        target: /models/bge
+        read_only: true
+        bind:
+          create_host_path: false
   web:
     image: ${SHOPQUERY_WEB_IMAGE:?Set a reviewed immutable web image digest or tag}
     build: !reset null

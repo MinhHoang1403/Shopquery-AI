@@ -1,0 +1,11 @@
+services:
+  api:
+    environment:
+      RAG_RERANKER_DEVICE: cuda:0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -18,6 +18,9 @@ RUN npm run build
 
 FROM nginx:1.31.6-alpine3.24
 
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
+
 COPY infrastructure/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
