@@ -68,6 +68,12 @@ def test_actual_adapter_serializes_plan_and_compiles(monkeypatch, provider):
         assert "Must be null for field aggregate row_count" in serialized
         assert "aggregate is an operation applied to reference" in serialized
         assert 'sql"' not in json.dumps(PlanDecision.model_json_schema())
+        if provider == "gemini":
+            config = body["generationConfig"]
+            assert config["responseJsonSchema"] == PlanDecision.model_json_schema()
+            assert "responseSchema" not in config
+            assert "additional_properties" not in serialized
+            assert '"additionalProperties": false' in serialized
     finally:
         gateway.close()
 
@@ -102,16 +108,16 @@ def test_aggregate_expression_is_not_aggregated_again(monkeypatch, provider, fie
         monkeypatch, provider, [response(provider, json.dumps(payload))]
     )
     try:
+        if field_aggregate == "row_count":
+            with pytest.raises((ProviderError, ModelResponseError)):
+                QueryPlanner(gateway, "2026-10-01", context).generate("Số dòng đã đóng?")
+            assert len(calls) == 1
+            return
         plan = QueryPlanner(gateway, "2026-10-01", context).generate("Tổng học phí đã đóng?")
         if field_aggregate is None:
             assert "SUM(" in compiler.compile(plan).validated.statement.upper()
         else:
-            message = (
-                "Invalid nested aggregate"
-                if field_aggregate == "sum"
-                else "Row count does not take a value column"
-            )
-            with pytest.raises(SqlValidationError, match=message):
+            with pytest.raises(SqlValidationError, match="Invalid nested aggregate"):
                 compiler.compile(plan)
         assert len(calls) == 1
     finally:

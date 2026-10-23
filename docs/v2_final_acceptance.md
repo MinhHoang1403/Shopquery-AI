@@ -21,9 +21,8 @@ rule that blocked merge/cleanup on BGE. No v2.0.0 tag or full acceptance claim.
 - Windows checkout introduced CRLF-only hash drift; `*.py text eol=lf` now preserves
   canonical Git/image bytes. Strict runtime verifier passes without relaxing hashes.
 - One release API8001/Web8080/main PostgreSQL15432, no reload/source bind. Existing
-  vector-only retrieval via private `RELEASE_RERANKER_PATH=`. Provider gate temporarily
-  ON in the separately approved synthetic window; Guest AI/fallback OFF, SDK attempts1.
-  Main container/volume not recreated or migrated. Close paid gate at window end/blocker.
+  vector-only retrieval via private `RELEASE_RERANKER_PATH=`. Provider/Guest AI/fallback
+  OFF, SDK attempts1. Main container/volume not recreated or migrated.
 
 ## Functionality
 
@@ -149,10 +148,42 @@ Two diagnostics used2 generation stages, no embeddings or SQL execution:
   Web/API8080 HTTP200 without recreating Web. API-only release now validates/reloads
   Nginx after API health. No Web image change or new deployment stack.
 - 12 ordinary Vietnamese cases and independent read-only PG oracles prepared.
-  Live UI cases1–2 dispatched to operator, awaiting results; no accuracy PASS yet.
+  First window stopped after5 UI questions:3 PASS,2 FAIL. Paid gate closed through
+  API-only deploy; Nginx refresh branch and direct8080 Web/API verification PASS.
+
+| Natural question / Knowledge | Result |
+| --- | --- |
+| Tổng phí giao hàng là bao nhiêu? | PASS SQL:2472500.00, independent PG oracle match |
+| Chỉ tính những đơn đã giao xong, tổng phí và số đơn là bao nhiêu? | PASS SQL:1879500.00/38 rows, exact Đã giao filter and COUNT(*) |
+| Mỗi kho có bao nhiêu đơn và thu tổng phí bao nhiêu? | FAIL row_count with column reference; no execution |
+| Khi đánh giá KPI, có bỏ những đơn đã hủy không? | PASS RAG:all statuses, real citation22 |
+| Theo chính sách KPI, những kho nào đang đạt? | FAIL at answer verification after retrieval and5 SQL rows |
+
+Operator approved4 additional structured diagnostic calls and1 query embedding,
+within the original38/8/0 total cap; no automatic/manual retry outside these explicit
+diagnostics. Global paid gate remained OFF. Used totals:5 UI chats,19 generation
+stages (including6 diagnostic calls),3 query embeddings,0 document embeddings.
+
+Captured boundaries now establish:
+
+- Knowledge JOIN plan puts a fact ID reference on row_count. Typed PlanField now
+  exposes separate JSON-schema branches for row count (null reference) versus
+  other fields and validates the same rule before compilation. Compiler guard stays.
+- Knowledge Hybrid SQL returns all5 correct warehouse totals and the backend policy
+  is verified, but the model assigns unverified to every row despite choosing that
+  policy. Prompt/schema descriptions now distinguish an already bound policy from
+  the final independent verdict check. No verdict override or weakened validation.
+- Gemini HTTP400 explicitly names unknown `additional_properties` in response_schema.
+  Switch to SDK-supported standard response_json_schema; retain original Pydantic
+  extra-field/bounds validation. No model change or unstructured JSON fallback.
+- Targeted provider/plan/count/JOIN/Hybrid tests340/340 and Ruff PASS. New source is
+  pending API build/deploy/live verification; these checks do not prove live accuracy.
+  Six new UI questions prepared (11 unique questions total); stay within original cap.
 
 Schema descriptions and backend validation follow the official
 [Gemini structured-output guidance](https://ai.google.dev/gemini-api/docs/structured-output).
+Standard JSON-schema request configuration follows the
+[Google GenAI SDK documentation](https://googleapis.github.io/python-genai/).
 
 Browser automation was disabled by Work settings. Operator used real UI8080;
 no cookie extraction or fake auth. Next: investigate provider/schema boundaries,

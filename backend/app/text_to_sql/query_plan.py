@@ -1,4 +1,5 @@
-from typing import Literal
+from copy import deepcopy
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -49,8 +50,22 @@ class PlanExpression(BaseModel):
     ) = None
 
 
+def _field_aggregate_schema(schema: dict[str, Any]) -> None:
+    """Expose the same row-count/reference rule to constrained generation and validation."""
+    row_count = deepcopy(schema)
+    row_count["properties"]["reference"] = {"type": "null"}
+    row_count["properties"]["aggregate"] = {"type": "string", "enum": ["row_count"]}
+    row_count["required"] = [*row_count.get("required", []), "aggregate"]
+    other = deepcopy(schema)
+    other["properties"]["aggregate"]["anyOf"][0]["enum"].remove("row_count")
+    schema.clear()
+    schema["anyOf"] = [row_count, other]
+
+
 class PlanField(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, json_schema_extra=_field_aggregate_schema
+    )
 
     reference: str | None = Field(
         default=None,
@@ -64,6 +79,12 @@ class PlanField(BaseModel):
         "Use null if reference already contains an aggregate. "
         "row_count requires reference=null; value_count requires a source column.",
     )
+
+    @model_validator(mode="after")
+    def row_count_has_no_reference(self) -> "PlanField":
+        if self.aggregate == "row_count" and self.reference is not None:
+            raise ValueError("Row count does not take a value column")
+        return self
 
 
 class PlanFilter(BaseModel):

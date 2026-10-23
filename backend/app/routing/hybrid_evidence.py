@@ -29,7 +29,11 @@ class EvidenceNote(BaseModel):
 class EntityDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, revalidate_instances="always")
     entity_values: list[str]
-    status: DecisionStatus
+    status: DecisionStatus = Field(
+        description="With a backend-bound policy: qualified when the exact SQL metric meets "
+        "its operator/threshold, not_qualified otherwise, insufficient_evidence for NULL. "
+        "unverified applies only when no backend-bound policy is available."
+    )
     supporting_chunk_ids: list[int]
 
 
@@ -284,6 +288,11 @@ No free-form answer/summary is accepted: backend composes both from the decision
 Use only Backend policy candidates. They include complete-document numeric prose within
 a closed grammar or shopquery-rule-v1 rules. Copy rule_id and bind metric_field and
 identity_fields to exact SQL outputs for those source columns; never invent or convert units.
+These candidates have already passed source and SQL binding checks. Their candidate label
+means the backend will independently check your final verdict, not that the policy is unknown.
+For a bound policy, compare the exact metric value with its operator/threshold: return
+qualified when true, not_qualified when false, insufficient_evidence for a NULL metric.
+Do not return unverified merely because backend final verification is still required.
 Policy all_rows scope cannot be proved for filtered/top-N SQL; do not claim verification.
 Without a backend policy candidate, statuses must be unverified (or insufficient_evidence for NULL).
 Model-extracted rules are not proof; only backend-bound candidates may qualify entities.

@@ -6,7 +6,7 @@ from sqlglot import exp, parse_one
 
 from app.core.errors import SqlValidationError
 from app.text_to_sql.compiler import QueryCompiler
-from app.text_to_sql.query_plan import PlanField, PlanFilter, PlanSort, QueryPlan
+from app.text_to_sql.query_plan import PlanDecision, PlanField, PlanFilter, PlanSort, QueryPlan
 from tests.test_three_table_join import PS, SC, TYPES
 from tests.test_workspace_prompts import tuition_context
 
@@ -55,6 +55,28 @@ def test_count_values_and_rows_have_different_provenance():
     ]
 
 
+def test_row_count_wire_schema_and_validation_require_null_reference():
+    branches = PlanField.model_json_schema()["anyOf"]
+    assert branches[0]["properties"]["reference"] == {"type": "null"}
+    assert branches[0]["properties"]["aggregate"]["enum"] == ["row_count"]
+    assert "aggregate" in branches[0]["required"]
+    assert "row_count" not in branches[1]["properties"]["aggregate"]["anyOf"][0]["enum"]
+    assert PlanField(alias="rows", aggregate="row_count").reference is None
+    with pytest.raises(ValidationError, match="Row count does not take a value column"):
+        PlanDecision.model_validate({
+            "plan": {
+                "source": "t2",
+                "fields": [
+                    {"reference": "t0.c0", "alias": "kho_id"},
+                    {"reference": "t2.c0", "alias": "so_don", "aggregate": "row_count"},
+                    {"reference": "t2.c2", "alias": "tong_phi", "aggregate": "sum"},
+                ],
+                "group_by": ["t0.c0"],
+                "relationships": ["r1", "r0"],
+            }
+        })
+
+
 def test_model_values_cannot_become_sql_instructions():
     compiler = QueryCompiler(tuition_context())
     key = field(compiler, "tuition_fixture", "ma_hoc_vien")
@@ -77,7 +99,11 @@ def test_model_values_cannot_become_sql_instructions():
         {"source": "uploaded_data.other_owner"},
         {"fields": [PlanField(reference="unknown", alias="x")]},
         {"relationships": ["unapproved"]},
-        {"fields": [PlanField(alias="x", aggregate="row_count", reference="t0.c0")]},
+        {
+            "fields": [
+                PlanField.model_construct(alias="x", aggregate="row_count", reference="t0.c0")
+            ]
+        },
         {
             "fields": [
                 PlanField(alias="x", aggregate="row_count"),

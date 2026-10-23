@@ -111,6 +111,14 @@ def test_known_kh_rows_have_one_authoritative_qualified_set():
     assert "untrusted SQL narrative" not in answer
 
 
+def test_unverified_model_verdict_cannot_override_a_bound_policy():
+    result, chunks, draft = fixture()
+    for decision in draft.decisions:
+        decision.status = "unverified"
+    with pytest.raises(ModelResponseError):
+        compose_answer(result, chunks, draft)
+
+
 @pytest.mark.parametrize("language", ["vi", "en"])
 @pytest.mark.parametrize("aggregate", ["sum", "avg"])
 def test_summary_and_detail_use_same_decisions(language, aggregate):

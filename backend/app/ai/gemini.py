@@ -65,7 +65,7 @@ class GeminiGateway:
                 config=types.GenerateContentConfig(
                     temperature=0,
                     response_mime_type="application/json",
-                    response_schema=response_model,
+                    response_json_schema=response_model.model_json_schema(),
                 ),
             )
             return response_model.model_validate_json(response.text)
