@@ -139,6 +139,32 @@ verify identity → deploy API-only/Web-only → postdeploy health/auth/data smo
 Chạy `./scripts/test.ps1` theo [testing](testing.md), integration chỉ dùng
 `shopquery_test_stage1` trên DevDB. Không chạy test destructive trên main.
 
+Ví dụ cập nhật riêng API từ root, giữ nguyên bộ dependency CUDA của image hiện hành;
+vector-only vẫn do `RELEASE_RERANKER_PATH=` quyết định, không tải BGE khi build:
+
+```powershell
+git switch main
+git pull --ff-only
+# Sửa source, chọn đúng test liên quan; không chạy toàn bộ suite mỗi lần.
+Push-Location backend
+./.venv/Scripts/python.exe -m pytest tests/test_plan_providers.py tests/test_providers.py tests/test_gemini.py -q
+Pop-Location
+git add -p
+git commit -m "Describe the verified fix"
+git push origin main
+$taskRevision = git rev-parse HEAD
+docker build -f backend/Dockerfile --build-arg SOURCE_REVISION=$taskRevision --build-arg INSTALL_RERANKER=true --build-arg RERANKER_EXTRA=reranker-cuda -t shopquery-ai-api:main-$taskRevision .
+docker image inspect --format '{{json .RepoDigests}}' shopquery-ai-api:main-$taskRevision
+# Pin digest vừa build vào SHOPQUERY_API_IMAGE trong private .env.release.
+# Chỉ sau khi operator duyệt thời điểm gián đoạn API:
+./scripts/release.ps1 -Deploy -Service api
+Invoke-RestMethod http://127.0.0.1:8080/api/health
+```
+
+Kiểm cả UI8080, session/history và hành vi đã sửa sau deploy; health không chứng
+minh AI đúng. Khi chỉ sửa Web, build frontend/Dockerfile rồi pin/deploy riêng web.
+Không đổi dependency extra, key, volume hoặc bật paid gates trong ví dụ này.
+
 Nếu postdeploy FAIL, dùng rollback API/Web pin digest theo bàn giao, cùng protected
 main volume và reviewed original environment; không restore/drop main DB để xóa
 operational writes. Baseline images cũ không có OCI revision label nên không dùng

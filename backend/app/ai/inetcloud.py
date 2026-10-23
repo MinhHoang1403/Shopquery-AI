@@ -49,18 +49,15 @@ class InetCloudGateway:
         client = self._client.with_structured_output(
             response_model, method="json_schema", strict=True, include_raw=True
         )
-        for _ in range(2):
-            try:
-                response = self._invoke(client, prompt)
-            except StructuredOutputError:
-                continue
-            if response.get("parsing_error") or response.get("parsed") is None:
-                continue
-            try:
-                return response_model.model_validate(response["parsed"])
-            except ValidationError:
-                continue
-        raise StructuredOutputError("Knowledge trả JSON sai schema.", fallback_allowed=True)
+        response = self._invoke(client, prompt)
+        if response.get("parsing_error") or response.get("parsed") is None:
+            raise StructuredOutputError("Knowledge trả JSON sai schema.", fallback_allowed=True)
+        try:
+            return response_model.model_validate(response["parsed"])
+        except ValidationError as exc:
+            raise StructuredOutputError(
+                "Knowledge trả JSON sai schema.", fallback_allowed=True
+            ) from exc
 
     @staticmethod
     def _invoke(client: Runnable, prompt: str) -> Any:

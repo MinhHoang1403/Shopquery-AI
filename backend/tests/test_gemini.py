@@ -141,3 +141,58 @@ def test_router_does_not_retry_authentication_error(
         harness.close()
 
     assert len(harness.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "category"),
+    [
+        (400, "request_rejected"),
+        (401, "authentication_or_permission"),
+        (403, "authentication_or_permission"),
+        (429, "quota_or_rate_limit"),
+        (503, "transient_unavailable"),
+    ],
+)
+def test_error_diagnostics_exclude_provider_payloads(monkeypatch, caplog, status, category):
+    response = httpx.Response(
+        status,
+        json={"error": {"code": status, "message": "private-upstream-payload"}},
+    )
+    harness = _build_harness(monkeypatch, [response] * 3)
+    try:
+        with pytest.raises(ModelResponseError):
+            QueryRouter(harness.gateway).route("private-question")
+    finally:
+        harness.close()
+    records = [record for record in caplog.records if record.name == "app.ai.gemini"]
+    assert len(records) == 1
+    assert records[0].getMessage() == (
+        "provider_error provider=gemini operation=generation "
+        f"http_status={status} category={category}"
+    )
+    assert records[0].exc_info is None
+    assert "private-upstream-payload" not in records[0].getMessage()
+    assert "private-question" not in records[0].getMessage()
+    assert "test-key" not in records[0].getMessage()
+
+
+@pytest.mark.parametrize(
+    ("message", "category"),
+    [
+        ("private-payload: schema rejected", "schema_rejected"),
+        ("private-payload: schema constraint has too many states", "schema_complexity"),
+    ],
+)
+def test_schema_error_category_does_not_log_the_message(monkeypatch, caplog, message, category):
+    harness = _build_harness(
+        monkeypatch, [httpx.Response(400, json={"error": {"code": 400, "message": message}})]
+    )
+    try:
+        with pytest.raises(ModelResponseError):
+            QueryRouter(harness.gateway).route("private-question")
+    finally:
+        harness.close()
+    records = [record for record in caplog.records if record.name == "app.ai.gemini"]
+    assert len(records) == 1
+    assert f"category={category}" in records[0].getMessage()
+    assert "private-payload" not in records[0].getMessage()

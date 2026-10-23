@@ -37,7 +37,12 @@ class PlanExpression(BaseModel):
         "month_label",
         "date_label",
     ]
-    arguments: list[str] = Field(default_factory=list, max_length=100)
+    arguments: list[str] = Field(
+        default_factory=list,
+        max_length=100,
+        description="Earlier expression/column IDs; row_count takes no arguments. "
+        "An aggregate takes a non-aggregate input; value_count takes one source column.",
+    )
     value: str | None = Field(default=None, max_length=8000)
     value_type: (
         Literal["TEXT", "NUMERIC", "BIGINT", "BOOLEAN", "DATE", "TIMESTAMP", "TIMESTAMPTZ"] | None
@@ -47,9 +52,18 @@ class PlanExpression(BaseModel):
 class PlanField(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    reference: str | None = None
+    reference: str | None = Field(
+        default=None,
+        description="Column or expression ID. Must be null for field aggregate row_count. "
+        "When referencing an aggregate expression, aggregate must be null.",
+    )
     alias: str = Field(min_length=1, max_length=63)
-    aggregate: Literal["sum", "avg", "min", "max", "row_count", "value_count"] | None = None
+    aggregate: Literal["sum", "avg", "min", "max", "row_count", "value_count"] | None = Field(
+        default=None,
+        description="Applies an aggregate to reference, not a label for its result. "
+        "Use null if reference already contains an aggregate. "
+        "row_count requires reference=null; value_count requires a source column.",
+    )
 
 
 class PlanFilter(BaseModel):

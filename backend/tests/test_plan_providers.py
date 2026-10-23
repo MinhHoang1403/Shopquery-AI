@@ -65,7 +65,55 @@ def test_actual_adapter_serializes_plan_and_compiles(monkeypatch, provider):
         body = json.loads(calls[0].content)
         serialized = json.dumps(body)
         assert "PlanDecision" in serialized and "expressions" in serialized
+        assert "Must be null for field aggregate row_count" in serialized
+        assert "aggregate is an operation applied to reference" in serialized
         assert 'sql"' not in json.dumps(PlanDecision.model_json_schema())
+    finally:
+        gateway.close()
+
+
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+@pytest.mark.parametrize("field_aggregate", [None, "sum", "row_count"])
+def test_aggregate_expression_is_not_aggregated_again(monkeypatch, provider, field_aggregate):
+    context = tuition_context()
+    compiler = QueryCompiler(context)
+    column = next(
+        key
+        for key, value in compiler.references.columns.items()
+        if value == ("tuition_fixture", "da_dong")
+    )
+    payload = {
+        "plan": {
+            "source": "t0",
+            "expressions": [
+                {"operation": "sum", "arguments": [column]},
+                {"operation": "row_count", "arguments": []},
+            ],
+            "fields": [
+                {
+                    "reference": "e1" if field_aggregate == "row_count" else "e0",
+                    "alias": "metric",
+                    "aggregate": field_aggregate,
+                }
+            ],
+        }
+    }
+    gateway, calls = gateway_harness(
+        monkeypatch, provider, [response(provider, json.dumps(payload))]
+    )
+    try:
+        plan = QueryPlanner(gateway, "2026-10-01", context).generate("Tổng học phí đã đóng?")
+        if field_aggregate is None:
+            assert "SUM(" in compiler.compile(plan).validated.statement.upper()
+        else:
+            message = (
+                "Invalid nested aggregate"
+                if field_aggregate == "sum"
+                else "Row count does not take a value column"
+            )
+            with pytest.raises(SqlValidationError, match=message):
+                compiler.compile(plan)
+        assert len(calls) == 1
     finally:
         gateway.close()
 
@@ -96,7 +144,7 @@ def test_invalid_provider_plans_fail_safely(monkeypatch, provider, payload):
     try:
         with pytest.raises((ProviderError, ModelResponseError)):
             QueryPlanner(gateway, "2026-10-01", tuition_context()).generate("Q")
-        assert len(calls) == (2 if provider == "knowledge" else 1)
+        assert len(calls) == 1
     finally:
         gateway.close()
 

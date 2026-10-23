@@ -120,15 +120,15 @@ def test_http_error_classification_and_sdk_retry_bound(monkeypatch, status):
     assert error.value.fallback_allowed == (status in {408, 429, 500, 502, 503, 504})
 
 
-def test_malformed_structured_retried_twice_without_repair(monkeypatch):
+def test_malformed_structured_fails_without_another_paid_request(monkeypatch):
     gateway, calls = harness(
-        monkeypatch, [completion("bad-json"), completion('{"route":"INVALID"}')]
+        monkeypatch, [completion("bad-json"), completion('{"route":"SQL","reason":"Rows"}')]
     )
     with pytest.raises(ProviderError) as error:
         gateway.generate_structured("Classify", RouteDecision)
     gateway.close()
     assert error.value.fallback_allowed
-    assert len(calls) == 2
+    assert len(calls) == 1
 
 
 def test_network_timeout_is_transient(monkeypatch):

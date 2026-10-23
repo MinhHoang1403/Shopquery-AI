@@ -1,5 +1,6 @@
 """Small Google GenAI SDK adapter with validated structured outputs."""
 
+import logging
 from typing import Protocol, TypeVar
 
 from google import genai
@@ -16,6 +17,7 @@ from app.core.errors import (
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 TRANSIENT_HTTP_STATUS_CODES = list(TRANSIENT_PROVIDER_STATUSES)
+logger = logging.getLogger(__name__)
 
 
 class GenerationGateway(Protocol):
@@ -122,6 +124,30 @@ class GeminiGateway:
 
     @staticmethod
     def _raise_api_error(operation: str, exc: errors.APIError) -> None:
+        category = "request_rejected"
+        if exc.code in {401, 403}:
+            category = "authentication_or_permission"
+        elif exc.code == 429:
+            category = "quota_or_rate_limit"
+        elif exc.code in TRANSIENT_HTTP_STATUS_CODES:
+            category = "transient_unavailable"
+        elif exc.code == 400:
+            message = str(exc.message).lower()
+            if "schema" in message:
+                category = "schema_rejected"
+                if any(
+                    term in message
+                    for term in (
+                        "too many states", "too much branching", "too complex", "complexity"
+                    )
+                ):
+                    category = "schema_complexity"
+        logger.warning(
+            "provider_error provider=gemini operation=%s http_status=%s category=%s",
+            operation,
+            exc.code,
+            category,
+        )
         if exc.code in TRANSIENT_HTTP_STATUS_CODES:
             raise ModelResponseError(
                 f"Gemini {operation} remained unavailable after retry attempts"

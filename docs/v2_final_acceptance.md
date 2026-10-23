@@ -116,10 +116,32 @@ claims. No customer data transmitted.
 | Policy | Knowledge/RAG | PASS correct source/citation,6.09s |
 | KPI | Gemini/HYBRID | Retrieval PASS, generation request rejected before execution,2.26s |
 
-Exact failing plans/upstream error bodies were not retained. Do not infer compiler,
+Previous exact failing plans/upstream error bodies were not retained. Do not infer compiler,
 quota/key or schema root cause from generic errors alone. Guards remain intact.
 New-chat selection resets to default Knowledge by existing design; later requested/
 used model attribution verified. UI mismatch is not yet proven.
+
+Fresh approved diagnostic window: maximum2 structured diagnostics plus12 natural
+language chats,38 generation stages,8 query embeddings,0 document embeddings;
+single SDK/schema attempt, no manual retry, fallback/Guest AI OFF. Old budget closed.
+Two diagnostics used2 generation stages, no embeddings or SQL execution:
+
+- Knowledge reproduced the failure: an expression already performs SUM/row_count,
+  but its output field repeats the aggregate. Compiler correctly rejects this.
+  Planner and typed schema now explain the two mutually exclusive encodings and
+  null-reference row_count contract. COUNT/JOIN/compiler guards unchanged.
+- Gemini returned HTTP400, schema rejection at QueryPlan generation. The retained
+  diagnostic does not identify the offending schema constraint; no speculative
+  model/request-format change. Safe status/category logging added, without raw
+  upstream messages, prompts, identities or credentials.
+- Knowledge no longer makes a second application-level schema request after invalid
+  output. SDK retry configuration remains explicit and separately tested.
+- Targeted provider/planner/compiler tests111/111 PASS, including captured failure
+  shapes and request privacy. This is not live accuracy acceptance. API image/deploy
+  and the12-question natural-language window are pending;8080 retains prior image.
+
+Schema descriptions and backend validation follow the official
+[Gemini structured-output guidance](https://ai.google.dev/gemini-api/docs/structured-output).
 
 Browser automation was disabled by Work settings. Operator used real UI8080;
 no cookie extraction or fake auth. Next: investigate provider/schema boundaries,
