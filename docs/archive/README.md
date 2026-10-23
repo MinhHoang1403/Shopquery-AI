@@ -1,7 +1,7 @@
 # Historical evidence
 
 Files in this directory are dated snapshots, not current operating instructions.
-Current status: [Stage 1 implementation report](../stage1_implementation_report.md).
+Current status: [V2 acceptance](../v2_final_acceptance.md).
 Current behavior: [architecture](../architecture.md), [capabilities](../capabilities.md).
 
 October 2026 reports preserve SQL/COUNT/JOIN semantics investigations, provider

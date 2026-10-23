@@ -1,4 +1,4 @@
-> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+> HISTORICAL snapshot. Current status: [V2 acceptance](../../v2_final_acceptance.md).
 
 # SQL/JOIN root-cause audit — 20–21/10/2026
 

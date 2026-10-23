@@ -37,10 +37,10 @@ baseline sẽ được verify-runtime báo rõ. Không down -v/prune hoặc trá
 ## Release
 
 Trạng thái nghiệm thu hiện hành nằm trong [nghiệm thu V2](v2_final_acceptance.md);
-baseline và image rollback được bảo tồn trong [bàn giao V2](v2_release_handoff.md).
+baseline và image rollback được bảo tồn trong [bàn giao V2](archive/2026-10/v2_release_handoff.md).
 Operator đã duyệt controlled acceptance cutover8080 ở chế độ vector-only để dùng
 Google/history/upload trong khi Gate C tạm hoãn. Đây chưa phải Stage2/full release
-acceptance; PR vẫn draft, chưa merge/tag. Không lặp GPU benchmark theo chỉ đạo mới.
+acceptance. PR#1 đã merge theo chỉ đạo consolidation riêng; chưa tag V2. Không lặp GPU benchmark.
 
 `compose.release.yaml` dùng cùng Dockerfiles/source với development nhưng chỉ nhận
 `SHOPQUERY_API_IMAGE`, `SHOPQUERY_WEB_IMAGE` đã pin digest; không build khi deploy.

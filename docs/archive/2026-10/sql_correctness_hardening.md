@@ -1,4 +1,4 @@
-> HISTORICAL snapshot. Current architecture/status: [Stage 1 report](../../stage1_implementation_report.md).
+> HISTORICAL snapshot. Current status: [V2 acceptance](../../v2_final_acceptance.md).
 
 # SQL correctness hardening — 19/10/2026
 

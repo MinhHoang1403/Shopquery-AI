@@ -1,3 +1,5 @@
+> HISTORICAL snapshot; current status: [V2 acceptance](../../v2_final_acceptance.md).
+
 # MVP V2 — Stage 1 implementation report
 
 **STAGE 1 COMPLETED — READY FOR STAGE 2**
@@ -39,8 +41,8 @@ Các checkpoints 22–23/10 phía dưới là lịch sử, không chứng nhận
 
 Giữ modular monolith, Google auth/CSRF/owner isolation, Guest workers/TTL/quota,
 PostgreSQL + pgvector, SQLAlchemy/Psycopg, SQLGlot, React/Vite và provider/model contracts.
-Canonical [architecture](architecture.md), [capabilities](capabilities.md),
-[security](security.md) thay các snapshot cũ làm hướng dẫn chính.
+Canonical [architecture](../../architecture.md), [capabilities](../../capabilities.md),
+[security](../../security.md) thay các snapshot cũ làm hướng dẫn chính.
 
 Production SQL có một path: authorized catalog → PlanDecision → QueryCompiler →
 SQLGlot/JOIN/COUNT → guarded reader execution với parameters. Không có legacy fallback.

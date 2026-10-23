@@ -2,7 +2,7 @@
 
 ## Phạm vi hướng dẫn
 
-Tài liệu này mô tả authentication và migration hiện hữu. Trạng thái MVP/runtime hiện tại nằm trong [báo cáo Giai đoạn 1](stage1_implementation_report.md), [architecture](architecture.md) và [deployment](deployment.md). Các mốc triển khai/nghiệm thu cũ không chứng nhận runtime development mới.
+Tài liệu này mô tả authentication và migration hiện hữu. Trạng thái MVP/runtime hiện tại nằm trong [nghiệm thu V2](v2_final_acceptance.md), [architecture](architecture.md) và [deployment](deployment.md). Các mốc triển khai/nghiệm thu cũ không chứng nhận runtime development mới.
 
 Google OIDC invite-only, PostgreSQL opaque sessions, CSRF, owner-scoped repositories, optional login và quota beta được giữ. Logout thành công về Guest trống. Không suy ra callback/logout live PASS từ browser mock. Lịch sử main upgrade/Guest nằm trong [archive](archive/README.md).
 

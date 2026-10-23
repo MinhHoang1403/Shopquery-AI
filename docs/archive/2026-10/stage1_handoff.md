@@ -1,7 +1,9 @@
+> HISTORICAL snapshot; current status: [V2 acceptance](../../v2_final_acceptance.md).
+
 # ShopQuery AI — current handoff
 
-Tiếp tục từ [báo cáo Giai đoạn 1](docs/stage1_implementation_report.md) và
-[architecture](docs/architecture.md). File này chỉ dẫn nơi tiếp nhận, không duy trì
+Tiếp tục từ [báo cáo Giai đoạn 1](stage1_implementation_report.md) và
+[architecture](../../architecture.md). File này chỉ dẫn nơi tiếp nhận, không duy trì
 một snapshot trạng thái thứ hai.
 
 Baseline: `0062e47d75cc51646bf9b45409a12aa49288552e`.

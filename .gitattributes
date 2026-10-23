@@ -1,3 +1,4 @@
 *.docx binary
 *.pdf binary
 *.xlsx binary
+*.py text eol=lf

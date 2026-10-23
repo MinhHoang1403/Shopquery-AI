@@ -8,9 +8,9 @@ Hỗ trợ SQL, RAG, Hybrid, Google OIDC, không gian cá nhân và Guest tạm 
 **STAGE 2 PARTIAL — ACCEPTANCE BLOCKED.** 8080 đã chạy release API/Nginx với main DB,
 Google login/history hoạt động, BGE tạm hoãn và dùng vector-only có sẵn. RAG thật của
 Gemini/Knowledge đã đạt phạm vi policy fixture; SQL/Hybrid còn blocker. Paid gates
-đã tắt sau bounded acceptance. Chưa merge/tag hoặc tuyên bố V2 hoàn tất.
+đã tắt sau bounded acceptance. PR#1 đã merge về main theo chỉ đạo consolidation; chưa tag hoặc tuyên bố V2 hoàn tất.
 Nguồn trạng thái hiện tại: [nghiệm thu V2](docs/v2_final_acceptance.md).
-Chi tiết QueryPlan/CUDA development: [báo cáo Giai đoạn 1](docs/stage1_implementation_report.md).
+Chi tiết QueryPlan/CUDA development: [báo cáo Giai đoạn 1](docs/archive/2026-10/stage1_implementation_report.md).
 Các báo cáo trong `docs/archive/` chỉ phản ánh thời điểm lịch sử.
 
 ## Tài liệu hiện hành
@@ -62,4 +62,4 @@ npm run build
 Integration chỉ dùng `shopquery_test_stage1` trên dev PostgreSQL cổng 15433.
 Không reset main hoặc dùng provider keys. Benchmark/live acceptance thuộc Giai đoạn 2.
 Không commit secrets, `.env`, weights, cache, logs hoặc dữ liệu người dùng.
-Không merge nhánh Giai đoạn 1 vào `main` trước nghiệm thu Giai đoạn 2.
+Main là source chính; BGE/SQL/Hybrid chưa đạt không được ghi full acceptance hoặc tag V2.

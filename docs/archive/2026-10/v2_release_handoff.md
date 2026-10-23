@@ -1,3 +1,5 @@
+> HISTORICAL snapshot; current status: [V2 acceptance](../../v2_final_acceptance.md).
+
 # ShopQuery AI V2 — bàn giao chuẩn bị release
 
 **V2 CONSOLIDATION PREPARED — MERGE/DEPLOY PENDING ACCEPTANCE**
