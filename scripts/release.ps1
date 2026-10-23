@@ -92,6 +92,12 @@ try {
             & docker @taskCompose up -d --no-deps --no-build --pull never --wait --wait-timeout 180 $taskName
             if ($LASTEXITCODE -ne 0) { throw "Release $taskName did not become healthy; use the reviewed rollback." }
         }
+        if ($Service -eq 'api') {
+            & docker @taskCompose exec -T web nginx -t
+            if ($LASTEXITCODE -ne 0) { throw 'Web proxy configuration validation failed.' }
+            & docker @taskCompose exec -T web nginx -s reload
+            if ($LASTEXITCODE -ne 0) { throw 'Web proxy could not refresh the API address.' }
+        }
     }
     $taskArguments = @('backend/scripts/verify_runtime.py', '--env-file', '.env', '--env-file', $ConfigPath)
     foreach ($taskFile in $taskFiles) { $taskArguments += @('--compose-file', $taskFile) }

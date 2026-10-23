@@ -11,17 +11,19 @@ rule that blocked merge/cleanup on BGE. No v2.0.0 tag or full acceptance claim.
 - PR#1 merged; consolidation main SHA `a55acb25162529b1b6b7d44d6b0bde5d4fcc8c96`.
 - [Main CI:3/3 PASS](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39899490078).
 - Workspace now tracks `main`; feature branch retained as historical reference.
-- Serving image source `e76dfed2ebcfaebcf37e36485d3041eda68f4209`:
-  API `shopquery-ai-api@sha256:e3989166a219acc914e009e66fb245d3c586b9cd01ce639c0a017324b02e49a7`;
+- API source `5c98c967b78767bd388c5b1202eeb21ec8322171`,
+  API `shopquery-ai-api@sha256:e581ffd9699a982526be035075f1c2ecb1515d111ae85bbc82f4bb6379008825`;
+  Web source `e76dfed2ebcfaebcf37e36485d3041eda68f4209`,
   Web `shopquery-ai-web@sha256:e4a8c96c742bfaf2e6ff834fb320f457dc443ad4df4fedcf797094461e99bfb1`.
 - Application Git blobs/80 Python module hashes match the serving image; repo HEAD
-  also contains host scripts/config/docs. Image revision is intentionally different
-  from merge SHA. No image rebuild for consolidation.
+  also contains host scripts/config/docs. No image rebuild for consolidation;
+  API rebuilt only after the minimal planner/provider patch.
 - Windows checkout introduced CRLF-only hash drift; `*.py text eol=lf` now preserves
   canonical Git/image bytes. Strict runtime verifier passes without relaxing hashes.
 - One release API8001/Web8080/main PostgreSQL15432, no reload/source bind. Existing
-  vector-only retrieval via private `RELEASE_RERANKER_PATH=`. Provider/Guest AI gates
-  OFF, fallback OFF, SDK attempts1. Main container/volume not recreated or migrated.
+  vector-only retrieval via private `RELEASE_RERANKER_PATH=`. Provider gate temporarily
+  ON in the separately approved synthetic window; Guest AI/fallback OFF, SDK attempts1.
+  Main container/volume not recreated or migrated. Close paid gate at window end/blocker.
 
 ## Functionality
 
@@ -137,8 +139,17 @@ Two diagnostics used2 generation stages, no embeddings or SQL execution:
 - Knowledge no longer makes a second application-level schema request after invalid
   output. SDK retry configuration remains explicit and separately tested.
 - Targeted provider/planner/compiler tests111/111 PASS, including captured failure
-  shapes and request privacy. This is not live accuracy acceptance. API image/deploy
-  and the12-question natural-language window are pending;8080 retains prior image.
+  shapes and request privacy. [Patch CI3/3 PASS](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/39900966187).
+  This is not live accuracy acceptance.
+- Operator approved API-only cutover and paid gate closure at window end/blocker.
+  New API deployed; strict verifier PASS, all34 schema/table fingerprints and118
+  installed package versions unchanged. Main DB/Web containers unchanged.
+- Direct8080 verification found Nginx retaining the previous API address after
+  recreation: API8001 healthy while8080 API failed. Graceful Nginx reload restored
+  Web/API8080 HTTP200 without recreating Web. API-only release now validates/reloads
+  Nginx after API health. No Web image change or new deployment stack.
+- 12 ordinary Vietnamese cases and independent read-only PG oracles prepared.
+  Live UI cases1–2 dispatched to operator, awaiting results; no accuracy PASS yet.
 
 Schema descriptions and backend validation follow the official
 [Gemini structured-output guidance](https://ai.google.dev/gemini-api/docs/structured-output).

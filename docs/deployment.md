@@ -122,6 +122,11 @@ Deploy branch đã thực hiện thành công cho controlled vector-only cutover
 API/Web digests, main container không recreate, source/image/environment verifier
 PASS và health8080 PASS. GPU mode chưa được nghiệm thu.
 
+API-only recreate có thể đổi địa chỉ nội bộ của API. Script chờ API healthy rồi
+chạy `nginx -t` và graceful reload trong Web hiện có để refresh upstream address.
+Web không recreate; thiếu/fail proxy reload làm deployment báo lỗi. Luôn kiểm
+`http://127.0.0.1:8080/api/health`, không chỉ health8001 hoặc trang HTML8080.
+
 Sửa `.env`/`.env.release` trong vùng private, kiểm diff tên biến mà không lộ giá trị,
 rồi recreate service chịu ảnh hưởng trong cửa sổ đã duyệt. Bật
 `RELEASE_PROVIDER_DATA_ENABLED=true` chỉ sau phê duyệt dữ liệu/ngân sách; Guest cần
