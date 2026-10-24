@@ -10,6 +10,16 @@ function renderAnswer(text: string) {
 }
 
 describe("Assistant content", () => {
+  it("shows attempted route and support ID without attributing a successful model", () => {
+    const id = "a".repeat(32);
+    render(<ChatMessage entry={{ id: "error", role: "error", text: "Nhà cung cấp tạm thời không khả dụng.",
+      response: { answer: "Nhà cung cấp tạm thời không khả dụng.", error: "Provider unavailable",
+        route: null, sql: null, rows: [], sources: [], requested_model: "gemini", used_model: null,
+        error_context: { attempted_route: "HYBRID", correlation_id: id } } }} />);
+    expect(screen.getByText("Tuyến đã thử: SQL + Tài liệu")).toBeVisible();
+    expect(screen.getByText(`Mã hỗ trợ: ${id}`)).toBeVisible();
+    expect(screen.queryByText("Gemini")).not.toBeInTheDocument();
+  });
   it("renders the old generic refusal kindly without rewriting restored history", () => {
     const text = "Bộ dữ liệu không có đủ loại nguồn để trả lời câu hỏi này. Nếu cần ghép hai bảng, hãy kiểm tra Quản lý dữ liệu → Liên kết bảng. JOIN v1 chỉ hỗ trợ hai bảng với quan hệ đã xác nhận và tổng hợp fact an toàn.";
     const entry = { id: "legacy", role: "assistant" as const, text,

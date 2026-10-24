@@ -232,6 +232,18 @@ afterEach(() => {
 });
 
 describe("ShopQuery workspace", () => {
+  it("sends explicit source selection without changing the original question", async () => {
+    const fetch = installApi();
+    render(<App />);
+    const input = await screen.findByLabelText("Nhập câu hỏi cho ShopQuery AI");
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(screen.getByRole("combobox", { name: "Nguồn trả lời" }), { target: { value: "SQL" } });
+    fireEvent.change(input, { target: { value: "Tổng số bản ghi?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
+    await screen.findByText("Đây là câu trả lời.");
+    const send = fetch.mock.calls.find(([url, options]) => String(url).endsWith("/messages") && options?.method === "POST");
+    expect(JSON.parse(String(send?.[1]?.body))).toMatchObject({ message: "Tổng số bản ghi?", route_hint: "SQL" });
+  });
   it("xóa workspace đang mở sẽ bỏ chat liên quan và trở về dữ liệu mẫu", async () => {
     const existing = summary(conversationId, {
       title: "Chat học phí cần xóa", dataset_id: 7, dataset_name: uploadedDataset.name,

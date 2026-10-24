@@ -155,9 +155,16 @@ Trong các bounded live window, SDK retry attempts đặt1 cho cả Gemini và
 Knowledge; không manual retry. Chỉ dùng verified synthetic fixture; hết cửa sổ
 hoặc gặp blocker thì tắt `RELEASE_PROVIDER_DATA_ENABLED` và recreate riêng API.
 Điều đó giữ Google/history/tabular upload, chặn paid chats/document embeddings.
-Sau nghiệm thu, operator đã yêu cầu bật lại để sử dụng bình thường: provider gate
-hiện ON cho tài khoản đăng nhập, Guest AI/fallback OFF, vector-only/no BGE. Đây
-không phải cửa sổ test phải tự đóng; xem mục F trong [acceptance](v2_final_acceptance.md).
+Sau yêu cầu bật normal operation trước đó, operator đã duyệt cửa sổ Xe điện mới
+ngày24/10 và yêu cầu đóng gate cuối lượt. Trạng thái mới nhất: provider gate OFF,
+Guest AI/fallback OFF, vector-only/no BGE. Không tự reuse budget hoặc tự bật gate.
+Normal operation gate chỉ đổi theo phê duyệt rõ ràng mới nhất của operator.
+
+Windows scripts dùng invoke-python.ps1 với đúng .venv executable hiện hành,
+redirect stdout/stderr trước khi đặt encoding và đọc cả hai stream bất đồng bộ.
+Không dùng shell thứ hai hoặc interpreter fallback. Deploy preflight import các
+verifier dependencies trước khi cutover; Application Control chặn DLL/executable
+phải báo BLOCKED, không chỉnh security policy hoặc coi manual checks là strict PASS.
 
 Một sửa đổi nhỏ: targeted tests → push/CI đúng SHA → build image service bị đổi
 hoặc reuse digest nếu build inputs không đổi → cập nhật private image ref →

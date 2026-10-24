@@ -11,6 +11,15 @@ from time import perf_counter
 from typing import Any, ParamSpec, TypeVar
 from uuid import uuid4
 
+from app.core.errors import (
+    ConfigurationError,
+    ErrorContext,
+    ModelResponseError,
+    ShopQueryError,
+    SqlExecutionError,
+    SqlValidationError,
+)
+
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -21,6 +30,7 @@ STAGES = frozenset(
         "relationship_discovery",
         "relationship_approval",
         "router_unsupported",
+        "routing",
         "generator_unsupported",
         "structured_output_invalid",
         "sql_parse_error",
@@ -134,6 +144,30 @@ def current_correlation_id() -> str | None:
     return trace.correlation_id if trace else None
 
 
+def attach_error_context(exc: ShopQueryError, stage: str = "request") -> ErrorContext:
+    trace = _trace.get()
+    context = exc.error_context
+    details = context.model_dump()
+    if not context.error_category:
+        if isinstance(exc, SqlValidationError):
+            details.update(error_category="sql_validation", phase="compilation")
+        elif isinstance(exc, SqlExecutionError):
+            details.update(error_category="sql_execution", phase="execution")
+        elif isinstance(exc, ConfigurationError):
+            details.update(error_category="configuration")
+        elif isinstance(exc, ModelResponseError) and stage == "policy_verification":
+            details.update(error_category="insufficient_evidence", phase="verification")
+    details["origin_stage"] = context.origin_stage or (stage if stage in STAGES else "request")
+    if trace:
+        details["correlation_id"] = trace.correlation_id
+        details["attempted_route"] = context.attempted_route or trace.facts["route"]
+    context = ErrorContext.model_validate(details)
+    exc.error_context = context
+    if trace:
+        trace.facts["error_context"] = context.model_dump(exclude_none=True)
+    return context
+
+
 def record_facts(**facts: Any) -> None:
     trace = _trace.get()
     if trace is None:
@@ -241,6 +275,8 @@ def diagnostic_stage(stage: str) -> Iterator[None]:
     try:
         yield
     except BaseException as exc:
+        if isinstance(exc, ShopQueryError):
+            attach_error_context(exc, stage)
         code = getattr(exc, "code", None)
         failed_stage = code if isinstance(code, str) and code in STAGES else stage
         if getattr(exc, "structured_output_invalid", False):

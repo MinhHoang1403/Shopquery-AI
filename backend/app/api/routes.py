@@ -34,13 +34,14 @@ from app.auth.limits import allow_provider_data, resource_control
 from app.conversations.context import contextual_question
 from app.conversations.repository import ConversationRecord, ConversationRepository, MessageRecord
 from app.core.config import get_settings
-from app.core.diagnostics import diagnosed, diagnostic_stage, record_facts
+from app.core.diagnostics import attach_error_context, diagnosed, diagnostic_stage, record_facts
 from app.core.errors import (
     ChatTurnError,
     ResourceConflictError,
     ResourceNotFoundError,
     ShopQueryError,
     UploadValidationError,
+    error_message,
 )
 from app.datasets.parser import ParsedTable, parse_tabular_file
 from app.datasets.repository import DatasetInfo, DatasetTableInfo
@@ -127,7 +128,7 @@ def chat(user: CurrentUser, request: ChatRequest) -> ChatResponse:
                     settings,
                     build_workspace_context(settings, dataset, repository),
                 )
-            return _chat_response(service.chat(request.message))
+            return _chat_response(service.chat(_routed_question(request, request.message)))
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ShopQueryError as exc:
@@ -251,7 +252,7 @@ def _persist_chat_turn(
         question = contextual_question(
             request.message, conversation, user_id, conversation.dataset_id
         )
-        response = _chat_response(service.chat(question))
+        response = _chat_response(service.chat(_routed_question(request, question)))
     except ShopQueryError as exc:
         response = _chat_error(exc, selected_model)
     assistant_message = repository.add_response_message(
@@ -559,13 +560,20 @@ def _chat_response(result: ChatResult) -> ChatResponse:
     )
 
 
+def _routed_question(request: ChatRequest, question: str) -> str:
+    return f"/{request.route_hint.lower()} {question}" if request.route_hint else question
+
+
 def _chat_error(exc: ShopQueryError, requested_model: str | None = None) -> ChatResponse:
     record_facts(final_status="failure")
-    logger.warning("Chat request could not be completed: %s", type(exc).__name__)
+    context = attach_error_context(exc)
+    logger.warning("Chat request failed: %s", context.model_dump_json(exclude_none=True))
+    message = error_message(context)
     return ChatResponse(
-        answer="Không thể hoàn tất câu hỏi bằng dữ liệu hiện có.",
+        answer=message,
         route=None,
-        error=str(exc),
+        error=message,
+        error_context=context,
         requested_model=exc.requested_model if isinstance(exc, ChatTurnError) else requested_model,
         fallback_used=isinstance(exc, ChatTurnError) and exc.fallback_used,
         fallback_reason=(

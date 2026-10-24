@@ -1,5 +1,6 @@
 """Structured query classification without execution responsibilities."""
 
+import re
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -30,7 +31,15 @@ class QueryRouter:
         question: str,
         allowed_routes: frozenset[RouteLabel] | None = None,
     ) -> RouteDecision:
-        routes = allowed_routes or frozenset(RouteLabel)
+        routes = allowed_routes if allowed_routes is not None else frozenset(RouteLabel)
+        explicit = re.match(r"^\s*/(sql|rag|hybrid)(?=\s|:|$)", question, re.IGNORECASE)
+        if explicit:
+            selected = RouteLabel(explicit.group(1).upper())
+            if selected in routes:
+                record_facts(route=selected)
+                return RouteDecision(route=selected, reason="Explicit user source selection")
+            record_facts(route=RouteLabel.UNSUPPORTED)
+            return RouteDecision(route=RouteLabel.UNSUPPORTED, reason="Selected source unavailable")
         route_names = ", ".join(sorted(route.value for route in routes))
         source_context = self._source_context or (
             "Default demo store: products, categories, orders and order_items. "
@@ -82,8 +91,12 @@ Examples:
 
 Question: {question}
 """.strip()
-        with diagnostic_stage("router_unsupported"):
+        with diagnostic_stage("routing"):
             decision = self._gateway.generate_structured(prompt, RouteDecision)
+        if decision.route not in routes:
+            decision = RouteDecision(
+                route=RouteLabel.UNSUPPORTED, reason="Selected source unavailable"
+            )
         record_facts(route=decision.route)
         if decision.route == RouteLabel.UNSUPPORTED:
             record_refusal("router_unsupported")

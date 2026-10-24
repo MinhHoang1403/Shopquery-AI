@@ -61,7 +61,7 @@ def _error_response(status_code: int) -> httpx.Response:
 
 
 def _build_harness(
-    monkeypatch: pytest.MonkeyPatch, responses: list[httpx.Response]
+    monkeypatch: pytest.MonkeyPatch, responses: list[httpx.Response], *, attempts: int = 3
 ) -> GatewayHarness:
     real_client = genai.Client
     queued: Iterator[httpx.Response] = iter(responses)
@@ -85,7 +85,7 @@ def _build_harness(
         gemini_api_key="test-key",
         gemini_generation_model="test-model",
         gemini_request_timeout_ms=1_000,
-        gemini_retry_attempts=3,
+        gemini_retry_attempts=attempts,
     )
     gateway = GeminiGateway(settings)
     return GatewayHarness(gateway, calls, captured_options[0])
@@ -122,7 +122,7 @@ def test_router_reports_503_after_retry_limit(
         [_error_response(503), _error_response(503), _error_response(503)],
     )
     try:
-        with pytest.raises(ModelResponseError, match="after retry attempts"):
+        with pytest.raises(ModelResponseError, match="temporarily unavailable"):
             QueryRouter(harness.gateway).route("Top 5 sản phẩm bán chạy?")
     finally:
         harness.close()

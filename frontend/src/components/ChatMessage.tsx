@@ -43,6 +43,13 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
         {isError && entry.response?.error ? (
           <p className="fallback-notice" role="alert">{entry.response.error}</p>
         ) : null}
+        {isError && entry.response?.error_context?.attempted_route ? (
+          <p className="fallback-notice">Tuyến đã thử: {ROUTE_LABELS[entry.response.error_context.attempted_route]}</p>
+        ) : null}
+        {isError && entry.response?.error_context?.correlation_id
+          && /^[a-f0-9]{32}$/.test(entry.response.error_context.correlation_id) ? (
+          <p className="fallback-notice">Mã hỗ trợ: {entry.response.error_context.correlation_id}</p>
+        ) : null}
         {entry.response?.fallback_used ? (
           <p className="fallback-notice">{entry.response.used_model
             ? "Đã chuyển từ Knowledge sang Gemini do mô hình chính không khả dụng."

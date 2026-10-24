@@ -31,7 +31,7 @@ try {
         $env:RUN_DATABASE_TESTS = '1'
         $taskMarker = 'integration and not live'
     }
-    & "$taskRoot/backend/.venv/Scripts/python.exe" -m pytest -m $taskMarker @Tests -q --tb=short
+    & "$PSScriptRoot/invoke-python.ps1" -PythonArguments (@('-m', 'pytest', '-m', $taskMarker) + $Tests + @('-q', '--tb=short'))
     if ($LASTEXITCODE -ne 0) { throw 'Offline tests failed.' }
 } finally {
     if ($taskLockHeld) { $taskLock.ReleaseMutex() }

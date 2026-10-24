@@ -45,7 +45,7 @@ def test_real_provider_plan_through_authenticated_factory(monkeypatch, provider,
         assert result.rows == [{"rows": len(facts)}]
         assert isinstance(service._sql_pipeline._planner, QueryPlanner)
         assert isinstance(service._sql_pipeline._compiler, QueryCompiler)
-        assert len(calls) == 3
+        assert len(calls) == 2
         assert ("PlanDecision" if provider == "knowledge" else "GenerationDecision") in json.dumps(
             json.loads(calls[1].content)
         )
@@ -79,7 +79,7 @@ def test_real_provider_plan_through_guest_factory(monkeypatch, provider):
     gateway, calls = gateway_harness(monkeypatch, provider, responses)
     try:
         result = run_guest_chat([file], "Sum amount", settings, gateway=gateway)
-        assert result.rows == [{"total": "10.25"}] and len(calls) == 3
+        assert result.rows == [{"total": "10.25"}] and len(calls) == 2
     finally:
         gateway.close()
 

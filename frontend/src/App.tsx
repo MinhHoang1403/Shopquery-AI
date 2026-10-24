@@ -20,6 +20,7 @@ import type {
   Dataset,
   ModelId,
   ModelOption,
+  RouteLabel,
 } from "./types";
 
 const DEFAULT_QUESTIONS = [
@@ -62,6 +63,7 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   const [providerEnabled, setProviderEnabled] = useState(true);
   const [defaultModel, setDefaultModel] = useState<ModelId>("inetcloud-knowledge");
   const [selectedModel, setSelectedModel] = useState<ModelId>("inetcloud-knowledge");
+  const [routeChoice, setRouteChoice] = useState<Exclude<RouteLabel, "UNSUPPORTED"> | "">("");
   const [isSavingModel, setIsSavingModel] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null);
@@ -200,6 +202,7 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   }
 
   function startNewChat(datasetId = selectedDatasetId) {
+    setRouteChoice("");
     selectionSequence.current += 1;
     stopPendingRequest();
     activeConversation.current = null;
@@ -213,6 +216,7 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   }
 
   async function selectConversation(conversation: ConversationSummary) {
+    setRouteChoice("");
     if (conversation.conversation_id === activeConversation.current) {
       setSidebarOpen(false);
       return;
@@ -288,7 +292,9 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
     requestController.current = controller;
 
     try {
-      const result = await client.sendConversationMessage(requestConversationId, question, controller.signal, requestModel);
+      const result = isGuest
+        ? await client.sendConversationMessage(requestConversationId, question, controller.signal, requestModel)
+        : await persistentApi.sendConversationMessage(requestConversationId, question, controller.signal, requestModel, routeChoice || undefined);
       upsertConversation(result.conversation);
       if (activeConversation.current === requestConversationId) {
         setMessages((current) => [
@@ -315,6 +321,7 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   }
 
   function chooseDataset(dataset: Dataset) {
+    setRouteChoice("");
     if (sameDataset(dataset.dataset_id, selectedDatasetId)) {
       setSidebarOpen(false);
       return;
@@ -471,6 +478,10 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
               models={models}
               selectedModel={selectedModel}
               onModelSelect={chooseModel}
+              routeChoice={routeChoice}
+              onRouteChange={isGuest ? undefined : setRouteChoice}
+              hasTables={selectedDataset?.kind === "default" || (selectedDataset?.table_count ?? 0) > 0}
+              hasDocuments={selectedDataset?.kind === "default" || (selectedDataset?.document_count ?? 0) > 0}
               onChange={updateDraft}
               onSubmit={() => submitQuestion()}
               validationError={validationError}

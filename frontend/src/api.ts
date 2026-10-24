@@ -122,6 +122,10 @@ export function parseChatResponse(value: unknown): ChatResponse {
     ![undefined, null, "gemini", "inetcloud-knowledge"].includes(value.used_model as string | null | undefined) ||
     !(value.fallback_used === undefined || typeof value.fallback_used === "boolean") ||
     !(value.fallback_reason === undefined || isNullableString(value.fallback_reason))
+    || !(value.error_context == null || (isRecord(value.error_context)
+      && (value.error_context.attempted_route == null || ROUTES.has(value.error_context.attempted_route as RouteLabel))
+      && (value.error_context.correlation_id == null || (typeof value.error_context.correlation_id === "string"
+        && /^[a-f0-9]{32}$/.test(value.error_context.correlation_id)))))
   ) {
     throw new ChatApiError("Phản hồi từ máy chủ không đúng định dạng.", "invalid_response");
   }
@@ -302,11 +306,12 @@ export async function sendConversationMessage(
   message: string,
   signal?: AbortSignal,
   modelId?: ModelId,
+  routeHint?: Exclude<RouteLabel, "UNSUPPORTED">,
 ): Promise<ConversationSendResponse> {
   const body = await requestJson(`/api/conversations/${conversationId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, model_id: modelId }),
+    body: JSON.stringify({ message, model_id: modelId, route_hint: routeHint }),
     signal,
   });
   if (!isRecord(body) || !isRecord(body.user_message) || !isRecord(body.assistant_message)) {

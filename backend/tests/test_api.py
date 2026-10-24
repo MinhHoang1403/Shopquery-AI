@@ -42,6 +42,7 @@ def test_chat_has_consistent_response(monkeypatch) -> None:
         "used_model": None,
         "fallback_used": False,
         "fallback_reason": None,
+        "error_context": None,
     }
 
 
@@ -57,15 +58,8 @@ def test_chat_does_not_fabricate_response_when_generation_fails(monkeypatch) -> 
     response = TestClient(app).post("/api/chat", json={"message": "Top sản phẩm?"})
 
     assert response.status_code == 200
-    assert response.json() == {
-        "answer": "Không thể hoàn tất câu hỏi bằng dữ liệu hiện có.",
-        "route": None,
-        "sql": None,
-        "rows": [],
-        "sources": [],
-        "error": "Gemini generation remained unavailable after retry attempts",
-        "requested_model": "inetcloud-knowledge",
-        "used_model": None,
-        "fallback_used": False,
-        "fallback_reason": None,
-    }
+    body = response.json()
+    assert body["answer"] == body["error"] == "Không thể hoàn tất yêu cầu này."
+    assert body["sql"] is None and body["rows"] == [] and body["sources"] == []
+    assert body["used_model"] is None and body["requested_model"] == "inetcloud-knowledge"
+    assert body["error_context"]["correlation_id"] == response.headers["X-Request-ID"]

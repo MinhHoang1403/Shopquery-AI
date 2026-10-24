@@ -55,6 +55,11 @@ export interface ChatResponse {
   used_model?: ModelId | null;
   fallback_used?: boolean;
   fallback_reason?: string | null;
+  error_context?: {
+    error_category?: string | null;
+    attempted_route?: RouteLabel | null;
+    correlation_id?: string | null;
+  } | null;
 }
 
 export interface HealthResponse {

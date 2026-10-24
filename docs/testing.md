@@ -33,6 +33,15 @@ mock browser. Push main và PR vào main kích hoạt workflow; feature push đ�
 không chạy workflow hiện hữu. Docs-only commit có thể dùng `[skip ci]`.
 CI regression không phải Stage 2 live acceptance.
 
+Nếu Windows Application Control chặn executable/DLL, không đổi interpreter/policy
+để vượt chặn. invoke-python.ps1 chỉ sửa redirect/encoding và vẫn dùng đúng .venv.
+Có thể chạy CI hiện hữu bằng workflow_dispatch scope=reliability để kiểm failure
+classes, SQL/Hybrid guards và related integration tests trên isolated CI service.
+Scope này không chạy golden/model suites không liên quan; không live provider calls.
+Push với [skip ci] khi dùng manual targeted run để tránh chạy thêm full CI tự động;
+manual run phải được kiểm đúng commit và PASS trước build/cutover. Đây không thay
+thế strict runtime verifier hoặc live acceptance trên8080.
+
 Targeted checks: plan IDs/binds/COUNT/JOIN/NULL/Decimal; local model load/cache/
 ranking/scope/fallback; Hybrid evidence sequence, binding, decisions/citations;
 auth/Guest isolation. Real-model smoke dùng synthetic text/local weights, không

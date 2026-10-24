@@ -1,8 +1,11 @@
 """Small Google GenAI SDK adapter with validated structured outputs."""
 
+import json
 import logging
+from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
 
+import httpx
 from google import genai
 from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
@@ -11,8 +14,12 @@ from app.core.config import Settings
 from app.core.errors import (
     TRANSIENT_PROVIDER_STATUSES,
     ConfigurationError,
+    ErrorContext,
     ModelResponseError,
+    ProviderError,
     StructuredResponseError,
+    provider_category,
+    validation_context,
 )
 from app.text_to_sql.generation_contract import GenerationDecision
 from app.text_to_sql.query_plan import PlanDecision
@@ -105,45 +112,125 @@ class GeminiGateway:
             else ""
         )
         try:
-            response = self._client.models.generate_content(
-                model=self._settings.gemini_generation_model,
-                contents=prompt + prompt_suffix,
-                config=types.GenerateContentConfig(
-                    temperature=0,
-                    response_mime_type="application/json",
-                    response_schema=(
-                        _generation_schema(wire_model.model_json_schema())
-                        if wire_model is GenerationDecision
-                        else _without_additional_properties(wire_model.model_json_schema())
-                    ),
+            config = types.GenerateContentConfig(
+                temperature=0,
+                response_mime_type="application/json",
+                response_schema=(
+                    _generation_schema(wire_model.model_json_schema())
+                    if wire_model is GenerationDecision
+                    else _without_additional_properties(wire_model.model_json_schema())
                 ),
             )
-            parsed = wire_model.model_validate_json(response.text)
+        except (ValidationError, ValueError, TypeError) as exc:
+            raise self._structured_error("schema_preparation", "sdk_preparation", exc) from exc
+        response = self._request(
+            "generation",
+            lambda: self._client.models.generate_content(
+                model=self._settings.gemini_generation_model,
+                contents=prompt + prompt_suffix,
+                config=config,
+            ),
+        )
+        refused = {"SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "RECITATION"}
+        if any(
+            getattr(candidate, "finish_reason", None) in refused
+            for candidate in (getattr(response, "candidates", None) or [])
+        ):
+            raise ProviderError(
+                "Gemini declined the response",
+                error_context=self._context(
+                    "generation", phase="response", error_category="model_refusal"
+                ),
+            )
+        try:
+            payload = json.loads(response.text)
+        except (ValueError, TypeError) as exc:
+            raise self._structured_error("json_decode", "invalid_json", exc) from exc
+        try:
+            parsed = wire_model.model_validate(payload)
+        except ValidationError as exc:
+            raise self._structured_error("wire_validation", "wire_validation", exc) from exc
+        try:
             if isinstance(parsed, GenerationDecision):
                 return response_model.model_validate(parsed.decision())
             return response_model.model_validate(parsed)
         except (ValidationError, ValueError, TypeError) as exc:
-            raise StructuredResponseError("Gemini returned an invalid structured response") from exc
+            raise self._structured_error("domain_conversion", "contract_conversion", exc) from exc
+
+    def _context(self, operation: str, **details: Any) -> ErrorContext:
+        return ErrorContext(
+            provider="gemini",
+            operation=operation,
+            attempt=1 if self._settings.gemini_retry_attempts == 1 else None,
+            **details,
+        )
+
+    def _structured_error(
+        self, phase: str, category: str, exc: Exception
+    ) -> StructuredResponseError:
+        return StructuredResponseError(
+            "Gemini returned an invalid structured response",
+            error_context=self._context(
+                "generation",
+                phase=phase,
+                error_category=category,
+                **(validation_context(exc) if isinstance(exc, ValidationError) else {}),
+            ),
+        )
+
+    def _request(self, operation: str, action: Callable[[], Any]) -> Any:
+        try:
+            return action()
         except errors.APIError as exc:
-            self._raise_api_error("generation", exc)
+            self._raise_api_error(operation, exc)
+        except httpx.TimeoutException as exc:
+            raise ProviderError(
+                "Gemini request timed out",
+                error_context=self._context(operation, phase="request", error_category="timeout"),
+            ) from exc
+        except httpx.RequestError as exc:
+            raise ProviderError(
+                "Gemini connection failed",
+                error_context=self._context(
+                    operation, phase="request", error_category="connection_failure"
+                ),
+            ) from exc
+        except (ValidationError, ValueError, TypeError) as exc:
+            raise ProviderError(
+                "Gemini SDK request preparation failed",
+                error_context=self._context(
+                    operation, phase="request", error_category="sdk_preparation"
+                ),
+            ) from exc
         except Exception as exc:
-            raise ModelResponseError("Gemini generation request failed") from exc
+            raise ModelResponseError(
+                "Gemini request failed",
+                error_context=self._context(
+                    operation, phase="request", error_category="internal_failure"
+                ),
+            ) from exc
 
     def generate_text(self, prompt: str) -> str:
-        try:
-            response = self._client.models.generate_content(
+        response = self._request(
+            "answer generation",
+            lambda: self._client.models.generate_content(
                 model=self._settings.gemini_generation_model,
                 contents=prompt,
                 config=types.GenerateContentConfig(temperature=0.1),
-            )
+            ),
+        )
+        try:
             text = response.text.strip()
             if not text:
                 raise ValueError("empty response")
             return text
-        except errors.APIError as exc:
-            self._raise_api_error("answer generation", exc)
         except Exception as exc:
-            raise ModelResponseError("Gemini answer generation failed") from exc
+            raise ModelResponseError(
+                "Gemini answer generation failed",
+                error_context=self._context(
+                    "answer generation", phase="response", error_category="invalid_response"
+                ),
+            ) from exc
 
     def embed_query(self, content: str) -> list[float]:
         prepared = f"task: question answering | query: {content}"
@@ -156,35 +243,34 @@ class GeminiGateway:
     def _embed_one(self, content: str) -> list[float]:
         """Embed one logical input; Embedding 2 aggregates multi-part inputs."""
 
-        try:
-            response = self._client.models.embed_content(
+        response = self._request(
+            "embedding",
+            lambda: self._client.models.embed_content(
                 model=self._settings.gemini_embedding_model,
                 contents=content,
                 config=types.EmbedContentConfig(
                     output_dimensionality=self._settings.embedding_dimensions
                 ),
-            )
+            ),
+        )
+        try:
             if len(response.embeddings) != 1:
                 raise ValueError("expected exactly one embedding")
             vector = list(response.embeddings[0].values)
             if len(vector) != self._settings.embedding_dimensions:
                 raise ValueError("unexpected embedding dimensionality")
             return vector
-        except errors.APIError as exc:
-            self._raise_api_error("embedding", exc)
         except Exception as exc:
-            raise ModelResponseError("Gemini embedding request failed") from exc
+            raise ModelResponseError(
+                "Gemini embedding request failed",
+                error_context=self._context(
+                    "embedding", phase="response", error_category="invalid_response"
+                ),
+            ) from exc
 
-    @staticmethod
-    def _raise_api_error(operation: str, exc: errors.APIError) -> None:
-        category = "request_rejected"
-        if exc.code in {401, 403}:
-            category = "authentication_or_permission"
-        elif exc.code == 429:
-            category = "quota_or_rate_limit"
-        elif exc.code in TRANSIENT_HTTP_STATUS_CODES:
-            category = "transient_unavailable"
-        elif exc.code == 400:
+    def _raise_api_error(self, operation: str, exc: errors.APIError) -> None:
+        category = provider_category(exc.code)
+        if exc.code == 400:
             message = str(exc.message).lower()
             if any(
                 term in message
@@ -199,10 +285,17 @@ class GeminiGateway:
             exc.code,
             category,
         )
-        if exc.code in TRANSIENT_HTTP_STATUS_CODES:
-            raise ModelResponseError(
-                f"Gemini {operation} remained unavailable after retry attempts"
-            ) from exc
-        raise ModelResponseError(
-            f"Gemini {operation} request was rejected; verify API configuration"
+        message = (
+            f"Gemini {operation} is temporarily unavailable"
+            if exc.code in TRANSIENT_HTTP_STATUS_CODES
+            else f"Gemini {operation} request was rejected; verify API configuration"
+        )
+        raise ProviderError(
+            message,
+            error_context=self._context(
+                operation,
+                phase="request",
+                http_status=exc.code,
+                error_category=category,
+            ),
         ) from exc

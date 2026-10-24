@@ -62,6 +62,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Release image source differs from the workspace.' }
     }
     if ($Deploy) {
+        & "$PSScriptRoot/invoke-python.ps1" -PythonArguments @('-c', 'import select, subprocess')
+        if ($LASTEXITCODE -ne 0) { throw 'Runtime verifier dependencies are BLOCKED; no cutover performed.' }
         $taskRunning = & docker ps -q --filter name=^/shopquery-ai-api-1$
         if ($taskRunning) {
             $taskCurrent = (& docker inspect $taskRunning | ConvertFrom-Json)[0]
@@ -101,6 +103,6 @@ try {
     }
     $taskArguments = @('backend/scripts/verify_runtime.py', '--env-file', '.env', '--env-file', $ConfigPath)
     foreach ($taskFile in $taskFiles) { $taskArguments += @('--compose-file', $taskFile) }
-    & "$taskRoot/backend/.venv/Scripts/python.exe" @taskArguments
+    & "$PSScriptRoot/invoke-python.ps1" -PythonArguments $taskArguments
     if ($LASTEXITCODE -ne 0) { throw 'Runtime source/image/environment verification failed.' }
 } finally { Pop-Location }

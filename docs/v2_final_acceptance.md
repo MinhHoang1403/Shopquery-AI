@@ -1,9 +1,25 @@
 # ShopQuery AI V2 — current acceptance
 
-**MAIN CONSOLIDATED — 8080 ACTIVE — ACCEPTANCE PARTIAL — PROVIDER GATE OPEN**
+**MAIN CONSOLIDATED — 8080 ACTIVE — ACCEPTANCE PARTIAL — PROVIDER GATE OFF**
 
-Updated 2026-10-23 (Asia/Saigon). No release tag or full Stage 2 acceptance.
+Updated 2026-10-24 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
+
+Latest EV acceptance supersedes older normal-operation gate notes below:9 UI questions
+sent once;Q8 RAG PASS with DOCX citations33/27/30;Q1–Q7 BLOCKED_PROVIDER;Q9
+FAIL_INTERNAL at structured planner after Hybrid retrieval;Q10 BLOCKED_PRECONDITION.
+Q1–Q7 did not test SQL/JOIN correctness. Q9 exact failing field remains unresolved:
+old evidence lacks validation phase/path. Budget9 chats, at most11 attempted generation
+stages (10 HTTP confirmed,1 planner transport unknown),2 query embeddings,0 documents.
+Provider gate closed at operator request. Current runtime source a49d4eb; API digest
+5db99157ab742e200a9ab5e24c757d7ac7fa16ddf05db12a8078451837c70bf6, Web digest
+e888860e87a1baff7149fbe5d7b354dedba7b9e0888bca9c1c9f654e108ab744. Source/image
+manual hash checks passed; strict CLI post-close BLOCKED by Windows Python/DLL execution.
+
+Reliability correction is in progress: typed error contract, explicit capability-checked
+source selection, phased structured validation and deterministic SQL presentation.
+No new paid calls, cutover or live PASS are implied by offline tests. Deployment/live
+acceptance require the reviewed artifacts, passing targeted checks and new approval.
 
 ## A. Consolidation and data safety
 

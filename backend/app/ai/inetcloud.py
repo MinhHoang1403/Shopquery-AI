@@ -10,7 +10,14 @@ from pydantic import ValidationError
 
 from app.ai.gemini import StructuredModel
 from app.core.config import Settings
-from app.core.errors import TRANSIENT_PROVIDER_STATUSES, ConfigurationError, ProviderError
+from app.core.errors import (
+    TRANSIENT_PROVIDER_STATUSES,
+    ConfigurationError,
+    ErrorContext,
+    ProviderError,
+    provider_category,
+    validation_context,
+)
 
 TRANSIENT_STATUS_CODES = frozenset(TRANSIENT_PROVIDER_STATUSES)
 
@@ -23,6 +30,7 @@ class StructuredOutputError(ProviderError):
 
 class InetCloudGateway:
     def __init__(self, settings: Settings) -> None:
+        self._settings = settings
         if not settings.inetcloud_base_url:
             raise ConfigurationError("Chưa cấu hình địa chỉ của iNetCloud Knowledge.")
         self._client = ChatOpenAI(
@@ -38,29 +46,69 @@ class InetCloudGateway:
         )
 
     def generate_text(self, prompt: str) -> str:
-        response = self._invoke(self._client, prompt)
+        response = self._invoke(self._client, prompt, operation="answer generation")
         if not isinstance(response.content, str) or not response.content.strip():
-            raise ProviderError("Knowledge trả về nội dung không hợp lệ.", fallback_allowed=True)
+            raise self._failure("response", "invalid_response", operation="answer generation")
         return response.content.strip()
 
     def generate_structured(
         self, prompt: str, response_model: type[StructuredModel]
     ) -> StructuredModel:
-        client = self._client.with_structured_output(
-            response_model, method="json_schema", strict=True, include_raw=True
-        )
+        try:
+            client = self._client.with_structured_output(
+                response_model, method="json_schema", strict=True, include_raw=True
+            )
+        except (ValueError, TypeError) as exc:
+            raise self._failure("schema_preparation", "sdk_preparation") from exc
         response = self._invoke(client, prompt)
+        raw = response.get("raw")
+        if getattr(raw, "additional_kwargs", {}).get("refusal"):
+            raise self._failure("response", "model_refusal")
         if response.get("parsing_error") or response.get("parsed") is None:
-            raise StructuredOutputError("Knowledge trả JSON sai schema.", fallback_allowed=True)
+            error = response.get("parsing_error")
+            if isinstance(error, ValidationError):
+                raise self._failure("wire_validation", "wire_validation", error)
+            try:
+                json.loads(getattr(raw, "content", None))
+            except (ValueError, TypeError) as exc:
+                raise self._failure("json_decode", "invalid_json") from exc
+            raise self._failure("wire_validation", "wire_validation")
         try:
             return response_model.model_validate(response["parsed"])
         except ValidationError as exc:
-            raise StructuredOutputError(
-                "Knowledge trả JSON sai schema.", fallback_allowed=True
-            ) from exc
+            raise self._failure("wire_validation", "wire_validation", exc) from exc
 
-    @staticmethod
-    def _invoke(client: Runnable, prompt: str) -> Any:
+    def _failure(
+        self,
+        phase: str,
+        category: str,
+        exc: ValidationError | None = None,
+        *,
+        status: int | None = None,
+        operation: str = "generation",
+    ) -> ProviderError:
+        context = ErrorContext(
+            provider="knowledge",
+            operation=operation,
+            phase=phase,
+            error_category=category,
+            http_status=status,
+            attempt=1 if self._settings.inetcloud_retry_attempts == 1 else None,
+            **(validation_context(exc) if exc is not None else {}),
+        )
+        structured = category in {"invalid_json", "wire_validation", "contract_conversion"}
+        error_type = StructuredOutputError if structured else ProviderError
+        return error_type(
+            "Knowledge trả JSON sai schema."
+            if structured
+            else "Không thể hoàn tất yêu cầu tới Knowledge.",
+            error_context=context,
+            fallback_allowed=structured
+            or status in TRANSIENT_STATUS_CODES
+            or category in {"timeout", "connection_failure"},
+        )
+
+    def _invoke(self, client: Runnable, prompt: str, *, operation: str = "generation") -> Any:
         try:
             return client.invoke(
                 [
@@ -74,26 +122,29 @@ class InetCloudGateway:
                     ("human", prompt),
                 ]
             )
-        except (APIConnectionError, APITimeoutError) as exc:
-            raise ProviderError(
-                "Không kết nối được Knowledge hoặc yêu cầu đã hết thời gian.",
-                fallback_allowed=True,
-            ) from exc
+        except APITimeoutError as exc:
+            raise self._failure("request", "timeout", operation=operation) from exc
+        except APIConnectionError as exc:
+            raise self._failure("request", "connection_failure", operation=operation) from exc
         except APIStatusError as exc:
-            raise ProviderError(
-                "Knowledge tạm thời không khả dụng."
-                if exc.status_code in TRANSIENT_STATUS_CODES
-                else "Knowledge từ chối yêu cầu; cần kiểm tra cấu hình nhà cung cấp.",
-                fallback_allowed=exc.status_code in TRANSIENT_STATUS_CODES,
+            raise self._failure(
+                "request",
+                provider_category(exc.status_code),
+                status=exc.status_code,
+                operation=operation,
             ) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise StructuredOutputError(
-                "Knowledge trả JSON sai schema.", fallback_allowed=True
+        except ValidationError as exc:
+            raise self._failure(
+                "wire_validation", "wire_validation", exc, operation=operation
             ) from exc
+        except json.JSONDecodeError as exc:
+            raise self._failure("json_decode", "invalid_json", operation=operation) from exc
         except (ValueError, TypeError) as exc:
-            raise ProviderError("Knowledge trả nội dung không hợp lệ.") from exc
+            raise self._failure(
+                "schema_preparation", "sdk_preparation", operation=operation
+            ) from exc
         except Exception as exc:
-            raise ProviderError("Không thể hoàn tất yêu cầu tới Knowledge.") from exc
+            raise self._failure("request", "internal_failure", operation=operation) from exc
 
     def close(self) -> None:
         self._client.root_client.close()

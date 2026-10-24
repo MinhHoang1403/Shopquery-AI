@@ -65,7 +65,26 @@ class GenerationDecision(BaseModel):
 
     @model_validator(mode="after")
     def validate_outcome(self) -> "GenerationDecision":
-        self.decision()
+        if self.outcome == "query" and self.reason:
+            raise ValueError("A query cannot include an unsupported reason")
+        if self.outcome == "unsupported":
+            if not self.reason.strip():
+                raise ValueError("Unsupported needs a reason")
+            if any(
+                (
+                    self.source,
+                    self.fields,
+                    self.expressions,
+                    self.filters,
+                    self.group_by,
+                    self.sort,
+                    self.limit,
+                    self.relationships,
+                    self.where,
+                    self.having,
+                )
+            ):
+                raise ValueError("Unsupported outcome cannot contain a query")
         return self
 
     def decision(self) -> PlanDecision:

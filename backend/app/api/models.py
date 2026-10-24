@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from app.ai.providers import ModelId
+from app.core.errors import ErrorContext
 from app.routing.router import RouteLabel
 
 
@@ -16,6 +17,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2_000)
     dataset_id: int | None = Field(default=None, ge=1)
     model_id: ModelId | None = None
+    route_hint: Literal["SQL", "RAG", "HYBRID"] | None = None
 
     @field_validator("message")
     @classmethod
@@ -51,6 +53,7 @@ class ChatResponse(BaseModel):
     used_model: ModelId | None = None
     fallback_used: bool = False
     fallback_reason: str | None = None
+    error_context: ErrorContext | None = None
 
 
 class ModelOption(BaseModel):
