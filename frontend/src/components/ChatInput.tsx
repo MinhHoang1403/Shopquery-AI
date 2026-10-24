@@ -79,6 +79,17 @@ export function ChatInput({
 
   return (
     <form className="composer" onSubmit={submit}>
+      {onRouteChange ? (
+        <div className="composer-source">
+          <label>Nguồn trả lời: <select className="source-selector" aria-label="Nguồn trả lời" disabled={disabled} value={routeChoice}
+            onChange={(event) => onRouteChange(event.target.value as Exclude<RouteLabel, "UNSUPPORTED"> | "")}>
+            <option value="">Tự chọn nguồn</option>
+            <option value="SQL" disabled={!hasTables}>Bảng dữ liệu</option>
+            <option value="RAG" disabled={!hasDocuments}>Tài liệu</option>
+            <option value="HYBRID" disabled={!hasTables || !hasDocuments}>Bảng + Tài liệu</option>
+          </select></label>
+        </div>
+      ) : null}
       <div className={`composer-box ${validationError ? "composer-box--invalid" : ""}`}>
         <label className="sr-only" htmlFor="chat-message">
           Nhập câu hỏi cho ShopQuery AI
@@ -97,15 +108,6 @@ export function ChatInput({
         />
         <div className="composer-controls">
           <ModelSelector models={models} selectedModel={selectedModel} disabled={disabled} onSelect={onModelSelect} />
-          {onRouteChange ? (
-            <select className="source-selector" aria-label="Nguồn trả lời" disabled={disabled} value={routeChoice}
-              onChange={(event) => onRouteChange(event.target.value as Exclude<RouteLabel, "UNSUPPORTED"> | "")}>
-              <option value="">Tự chọn nguồn</option>
-              <option value="SQL" disabled={!hasTables}>Bảng dữ liệu</option>
-              <option value="RAG" disabled={!hasDocuments}>Tài liệu</option>
-              <option value="HYBRID" disabled={!hasTables || !hasDocuments}>Bảng + Tài liệu</option>
-            </select>
-          ) : null}
           <button
             aria-label="Gửi câu hỏi"
             className="send-button"

@@ -234,6 +234,7 @@ tr:last-child td { border-bottom: 0; }
 .composer-box textarea { min-width: 0; }
 .composer-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
 .source-selector { max-width: 136px; min-width: 0; min-height: 36px; border: 1px solid var(--line); border-radius: 18px; padding: 6px; background: #fff; color: #444; font-size: 12px; }
+.composer-source { display: flex; justify-content: flex-end; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
 .model-selector { position: relative; flex: 0 0 116px; width: 116px; min-width: 0; }
 .model-selector select { appearance: none; width: 100%; min-height: 36px; padding: 6px 26px 6px 11px; border: 1px solid var(--line); border-radius: 18px; background: #fff; color: #444; font-size: 13px; text-overflow: ellipsis; cursor: pointer; }
 .model-selector svg { position: absolute; right: 9px; top: 11px; pointer-events: none; }

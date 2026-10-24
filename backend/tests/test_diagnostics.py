@@ -38,7 +38,7 @@ BASE = (
         "success",
     ],
 )
-def test_failure_stage_is_precise_and_has_no_raw_evidence(stage):
+def test_failure_stage_is_precise_and_has_no_raw_evidence(stage, monkeypatch):
     gateway = Mock()
     gateway.generate_text.return_value = "Synthetic answer"
     sql = {
@@ -68,7 +68,10 @@ def test_failure_stage_is_precise_and_has_no_raw_evidence(stage):
     if stage == "sql_execution":
         executor.execute.side_effect = SqlExecutionError("SENSITIVE executor detail")
     if stage == "answer_grounding":
-        gateway.generate_text.side_effect = RuntimeError("SENSITIVE answer detail")
+        monkeypatch.setattr(
+            "app.text_to_sql.pipeline.compose_sql_answer",
+            Mock(side_effect=RuntimeError("SENSITIVE answer detail")),
+        )
 
     @contextmanager
     def guard(_):

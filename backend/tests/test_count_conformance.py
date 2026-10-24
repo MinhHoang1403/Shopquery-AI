@@ -136,14 +136,12 @@ def test_grounding_uses_count_provenance_not_a_misleading_business_label():
     sql = f"SELECT COUNT(p.amount) AS total_orders {CHAIN_ORDERS[0]}"
     gateway, executor = Mock(), Mock()
     executor.execute.return_value = [{"total_orders": 0}]
-    gateway.generate_text.return_value = "Insufficient row-count evidence"
     result = ValidationPipeline(
         Mock(generate=Mock(return_value=sql)), validator(), executor, gateway
     ).run("How many rows?")
-    prompt = gateway.generate_text.call_args.args[0]
-    assert '"field": "total_orders", "kind": "non_null_value_count"' in prompt
-    assert "state insufficient" in prompt
-    assert result.answer == "Insufficient row-count evidence"
+    gateway.generate_text.assert_not_called()
+    assert '"total_orders": số giá trị khác NULL' in result.answer
+    assert "chưa có bằng chứng số dòng nguồn" in result.answer
 
 
 @pytest.mark.parametrize(

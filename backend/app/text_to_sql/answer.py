@@ -21,6 +21,8 @@ def compose_sql_answer(rows: list[dict[str, Any]], counts: tuple[CountMetric, ..
         *["| " + " | ".join(cell(row.get(key)) for key in columns) + " |" for row in rows],
     ]
     notes = ["Kết quả truy vấn đã xác minh. NULL là giá trị thiếu, khác số 0."]
+    if counts and not any(metric.kind == "row_count" for metric in counts):
+        notes.append("Truy vấn chỉ đếm giá trị khác NULL; chưa có bằng chứng số dòng nguồn.")
     for metric in counts:
         kind = (
             "số dòng nguồn khớp truy vấn" if metric.kind == "row_count" else "số giá trị khác NULL"

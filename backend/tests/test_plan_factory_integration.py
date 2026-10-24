@@ -13,7 +13,6 @@ from app.text_to_sql.query_plan import PlanDecision, PlanExpression, PlanField, 
 from tests.join_domains import DOMAINS
 from tests.test_join_domains_integration import domain_workspace  # noqa: F401
 from tests.test_plan_providers import gateway_harness, response
-from tests.test_providers import completion
 from tests.test_query_compiler import source
 
 pytestmark = pytest.mark.integration
@@ -34,10 +33,6 @@ def test_real_provider_plan_through_authenticated_factory(monkeypatch, provider,
         response(provider, '{"route":"SQL","reason":"Rows"}'),
         response(provider, decision.model_dump_json()),
     ]
-    if provider == "knowledge":
-        responses.append(completion("Controlled count"))
-    else:
-        responses.append(response(provider, "Controlled count"))
     gateway, calls = gateway_harness(monkeypatch, provider, responses)
     try:
         service = _build_dataset_chat_service(settings, context, gateway)
@@ -72,9 +67,6 @@ def test_real_provider_plan_through_guest_factory(monkeypatch, provider):
     responses = [
         response(provider, '{"route":"SQL","reason":"Rows"}'),
         response(provider, decision.model_dump_json()),
-        completion("Controlled sum")
-        if provider == "knowledge"
-        else response(provider, "Controlled sum"),
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, responses)
     try:
