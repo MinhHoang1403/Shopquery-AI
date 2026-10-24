@@ -20,12 +20,12 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-API source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`, digest `5db99157ab742e200a9ab5e24c757d7ac7fa16ddf05db12a8078451837c70bf6`.
-Web source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`, digest `e888860e87a1baff7149fbe5d7b354dedba7b9e0888bca9c1c9f654e108ab744`.
+API source `5d4c595965ad379b85627dac227034446e673ef7`, digest `26877f4176df1dc17924cee02491df349f8d0b548252d547e7294d9775df72df`.
+Web source `5d4c595965ad379b85627dac227034446e673ef7`, digest `bd7601be72e6d60aae704ff3f857a8f91162a89a9f0f54a534f7a15656210467`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
 
-### Prepared reliability artifacts — chưa triển khai
+### Reliability artifacts — deployed 24/10/2026
 
 Application source `5d4c595965ad379b85627dac227034446e673ef7` đã push main;
 backend targeted CI460 tests + PostgreSQL131 tests PASS tại
@@ -36,14 +36,23 @@ Frontend inputs không đổi sau `fcf230b`:73 unit +105 mock browser checks PAS
 - API: `shopquery-ai-api@sha256:26877f4176df1dc17924cee02491df349f8d0b548252d547e7294d9775df72df`.
 - Web: `shopquery-ai-web@sha256:bd7601be72e6d60aae704ff3f857a8f91162a89a9f0f54a534f7a15656210467`.
 - Cả hai OCI revision khớp đủ40 ký tự; source build inputs khớp commit này.
-- Chưa pin vào private active config, chưa recreate serving API/Web/DB.
-- Strict preflight còn BLOCKED: Code Integrity3033/3077 chặn Python `select.pyd`
-  trong base interpreter của .venv. Operator đang xử lý quyền qua quy trình quản trị.
-- Chỉ cutover sau strict preflight được phép chạy/PASS và operator duyệt gián đoạn;
-  không dùng manual checks để thay strict PASS. New paid budget chưa được duyệt.
+- Đã pin private config, deploy API/Web trên8080; main DB không recreate.
+- Operator đã xử lý quyền Python/DLL; cùng .venv import select/subprocess được.
+  Strict verifier sau deploy và sau gate-close PASS:84 modules khớp source,
+  image/revision/environment khớp, không source drift. Không đổi security policy.
+- UI Google session/history reload PASS; Xe điện còn3tables/3docs/2approved N:1.
+- Cửa sổ MỚI được duyệt10chats/14generation/4query embeddings/0document embeddings.
+  Chỉ Q1 được gửi một lần, explicit SQL/Knowledge:HTTP503 tại planner, không Router.
+  Error context giữ status503/category transient_unavailable/phase request/attempt1,
+  attempted_route SQL/correlation2424518bb21940e2b878641eae2e0609. Không thực thi SQL.
+- BLOCKED_PROVIDER; dừng ngay theo điều kiện cửa sổ, không retry/fallback/provider swap.
+  Q2–Q10 NOT_RUN, follow-up chưa có tiền đề KPI. Used1generation/0embeddings.
+- Provider gate OFF sau API-only recreate+Nginx graceful reload; Web giữ container.
+-37tables/schema/business data/docs/vectors/relationships/auth rows giữ nguyên,
+  chỉ chat_conversations/chat_messages/resource_limits thay đổi; old messages giữ hash.
 
-Các test offline không xác nhận Q9 live đã sửa xong. Exact invalid field của trace
-cũ vẫn unknown; phase/path mới phải được kiểm khi có live window mới được duyệt.
+Q9 cũ vẫn unresolved ở exact invalid field, chưa có live confirmation Gemini/Hybrid
+trên image mới. Không coi error-path verification hoặc HTTP200 là SQL/Hybrid PASS.
 
 Trước switch kiểm mounts, health, active leases và in-flight workers. Auth sessions
 lưu DB được giữ; Guest RAM không sống qua API recreate. Exec process mới không đọc
@@ -58,13 +67,12 @@ Không seed/ingest/fake Google user trên main.
 
 ## Rollback đã giữ
 
-Rollback API gần nhất là `shopquery-ai-api@sha256:f161d7f5a441e7d036e4ecf97c3e4bd864edeefaf00820c577bb3c8cf31a2fa9`,
-source `ac369738f152ad2f685fbbd86fb71cdfa51fad8d`. Web tương ứng là
-`shopquery-ai-web@sha256:e4a8c96c742bfaf2e6ff834fb320f457dc443ad4df4fedcf797094461e99bfb1`,
-source `e76dfed2ebcfaebcf37e36485d3041eda68f4209`. Cả hai đã phục vụ cùng main DB
-trước khi nâng cấp discovery và nút quét lại. Private rollback/environment evidence
-được giữ ngoài Git; rollback image không tự xóa các metadata liên kết đã lưu.
-Không giữ mọi image patch cũ; không dùng tag `latest` để chọn bản chạy.
+Rollback ngay trước reliability cutover giữ local: API
+`shopquery-ai-api@sha256:5db99157ab742e200a9ab5e24c757d7ac7fa16ddf05db12a8078451837c70bf6`, Web
+`shopquery-ai-web@sha256:e888860e87a1baff7149fbe5d7b354dedba7b9e0888bca9c1c9f654e108ab744`,
+cùng source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`. Private config/baseline và
+live trace dưới existing backup folder `ev-acceptance-20261024`, prefix reliability.
+Rollback không xóa metadata liên kết/history. Không dùng tag latest hoặc xóa rollback duy nhất.
 
 Rollback phải kiểm active work, pin đúng digest/private config và kiểm source drift.
 Nếu source khác image rollback, strict verifier phải báo đúng khác biệt; dùng

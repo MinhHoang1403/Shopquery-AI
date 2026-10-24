@@ -5,29 +5,46 @@
 Updated 2026-10-24 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
-Latest EV acceptance supersedes older normal-operation gate notes below:9 UI questions
-sent once;Q8 RAG PASS with DOCX citations33/27/30;Q1–Q7 BLOCKED_PROVIDER;Q9
-FAIL_INTERNAL at structured planner after Hybrid retrieval;Q10 BLOCKED_PRECONDITION.
-Q1–Q7 did not test SQL/JOIN correctness. Q9 exact failing field remains unresolved:
-old evidence lacks validation phase/path. Budget9 chats, at most11 attempted generation
-stages (10 HTTP confirmed,1 planner transport unknown),2 query embeddings,0 documents.
-Provider gate closed at operator request. Current runtime source a49d4eb; API digest
-5db99157ab742e200a9ab5e24c757d7ac7fa16ddf05db12a8078451837c70bf6, Web digest
-e888860e87a1baff7149fbe5d7b354dedba7b9e0888bca9c1c9f654e108ab744. Source/image
-manual hash checks passed; strict CLI post-close BLOCKED by Windows Python/DLL execution.
+## Latest reliability deployment and bounded live window — 24/10/2026
 
-Reliability correction source `5d4c595965ad379b85627dac227034446e673ef7` is pushed:
-typed error contract, explicit capability-checked source selection, phased structured
-validation, deterministic SQL presentation and preserved evidence failure categories.
-Targeted CI460 backend +131 PostgreSQL tests PASS; unchanged frontend inputs at
-fcf230b passed73 unit +105 mock browser checks. First CI found2 obsolete LLM-grounding
-test assumptions; assertions now verify deterministic behavior/provenance, not suppress failures.
-Windows local pytest/strict verifier remain BLOCKED by Code Integrity select.pyd
-events3033/3077; same interpreter startup/argv/redirect checks succeeded. No policy
-change or interpreter bypass. Operator will resolve permission and report readiness.
-Prepared image identities are in deployment.md; current serving image remains a49d4eb.
-No new paid calls (0 generation/0 embeddings), cutover or live PASS are implied.
-Deployment/live acceptance require strict preflight and new interruption/budget approval.
+Application source `5d4c595965ad379b85627dac227034446e673ef7` deployed on8080,
+API digest26877f4176df1dc17924cee02491df349f8d0b548252d547e7294d9775df72df,
+Web digestbd7601be72e6d60aae704ff3f857a8f91162a89a9f0f54a534f7a15656210467.
+Targeted CI460backend+131PostgreSQL tests PASS; unchanged frontend inputs at
+fcf230b passed73unit+105mock browser checks. First CI found2 obsolete LLM-grounding
+assumptions; assertions now verify deterministic behavior/provenance. No broad/golden
+or BGE benchmark reruns. These tests do not prove live AI correctness.
+
+Operator reported Python/DLL permission resolved. Same project .venv imports
+select/subprocess successfully. Strict verifier after deploy and gate-close PASS:
+84module hashes, immutable image identity/source revision, no environment/source drift.
+No interpreter bypass/security policy changes. Main DB container/volume unchanged.
+Google session/history reload and UI3tables/3docs/2approved N:1 PASS after cutover.
+
+New budget approved10UI questions/14generation stages/4query embeddings/0documents,
+attempts1/no retry/fallback/Guest AI. Q1 sent once, original Vietnamese wording,
+Knowledge with explicit SQL selection. Router skipped; planner call HTTP503;
+error phase=request, category=transient_unavailable, attempt=1, attempted_route=SQL,
+correlation2424518bb21940e2b878641eae2e0609. Messages235/236 persisted correctly.
+SQL compilation/execution not reached. Status BLOCKED_PROVIDER, not SQL logic failure.
+
+Stop-on-blocker condition applied: no Q2–Q10, no retry/provider swap/paid diagnostics.
+Q10 additionally lacks successful KPI premise. Used1generation,0query embeddings,
+0document embeddings. Gate closed via API-only recreate+graceful Nginx reload;
+Web and main DB not recreated during gate closure. Web/API8080 HTTP200, all healthy.
+
+37tables/schema retained. Only conversations/messages/resource_limits changed;
+uploaded physical tables, docs/chunks/vectors, relationships, accounts/sessions
+unchanged; all pre-window messages<=234 preserve exact hash. Oracle remains
+360rows/33066538.03, not a successful application SQL answer.
+
+Reliability error path PASS live in this bounded failure case; SQL/RAG/Hybrid on
+this new image NOT ACCEPTED live. Q9 old exact invalid field remains unknown.
+Old EV window had Q8RAG PASS; Q1–Q7 BLOCKED_PROVIDER;Q9FAIL_INTERNAL;Q10blocked.
+That historical success does not prove this deployment's complete acceptance.
+
+Private evidence stays in existing ev-acceptance-20261024 folder with reliability
+prefix; current detailed error report is updated there. No release tag/full Stage2.
 
 ## A. Consolidation and data safety
 
