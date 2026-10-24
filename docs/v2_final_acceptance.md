@@ -16,10 +16,18 @@ Provider gate closed at operator request. Current runtime source a49d4eb; API di
 e888860e87a1baff7149fbe5d7b354dedba7b9e0888bca9c1c9f654e108ab744. Source/image
 manual hash checks passed; strict CLI post-close BLOCKED by Windows Python/DLL execution.
 
-Reliability correction is in progress: typed error contract, explicit capability-checked
-source selection, phased structured validation and deterministic SQL presentation.
-No new paid calls, cutover or live PASS are implied by offline tests. Deployment/live
-acceptance require the reviewed artifacts, passing targeted checks and new approval.
+Reliability correction source `5d4c595965ad379b85627dac227034446e673ef7` is pushed:
+typed error contract, explicit capability-checked source selection, phased structured
+validation, deterministic SQL presentation and preserved evidence failure categories.
+Targeted CI460 backend +131 PostgreSQL tests PASS; unchanged frontend inputs at
+fcf230b passed73 unit +105 mock browser checks. First CI found2 obsolete LLM-grounding
+test assumptions; assertions now verify deterministic behavior/provenance, not suppress failures.
+Windows local pytest/strict verifier remain BLOCKED by Code Integrity select.pyd
+events3033/3077; same interpreter startup/argv/redirect checks succeeded. No policy
+change or interpreter bypass. Operator will resolve permission and report readiness.
+Prepared image identities are in deployment.md; current serving image remains a49d4eb.
+No new paid calls (0 generation/0 embeddings), cutover or live PASS are implied.
+Deployment/live acceptance require strict preflight and new interruption/budget approval.
 
 ## A. Consolidation and data safety
 
@@ -302,32 +310,22 @@ This proves the four requested natural questions in the verified synthetic
 workspace, not all possible SQL/policy shapes. Gate C/BGE and two-account live
 owner acceptance remain open; no release tag or Stage2 completion is claimed.
 
-## F. Authenticated document upload/provider operation enabled
+## F. Provider operation and latest gate
 
-After the bounded acceptance window closed, the operator reported a403 when
-adding documents and explicitly requested normal provider operation: "Bật tất cả
-lên cho tôi." The403 came from the existing `allow_provider_data` guard, because
-document ingestion immediately calls Gemini Embedding before persistence. CSV/XLSX
-ingestion does not require a provider, so it remained available.
+Document ingestion immediately calls Gemini Embedding before persistence; the
+existing allow_provider_data guard therefore blocks PDF/DOCX/TXT/MD when the gate
+is OFF. CSV/XLSX ingestion does not require a provider. This is an operational
+consent gate, not an upload parser failure. Legacy DOC and scanned PDF/OCR remain
+unsupported.
 
-`RELEASE_PROVIDER_DATA_ENABLED=true` is now active on the same pinned API image
-after an API-only recreate and graceful Nginx reload. No source, model, parser or
-database change was required. The current shared gate enables authenticated
-document embeddings and Knowledge/Gemini chat; this is normal operation, not an
-extension of the closed synthetic four-question budget. No numeric operating
-budget was specified; existing application quotas remain unchanged. Guest AI and
-fallback stay OFF, and BGE is not loaded. Do not automatically close this
-operational gate using the earlier bounded-window instruction.
+The operator previously authorized normal authenticated provider operation, then
+approved a newer bounded EV window on24/10 with explicit gate closure at its end.
+Current RELEASE_PROVIDER_DATA_ENABLED=false; Guest AI/fallback OFF, vector-only,
+BGE not loaded. Earlier normal-operation consent is not a new paid test budget.
+Do not reopen or reuse unused calls without the latest explicit approval.
 
-Verification: strict release verifier and API8080 HTTP200 PASS; authenticated UI
-shows the document input without the provider-disabled notice. Web/main DB were
-not recreated and schema/all table fingerprints remained unchanged. No private
-document was uploaded or provider request made by the agent for this config-only
-change. Supported uploads remain PDF with text layer, DOCX, TXT and UTF-8 MD;
-legacy DOC and scanned PDF/OCR remain unsupported.
-
-Private operational evidence is under
-`C:\Users\admin\.codex\backups\shopquery-ai\provider-operation-20261023`.
+Google session/history and tabular data stay available while the gate is closed.
+No source fix or parser change should silently alter this consent boundary.
 
 ## G. Future workflow
 

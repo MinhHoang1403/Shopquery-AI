@@ -25,6 +25,26 @@ Web source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`, digest `e888860e87a1baff7
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
 
+### Prepared reliability artifacts — chưa triển khai
+
+Application source `5d4c595965ad379b85627dac227034446e673ef7` đã push main;
+backend targeted CI460 tests + PostgreSQL131 tests PASS tại
+[CI40101327066](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40101327066).
+Frontend inputs không đổi sau `fcf230b`:73 unit +105 mock browser checks PASS tại
+[CI40100969466](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40100969466).
+
+- API: `shopquery-ai-api@sha256:26877f4176df1dc17924cee02491df349f8d0b548252d547e7294d9775df72df`.
+- Web: `shopquery-ai-web@sha256:bd7601be72e6d60aae704ff3f857a8f91162a89a9f0f54a534f7a15656210467`.
+- Cả hai OCI revision khớp đủ40 ký tự; source build inputs khớp commit này.
+- Chưa pin vào private active config, chưa recreate serving API/Web/DB.
+- Strict preflight còn BLOCKED: Code Integrity3033/3077 chặn Python `select.pyd`
+  trong base interpreter của .venv. Operator đang xử lý quyền qua quy trình quản trị.
+- Chỉ cutover sau strict preflight được phép chạy/PASS và operator duyệt gián đoạn;
+  không dùng manual checks để thay strict PASS. New paid budget chưa được duyệt.
+
+Các test offline không xác nhận Q9 live đã sửa xong. Exact invalid field của trace
+cũ vẫn unknown; phase/path mới phải được kiểm khi có live window mới được duyệt.
+
 Trước switch kiểm mounts, health, active leases và in-flight workers. Auth sessions
 lưu DB được giữ; Guest RAM không sống qua API recreate. Exec process mới không đọc
 được GuestStore của process đang chạy. Không coi worker count là số idle sessions.
