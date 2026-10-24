@@ -6,7 +6,7 @@ from typing import Protocol
 from app.ai.gemini import GenerationGateway
 from app.ai.providers import build_generation_gateway
 from app.core.config import Settings
-from app.core.diagnostics import diagnosed, record_facts
+from app.core.diagnostics import attach_error_context, diagnosed, record_facts
 from app.core.errors import ChatTurnError, ProviderError, ShopQueryError
 from app.routing.service import ChatResult
 
@@ -50,6 +50,7 @@ class ModelChatService:
                 fallback = True
                 result = self._attempt("gemini", question)
         except ShopQueryError as exc:
+            attach_error_context(exc)
             raise ChatTurnError(exc, requested, fallback_used=fallback) from exc
         result.requested_model = requested
         result.used_model = "gemini" if fallback else requested

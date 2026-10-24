@@ -12,6 +12,11 @@ on:
         type: choice
         options: [all, reliability]
         default: reliability
+      services:
+        description: Services whose source changed
+        type: choice
+        options: [all, backend]
+        default: all
 
 permissions:
   contents: read
@@ -131,6 +136,7 @@ jobs:
 
   frontend:
     name: Frontend quality
+    if: ${{ inputs.services != 'backend' }}
     runs-on: ubuntu-latest
     defaults:
       run:

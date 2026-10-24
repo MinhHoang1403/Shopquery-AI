@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.ai.gemini import EmbeddingGateway, GenerationGateway
 from app.core.diagnostics import diagnostic_stage
-from app.core.errors import ModelResponseError, RetrievalError
+from app.core.errors import ErrorContext, ModelResponseError, RetrievalError
 from app.rag.repository import RetrievedChunk
 
 
@@ -69,8 +69,8 @@ class RagPipeline:
         selected_count = top_k if top_k is not None else self._top_n
         if not 1 <= selected_count <= 20:
             raise ValueError("Retrieval selection is outside supported bounds")
-        candidate_count = max(selected_count, self._candidate_top_k) if self._reranker else (
-            selected_count
+        candidate_count = (
+            max(selected_count, self._candidate_top_k) if self._reranker else (selected_count)
         )
         vector = self._embedder.embed_query(question)
         if self._dataset_id is None:
@@ -86,7 +86,8 @@ class RagPipeline:
         ranked = self._reranker.rerank(question, chunks, selected_count)
         original = {id(chunk) for chunk in chunks}
         if (
-            not ranked or len(ranked) > selected_count
+            not ranked
+            or len(ranked) > selected_count
             or len({chunk.chunk_id for chunk in ranked}) != len(ranked)
             or any(id(chunk) not in original for chunk in ranked)
         ):
@@ -115,7 +116,12 @@ Evidence:
         if not draft.used_chunk_ids or any(
             chunk_id not in chunks_by_id for chunk_id in draft.used_chunk_ids
         ):
-            raise ModelResponseError("RAG answer contains invalid citations")
+            raise ModelResponseError(
+                "RAG answer contains invalid citations",
+                error_context=ErrorContext(
+                    phase="verification", error_category="insufficient_evidence"
+                ),
+            )
         used = [chunks_by_id[chunk_id] for chunk_id in dict.fromkeys(draft.used_chunk_ids)]
         sources = [
             Source(

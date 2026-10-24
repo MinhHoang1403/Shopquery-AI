@@ -9,7 +9,16 @@ import pytest
 
 from app.api.routes import _chat_error
 from app.core.diagnostics import diagnostic_request, diagnostic_stage, record_facts
-from app.core.errors import ChatTurnError, ErrorContext, ModelResponseError, ProviderError
+from app.core.errors import (
+    ChatTurnError,
+    ConfigurationError,
+    ErrorContext,
+    ModelResponseError,
+    ProviderError,
+    RetrievalError,
+    SqlExecutionError,
+    SqlValidationError,
+)
 from app.routing.router import RouteDecision
 from app.text_to_sql.query_plan import PlanDecision
 from tests.test_gemini import _build_harness
@@ -105,7 +114,8 @@ def test_gemini_decode_wire_and_conversion_are_distinct(monkeypatch, kind, phase
     run = _build_harness(monkeypatch, [response("gemini", text)], attempts=1)
     try:
         with (
-            diagnostic_request() as trace, pytest.raises(ModelResponseError) as caught,
+            diagnostic_request() as trace,
+            pytest.raises(ModelResponseError) as caught,
             diagnostic_stage("generator_unsupported"),
         ):
             run.gateway.generate_structured("PRIVATE", PlanDecision)
@@ -162,3 +172,61 @@ def test_wire_validation_does_not_run_domain_conversion(monkeypatch):
     monkeypatch.setattr(GenerationDecision, "decision", convert)
     GenerationDecision.model_validate(wire())
     convert.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "failure,category",
+    [
+        (ConfigurationError("PRIVATE"), "configuration"),
+        (SqlValidationError("PRIVATE"), "sql_validation"),
+        (SqlExecutionError("PRIVATE"), "sql_execution"),
+        (RetrievalError("PRIVATE"), "insufficient_evidence"),
+    ],
+)
+def test_backend_failure_category_survives_turn_wrapper(monkeypatch, failure, category):
+    from app.ai.chat import ModelChatService
+    from app.core.config import Settings
+
+    monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *args: Mock())
+    service = ModelChatService(
+        Settings(_env_file=None), lambda gateway: Mock(chat=Mock(side_effect=failure))
+    )
+    with diagnostic_request() as trace:
+        with pytest.raises(ChatTurnError) as caught:
+            service.chat("PRIVATE")
+        response_body = _chat_error(caught.value)
+    assert response_body.error_context.error_category == category
+    assert response_body.error_context.correlation_id == trace.correlation_id
+    assert "PRIVATE" not in response_body.model_dump_json()
+
+
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+def test_model_refusal_is_not_reported_as_json_failure(monkeypatch, provider):
+    if provider == "knowledge":
+        from tests.test_providers import completion
+
+        payload = completion("{}").json()
+        payload["choices"][0]["message"]["refusal"] = "PRIVATE refusal"
+        gateway, calls = harness(monkeypatch, [httpx2.Response(200, json=payload)])
+    else:
+        run = _build_harness(
+            monkeypatch,
+            [
+                httpx.Response(
+                    200,
+                    json={
+                        "candidates": [{"finishReason": "SAFETY", "content": {"parts": []}}],
+                    },
+                )
+            ],
+            attempts=1,
+        )
+        gateway, calls = run.gateway, run.calls
+    try:
+        with pytest.raises(ProviderError) as caught:
+            gateway.generate_structured("PRIVATE", RouteDecision)
+        assert caught.value.error_context.error_category == "model_refusal"
+        assert len(calls) == 1
+        assert "PRIVATE" not in caught.value.error_context.model_dump_json()
+    finally:
+        gateway.close()

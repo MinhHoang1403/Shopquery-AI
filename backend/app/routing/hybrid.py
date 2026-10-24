@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage
-from app.core.errors import ModelResponseError
+from app.core.errors import ErrorContext, ModelResponseError
 from app.datasets.context import DatasetSqlContext
 from app.rag.pipeline import RagPipeline, Source
 from app.routing.hybrid_evidence import (
@@ -23,6 +23,13 @@ from app.text_to_sql.count_contract import count_evidence
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
 EVIDENCE_REFUSAL = "Chưa đủ bằng chứng để kết luận chính xác từ dữ liệu hiện có."
+
+
+def _evidence_error() -> ModelResponseError:
+    return ModelResponseError(
+        EVIDENCE_REFUSAL,
+        error_context=ErrorContext(phase="verification", error_category="insufficient_evidence"),
+    )
 
 
 @dataclass
@@ -48,10 +55,11 @@ class HybridPipeline:
 
     def run(self, question: str) -> HybridResult:
         chunks = self._rag_pipeline.retrieve(question)
-        try:
-            requirements = [p.model_dump() for p, _ in numeric_policies(chunks).values()]
-        except ModelResponseError:
-            raise ModelResponseError(EVIDENCE_REFUSAL) from None
+        with diagnostic_stage("policy_requirements"):
+            try:
+                requirements = [p.model_dump() for p, _ in numeric_policies(chunks).values()]
+            except ModelResponseError:
+                raise _evidence_error() from None
         planning_evidence = json.dumps(
             {
                 "policy_candidates_not_verified": requirements,
@@ -63,7 +71,7 @@ class HybridPipeline:
             ensure_ascii=False,
         )
         if len(planning_evidence) > 60000:
-            raise ModelResponseError(EVIDENCE_REFUSAL)
+            raise _evidence_error()
         sql_result = self._sql_pipeline.run(
             question, evidence_context=planning_evidence, ground_answer=False
         )
@@ -130,14 +138,14 @@ Document evidence:
                 try:
                     answer = compose_answer(sql_result, chunks, draft, self._context)
                 except ModelResponseError as exc:
-                    raise ModelResponseError(EVIDENCE_REFUSAL) from exc
+                    raise _evidence_error() from exc
             except (ValidationError, ValueError, TypeError, KeyError) as exc:
-                raise ModelResponseError(EVIDENCE_REFUSAL) from exc
+                raise _evidence_error() from exc
             by_id = {chunk.chunk_id: chunk for chunk in chunks}
             if not draft.used_chunk_ids or any(
                 chunk_id not in by_id for chunk_id in draft.used_chunk_ids
             ):
-                raise ModelResponseError("Hybrid answer contains invalid citations")
+                raise _evidence_error()
             sources = [
                 Source(
                     chunk_id=by_id[chunk_id].chunk_id,

@@ -15,6 +15,7 @@ from app.core.errors import (
     ConfigurationError,
     ErrorContext,
     ModelResponseError,
+    RetrievalError,
     ShopQueryError,
     SqlExecutionError,
     SqlValidationError,
@@ -46,6 +47,7 @@ STAGES = frozenset(
         "sql_execution",
         "answer_grounding",
         "policy_verification",
+        "policy_requirements",
         "frontend_rendering",
         "document_retrieval",
         "request",
@@ -155,7 +157,10 @@ def attach_error_context(exc: ShopQueryError, stage: str = "request") -> ErrorCo
             details.update(error_category="sql_execution", phase="execution")
         elif isinstance(exc, ConfigurationError):
             details.update(error_category="configuration")
-        elif isinstance(exc, ModelResponseError) and stage == "policy_verification":
+        elif isinstance(exc, RetrievalError) or (
+            isinstance(exc, ModelResponseError)
+            and stage in {"policy_verification", "policy_requirements"}
+        ):
             details.update(error_category="insufficient_evidence", phase="verification")
     details["origin_stage"] = context.origin_stage or (stage if stage in STAGES else "request")
     if trace:
