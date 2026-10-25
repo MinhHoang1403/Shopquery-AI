@@ -103,6 +103,15 @@ Normal-operation gate stays ON. Evidence remains private in the existing folder,
 with hybrid-correction prefixes and a screenshot. This task is PARTIAL; Hybrid
 and conversational business acceptance are not complete.
 
+Post-window strict verifier PASS (84 source modules, immutable API identity, no
+source/environment drift); Web/API8080 health PASS. Google login and persisted Q1
+history survive reload. All37 tables and schema retain integrity: only chat
+conversations/messages/resource_limits changed; every earlier message<=242 is
+hash-identical. Uploaded tables, documents/chunks/vectors, relationships, users
+and sessions are unchanged. Web/main DB containers and protected main volume
+were not recreated. Application image source remains f90592d; subsequent commits
+only update this acceptance record. Main is pushed without release tag.
+
 ## Current operation: Gemini default — 25/10/2026
 
 Operator explicitly selected Gemini for normal authenticated operation. Private
