@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, m
 
 from app.ai.providers import ModelId
 from app.core.errors import ErrorContext
+from app.routing.hybrid_evidence import VerificationStatus
 from app.routing.router import RouteLabel
 
 
@@ -54,6 +55,7 @@ class ChatResponse(BaseModel):
     fallback_used: bool = False
     fallback_reason: str | None = None
     error_context: ErrorContext | None = None
+    verification_status: VerificationStatus | None = None
 
 
 class ModelOption(BaseModel):

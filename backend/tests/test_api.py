@@ -43,6 +43,7 @@ def test_chat_has_consistent_response(monkeypatch) -> None:
         "fallback_used": False,
         "fallback_reason": None,
         "error_context": None,
+        "verification_status": None,
     }
 
 

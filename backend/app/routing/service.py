@@ -8,6 +8,7 @@ from app.core.diagnostics import record_facts
 from app.core.errors import SqlUnsupportedError
 from app.rag.pipeline import RagPipeline, Source
 from app.routing.hybrid import HybridPipeline
+from app.routing.hybrid_evidence import VerificationStatus
 from app.routing.router import QueryRouter, RouteLabel
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
@@ -29,6 +30,7 @@ class ChatResult:
     used_model: str | None = None
     fallback_used: bool = False
     fallback_reason: str | None = None
+    verification_status: VerificationStatus | None = None
 
 
 def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
@@ -63,7 +65,7 @@ class ChatService:
         self._rag_pipeline = rag_pipeline
         self._hybrid_pipeline = hybrid_pipeline
 
-    def chat(self, question: str) -> ChatResult:
+    def chat(self, question: str, *, current_question: str | None = None) -> ChatResult:
         route = self._router.route(question).route
         if route == RouteLabel.SQL:
             result = self._sql_pipeline.run(question)
@@ -72,8 +74,18 @@ class ChatService:
             result = self._rag_pipeline.run(question)
             return ChatResult(result.answer, route, sources=result.sources)
         if route == RouteLabel.HYBRID:
-            result = self._hybrid_pipeline.run(question)
-            return ChatResult(result.answer, route, result.sql, result.rows, result.sources)
+            result = self._hybrid_pipeline.run(
+                question,
+                **({"current_question": current_question} if current_question is not None else {}),
+            )
+            return ChatResult(
+                result.answer,
+                route,
+                result.sql,
+                result.rows,
+                result.sources,
+                verification_status=result.verification_status,
+            )
         return ChatResult(
             answer=INSUFFICIENT_INFORMATION,
             route=RouteLabel.UNSUPPORTED,
@@ -97,7 +109,7 @@ class DatasetChatService:
         self._hybrid_pipeline = hybrid_pipeline
         self._requested_model = requested_model
 
-    def chat(self, question: str) -> ChatResult:
+    def chat(self, question: str, *, current_question: str | None = None) -> ChatResult:
         allowed = {RouteLabel.UNSUPPORTED}
         if self._sql_pipeline is not None:
             allowed.add(RouteLabel.SQL)
@@ -124,10 +136,24 @@ class DatasetChatService:
             return ChatResult(result.answer, route, sources=result.sources)
         if route == RouteLabel.HYBRID and self._hybrid_pipeline is not None:
             try:
-                result = self._hybrid_pipeline.run(question)
+                result = self._hybrid_pipeline.run(
+                    question,
+                    **(
+                        {"current_question": current_question}
+                        if current_question is not None
+                        else {}
+                    ),
+                )
             except SqlUnsupportedError as exc:
                 return _sql_refusal(exc)
-            return ChatResult(result.answer, route, result.sql, result.rows, result.sources)
+            return ChatResult(
+                result.answer,
+                route,
+                result.sql,
+                result.rows,
+                result.sources,
+                verification_status=result.verification_status,
+            )
         return ChatResult(
             INSUFFICIENT_INFORMATION,
             RouteLabel.UNSUPPORTED,

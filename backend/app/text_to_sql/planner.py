@@ -4,6 +4,7 @@ from app.ai.gemini import GenerationGateway
 from app.core.errors import SqlUnsupportedError
 from app.datasets.context import DatasetSqlContext
 from app.text_to_sql.compiler import SchemaReferences
+from app.text_to_sql.coverage import EvidenceCoverageRequirement, validate_plan_coverage
 from app.text_to_sql.plan_binding import bind_approved_grain
 from app.text_to_sql.query_plan import PlanDecision, QueryPlan
 from app.text_to_sql.schema_context import BUSINESS_TIME_ZONE
@@ -26,7 +27,17 @@ class QueryPlanner:
         )
         self.references = SchemaReferences.from_context(context)
 
-    def generate(self, question: str, *, evidence_context: str | None = None) -> QueryPlan:
+    def generate(
+        self,
+        question: str,
+        *,
+        evidence_context: str | None = None,
+        coverage: EvidenceCoverageRequirement | None = None,
+    ) -> QueryPlan:
+        if coverage is not None:
+            plan = bind_approved_grain(coverage.plan(), self.references)
+            validate_plan_coverage(plan, coverage)
+            return plan
         references = self.references
         dimension_keys = {
             (edge.target_table, edge.target_column) for edge in self._context.approved_joins

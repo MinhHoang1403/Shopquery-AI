@@ -194,6 +194,7 @@ def test_successful_verified_answer_is_a_bounded_follow_up_premise():
             "route": "HYBRID",
             "answer": answer,
             "sql": result.sql,
+            "verification_status": "verified_classification",
         },
     )
     conversation = replace(conversation, messages=(first, last))

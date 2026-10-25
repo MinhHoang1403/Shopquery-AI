@@ -252,7 +252,12 @@ def _persist_chat_turn(
         question = contextual_question(
             request.message, conversation, user_id, conversation.dataset_id
         )
-        response = _chat_response(service.chat(_routed_question(request, question)))
+        response = _chat_response(
+            service.chat(
+                _routed_question(request, question),
+                current_question=request.message,
+            )
+        )
     except ShopQueryError as exc:
         response = _chat_error(exc, selected_model)
     assistant_message = repository.add_response_message(
@@ -554,6 +559,7 @@ def _chat_response(result: ChatResult) -> ChatResponse:
         used_model=result.used_model,
         fallback_used=result.fallback_used,
         fallback_reason=result.fallback_reason,
+        verification_status=result.verification_status,
         sources=[
             SourceResponse.model_validate(source, from_attributes=True) for source in result.sources
         ],
@@ -574,6 +580,7 @@ def _chat_error(exc: ShopQueryError, requested_model: str | None = None) -> Chat
         route=None,
         error=message,
         error_context=context,
+        verification_status="refused" if context.attempted_route == "HYBRID" else None,
         requested_model=exc.requested_model if isinstance(exc, ChatTurnError) else requested_model,
         fallback_used=isinstance(exc, ChatTurnError) and exc.fallback_used,
         fallback_reason=(

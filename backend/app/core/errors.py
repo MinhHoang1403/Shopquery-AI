@@ -41,6 +41,7 @@ ErrorPhase = Literal[
 ]
 
 VerificationReason = Literal[
+    "planning_scope_violation",
     "policy_not_retrieved",
     "policy_parse_failed",
     "policy_document_scope_invalid",

@@ -28,6 +28,7 @@ class PipelineResult:
     sql: str = "SELECT 1"
     rows: list[dict[str, Any]] | None = None
     sources: list[Any] | None = None
+    verification_status: str = "unverified"
 
 
 class FakePipeline:

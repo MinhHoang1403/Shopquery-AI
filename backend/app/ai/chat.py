@@ -12,7 +12,7 @@ from app.routing.service import ChatResult
 
 
 class ChatPipeline(Protocol):
-    def chat(self, question: str) -> ChatResult: ...
+    def chat(self, question: str, *, current_question: str | None = None) -> ChatResult: ...
 
 
 class ModelChatService:
@@ -22,23 +22,31 @@ class ModelChatService:
         self._settings = settings
         self._build_pipeline = build_pipeline
 
-    def _attempt(self, model_id: str, question: str) -> ChatResult:
+    def _attempt(
+        self,
+        model_id: str,
+        question: str,
+        current_question: str | None = None,
+    ) -> ChatResult:
         gateway = build_generation_gateway(self._settings, model_id)
         try:
-            return self._build_pipeline(gateway).chat(question)
+            return self._build_pipeline(gateway).chat(
+                question,
+                **({"current_question": current_question} if current_question is not None else {}),
+            )
         finally:
             close = getattr(gateway, "close", None)
             if close:
                 close()
 
     @diagnosed
-    def chat(self, question: str) -> ChatResult:
+    def chat(self, question: str, *, current_question: str | None = None) -> ChatResult:
         requested = self._settings.ai_default_model
         record_facts(model=requested)
         fallback = False
         try:
             try:
-                result = self._attempt(requested, question)
+                result = self._attempt(requested, question, current_question)
             except ProviderError as exc:
                 if not (
                     requested == "inetcloud-knowledge"
@@ -48,7 +56,7 @@ class ModelChatService:
                 ):
                     raise
                 fallback = True
-                result = self._attempt("gemini", question)
+                result = self._attempt("gemini", question, current_question)
         except ShopQueryError as exc:
             attach_error_context(exc)
             raise ChatTurnError(exc, requested, fallback_used=fallback) from exc

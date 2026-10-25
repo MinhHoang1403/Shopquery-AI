@@ -5,6 +5,79 @@
 Updated 2026-10-25 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## SQL evidence coverage and verified conversation — OFFLINE_PASS / LIVE_PENDING
+
+The actual SQL244/correlation79abb63129e34b1caa1561e8502253d8 established a
+planning semantic failure: document-threshold HAVING removed the unqualified
+entities. A reconstructed typed equivalent (not the original serialized model
+response) reached the executor before this patch. It now fails with
+`planning_scope_violation`, origin `plan_coverage_validation`, before compilation
+or execution. A separate compiled-AST check prevents evidence/parameterized SQL
+drift before execution. Normal SQL WHERE/date filters keep their existing path.
+
+`EvidenceCoverageRequirement` describes one all-row entity aggregate using issued
+source/column/relationship references. The Hybrid resolver requires a fully
+consumed classification request, a unique closed-grammar policy, authorized
+identity/measure/aggregate, unique approved path and the existing whole-document
+hash/scope/title/unit verifier. Entity wording is checked against policy subject
+and registry; it is not a KPI keyword trigger. Explicit time/status qualifiers or
+unknown wording do not enter this path. Ambiguous metadata cannot authorize it.
+
+For this bounded simple-policy case, QueryPlanner constructs a fresh typed plan
+from that evidence, using SchemaReferences/bind_approved_grain/QueryCompiler.
+It never deletes filters from a model plan, invents SQL text, calls a repair model
+or changes user filters. Coverage validates source, grouping, direct aggregate,
+relationships and absence of evidence-removing predicates/limits. The independent
+SQLGlot check verifies emitted lineage and exact executed AST; compiler SQL/JOIN/
+COUNT/read-only guards still run separately. Registry dimension row counts also
+prevent claiming full classification when an INNER JOIN omits an entity with no
+fact rows; this does not replace AST/provenance/cardinality checks.
+
+Policy verification and Decimal evaluation/composition still independently run
+after execution. For requests for only qualified/not-qualified entities, SQL
+evidence remains complete; the composer verifies all decisions first, then
+selects presentation. NULL retains insufficient-evidence semantics and cannot
+be marked fully verified. No model decides a policy verdict in this path.
+
+Backend `verification_status` distinguishes verified_classification, unverified,
+explanation and refused. It flows through HybridResult → ChatResult → ChatResponse
+→ existing JSON persistence → reload. Only a coverage-checked, source-bound,
+fully evaluated/cited classification receives verified_classification. No database
+migration or history rewrite. Old Hybrid messages without this field remain
+readable but cannot supply a KPI premise. `contextual_question()` requires this
+trusted status and retains owner/dataset/conversation/bounds/reset guards; a
+later unverified/error turn invalidates older premises. SQL/RAG context remains
+compatible. The exact current question travels separately from untrusted bounded
+history so history cannot hide a filter from request interpretation. Fresh SQL/RAG
+evidence is still retrieved for each follow-up.
+
+537 targeted backend tests PASS, including HAVING/WHERE/LIMIT/group/metric/source
+violations before execution, AST drift, aliases, approved/ambiguous paths,
+Decimal/NULL/zero, omitted dimension entities, staffing headers, scope/hash,
+security/COUNT/JOIN guards and verified metadata persistence/context. Ruff and
+diff checks PASS. Frontend TypeScript and21 App tests PASS without Web source
+changes; its response parser accepts the added optional metadata. No configured
+backend static type checker was added.
+
+Read-only PostgreSQL integration using production planner/compiler/executor and
+Hybrid verifier returns all12 exact fees, total33066538.03, correct6/6 statuses
+and citation23. The follow-up presentation contains exactly TS01–TS06 while SQL
+retains12 rows. The reconstructed old HAVING plan is rejected. No provider calls,
+test writes to main, new stack/database/workspace or document embeddings. Existing
+private evidence folder uses coverage prefixes; actual live acceptance is pending.
+
+Technical basis: installed SQLGlot29.0.1/Pydantic2.14.1 behavior is reproduced in
+tests; [PostgreSQL SELECT](https://www.postgresql.org/docs/current/sql-select.html)
+defines HAVING group elimination, [SQLGlot AST](https://sqlglot.com/sqlglot/expressions/query.html)
+provides structural clause/column nodes, and [Decimal](https://docs.python.org/3/library/decimal.html)
+supports exact numeric comparisons. No dependency/provider/model/compiler changes.
+
+New live budget explicitly approved:2 questions/6 generation/2 query embeddings/
+0 document embeddings, one attempt, no retry/fallback/Knowledge/extra paid
+diagnostics; Q2 only after Q1 PASS. Gate stays ON for authenticated normal use,
+Guest/fallback OFF, vector-only. API-only build and approved cutover follow the
+deployment runbook; no Web rebuild or PostgreSQL recreation.
+
 ## Hybrid policy correction — 25/10/2026 — PARTIAL / LIVE FAILED
 
 The historical Gemini correlation `2532bcfc7ff0471786da83ed06dd385d` proves

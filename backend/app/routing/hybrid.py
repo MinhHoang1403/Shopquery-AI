@@ -11,8 +11,10 @@ from app.core.diagnostics import diagnostic_stage
 from app.core.errors import ErrorContext, ModelResponseError
 from app.datasets.context import DatasetSqlContext
 from app.rag.pipeline import RagPipeline, Source
+from app.routing.hybrid_coverage import resolve_coverage
 from app.routing.hybrid_evidence import (
     HybridAnswerDraft,
+    VerificationStatus,
     compose_answer,
     decision_prompt,
     verified_classification,
@@ -20,7 +22,7 @@ from app.routing.hybrid_evidence import (
 from app.routing.hybrid_policy import numeric_policies
 from app.routing.hybrid_policy_binding import policy_evidence, verification_error
 from app.text_to_sql.count_contract import count_evidence
-from app.text_to_sql.pipeline import TextToSqlPipeline
+from app.text_to_sql.pipeline import SqlResult, TextToSqlPipeline
 
 EVIDENCE_REFUSAL = "Chưa đủ bằng chứng để kết luận chính xác từ dữ liệu hiện có."
 
@@ -45,6 +47,7 @@ class HybridResult:
     sql: str
     rows: list[dict[str, Any]]
     sources: list[Source]
+    verification_status: VerificationStatus = "unverified"
 
 
 class HybridPipeline:
@@ -60,7 +63,7 @@ class HybridPipeline:
         self._gateway = gateway
         self._context = context
 
-    def run(self, question: str) -> HybridResult:
+    def run(self, question: str, *, current_question: str | None = None) -> HybridResult:
         chunks = self._rag_pipeline.retrieve(question)
         with diagnostic_stage("policy_requirements"):
             try:
@@ -79,8 +82,13 @@ class HybridPipeline:
         )
         if len(planning_evidence) > 60000:
             raise _evidence_error()
+        coverage = resolve_coverage(current_question or question, chunks, self._context)
+        sql_options = {"coverage": coverage} if coverage is not None else {}
         sql_result = self._sql_pipeline.run(
-            question, evidence_context=planning_evidence, ground_answer=False
+            question,
+            evidence_context=planning_evidence,
+            ground_answer=False,
+            **sql_options,
         )
         with diagnostic_stage("policy_verification"):
             try:
@@ -142,6 +150,8 @@ Document evidence:
                 )
                 draft = verified_classification(sql_result, chunks, self._context, language)
                 if draft is None:
+                    if coverage is not None:
+                        raise verification_error("policy_not_verified")
                     with diagnostic_stage("answer_grounding"):
                         draft = self._gateway.generate_structured(prompt, HybridAnswerDraft)
                 draft = HybridAnswerDraft.model_validate(draft)
@@ -165,4 +175,34 @@ Document evidence:
                 )
                 for chunk_id in dict.fromkeys(draft.used_chunk_ids)
             ]
-        return HybridResult(answer, sql_result.sql, sql_result.rows, sources)
+            status: VerificationStatus = "unverified"
+            if draft.mode == "explanation":
+                status = "explanation"
+            elif (
+                coverage is not None
+                and draft.rule_id is not None
+                and bool(draft.decisions)
+                and all(d.status in {"qualified", "not_qualified"} for d in draft.decisions)
+            ):
+                status = "verified_classification"
+            if coverage is not None and coverage.selection != "all":
+                selected = [
+                    i
+                    for i, decision in enumerate(draft.decisions)
+                    if decision.status == coverage.selection
+                ]
+                # Select presentation only after verifying the complete SQL evidence above.
+                subset = SqlResult(
+                    sql_result.answer,
+                    sql_result.sql,
+                    [sql_result.rows[i] for i in selected],
+                    sql_result.fact_table,
+                    sql_result.count_metrics,
+                )
+                subset_draft = draft.model_copy(
+                    update={
+                        "decisions": [draft.decisions[i] for i in selected],
+                    }
+                )
+                answer = compose_answer(subset, chunks, subset_draft, self._context)
+        return HybridResult(answer, sql_result.sql, sql_result.rows, sources, status)

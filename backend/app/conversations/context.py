@@ -26,6 +26,10 @@ def contextual_question(
             and message.role == "assistant"
             and metadata.get("route") in {"SQL", "RAG", "HYBRID"}
             and not metadata.get("error")
+            and (
+                metadata.get("route") != "HYBRID"
+                or metadata.get("verification_status") == "verified_classification"
+            )
             and metadata.get("answer") == message.content
             and len(pending.content) <= 800
             and len(message.content) <= 2000

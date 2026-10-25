@@ -36,6 +36,8 @@ STAGES = frozenset(
         "structured_output_invalid",
         "sql_parse_error",
         "plan_compilation",
+        "plan_construction",
+        "plan_coverage_validation",
         "column_resolution",
         "join_graph",
         "join_relationship",
@@ -178,6 +180,9 @@ def record_facts(**facts: Any) -> None:
     if trace is None:
         return
     for key, value in facts.items():
+        if key == "coverage_requirement" and value == "full_entity_classification":
+            trace.facts[key] = value
+            continue
         if key == "policy_verification" and isinstance(value, ErrorContext):
             trace.facts[key] = value.model_copy(
                 update={

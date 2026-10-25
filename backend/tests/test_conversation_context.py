@@ -5,9 +5,11 @@ from app.conversations.context import contextual_question
 from app.conversations.repository import ConversationRecord, MessageRecord
 
 
-def snapshot(route="HYBRID", error=None):
+def snapshot(route="HYBRID", error=None, verification_status="verified_classification"):
     now, owner = datetime.now(UTC), uuid4()
     metadata = {"route": route, "answer": "K1 đạt, K2 chưa đạt.", "sql": "SELECT 1", "error": error}
+    if verification_status is not None:
+        metadata["verification_status"] = verification_status
     messages = (
         MessageRecord(1, "user", "Theo KPI kho nào đạt?", None, now),
         MessageRecord(2, "assistant", metadata["answer"], metadata, now),
@@ -31,6 +33,23 @@ def test_only_successful_same_owner_dataset_premise_is_forwarded():
 def test_failed_or_unsupported_turn_is_not_a_premise():
     for record in (snapshot(route="UNSUPPORTED"), snapshot(error="failed")):
         assert contextual_question("Còn lại?", record, record.owner_user_id, 13) == "Còn lại?"
+
+
+def test_hybrid_needs_backend_verified_metadata_even_when_http_successful():
+    for status in (None, "unverified", "explanation", "refused"):
+        record = snapshot(verification_status=status)
+        assert contextual_question("Còn lại?", record, record.owner_user_id, 13) == "Còn lại?"
+
+
+def test_normal_sql_and_rag_history_remain_context_compatible():
+    for route in ("SQL", "RAG"):
+        record = snapshot(route=route, verification_status=None)
+        assert "Previous successful turns" in contextual_question(
+            "Còn lại?",
+            record,
+            record.owner_user_id,
+            13,
+        )
 
 
 def test_context_is_bounded_and_does_not_cut_an_oversized_answer_into_a_premise():

@@ -25,6 +25,7 @@ class DatasetSqlContext:
     column_headers: dict[str, dict[str, str]] = field(default_factory=dict)
     table_labels: dict[str, str] = field(default_factory=dict)
     categorical_values: dict[str, dict[str, tuple[str, ...]]] = field(default_factory=dict)
+    table_row_counts: dict[str, int] = field(default_factory=dict)
 
 
 def build_dataset_sql_context(
@@ -258,4 +259,5 @@ Rules:
         },
         table_labels={t.physical_table_name: t.display_name for t in tables},
         categorical_values=nested_values,
+        table_row_counts={t.physical_table_name: t.row_count for t in tables},
     )

@@ -20,6 +20,12 @@ from app.routing.hybrid_policy_binding import (
 from app.text_to_sql.pipeline import SqlResult
 
 DecisionStatus = Literal["qualified", "not_qualified", "insufficient_evidence", "unverified"]
+VerificationStatus = Literal[
+    "verified_classification",
+    "unverified",
+    "explanation",
+    "refused",
+]
 
 
 class EvidenceNote(BaseModel):

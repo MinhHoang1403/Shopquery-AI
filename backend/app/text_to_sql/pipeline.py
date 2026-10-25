@@ -10,6 +10,12 @@ from app.core.diagnostics import diagnostic_stage, record_facts
 from app.text_to_sql.answer import compose_sql_answer
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.count_contract import CountMetric
+from app.text_to_sql.coverage import (
+    EvidenceCoverageRequirement,
+    coverage_error,
+    validate_compiled_coverage,
+    validate_plan_coverage,
+)
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.planner import QueryPlanner
 from app.text_to_sql.validator import ValidatedSql
@@ -40,16 +46,29 @@ class TextToSqlPipeline:
         self._execution_guard = execution_guard
 
     def run(
-        self, question: str, *, evidence_context: str | None = None, ground_answer: bool = True
+        self,
+        question: str,
+        *,
+        evidence_context: str | None = None,
+        ground_answer: bool = True,
+        coverage: EvidenceCoverageRequirement | None = None,
     ) -> SqlResult:
-        with diagnostic_stage("generator_unsupported"):
+        with diagnostic_stage("plan_construction" if coverage else "generator_unsupported"):
             plan = (
-                self._planner.generate(question, evidence_context=evidence_context)
+                self._planner.generate(
+                    question, evidence_context=evidence_context, coverage=coverage
+                )
+                if coverage is not None
+                else self._planner.generate(question, evidence_context=evidence_context)
                 if evidence_context is not None
                 else self._planner.generate(question)
             )
+        if coverage is not None:
+            validate_plan_coverage(plan, coverage)
         with diagnostic_stage("plan_compilation"):
             compiled = self._compiler.compile(plan)
+        if coverage is not None:
+            validate_compiled_coverage(compiled, coverage, self._compiler.references)
         validated = compiled.validated
         record_facts(sql_validated=True)
         guard = self._execution_guard(validated) if self._execution_guard else nullcontext()
@@ -60,6 +79,10 @@ class TextToSqlPipeline:
                 record_facts(execution_reached=True)
                 rows = self._executor.execute(validated, compiled.parameters)
                 record_facts(result_rows=len(rows))
+        if coverage is not None and coverage.entity_count is not None:
+            with diagnostic_stage("plan_coverage_validation"):
+                if len(rows) != coverage.entity_count:
+                    raise coverage_error()
         answer = ""
         if ground_answer:
             with diagnostic_stage("answer_grounding"):
