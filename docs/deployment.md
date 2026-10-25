@@ -54,6 +54,16 @@ Frontend inputs không đổi sau `fcf230b`:73 unit +105 mock browser checks PAS
 Q9 cũ vẫn unresolved ở exact invalid field, chưa có live confirmation Gemini/Hybrid
 trên image mới. Không coi error-path verification hoặc HTTP200 là SQL/Hybrid PASS.
 
+Knowledge investigation25/10:effective provider config khớp Compose,local DNS/TCP/TLS
+PASS,no proxy env/mounts. Non-generation GET models/health và direct TLS GET models
+đều503 với HAProxy-default107byte HTML fingerprint. Chưa có upstream admin logs để
+phân biệt route mismatch/backendDOWN/maintenance;không đổi base URL,timeout,model,
+retry hoặc serving theo suy đoán. Operator không có server admin access;private
+handoff ở existing ev-acceptance-20261024/knowledge-503-admin-handoff.md. Endpoint
+identity lưu riêng ngoàiGit. Không gửi probe generation thật hoặc tự bật gate.
+Sau provider recovery cần xác nhận model-list/API support rồi xin ngân sách mới
+tối đa1text+1structured synthetic probe trước khi tiếp tục functional acceptance.
+
 Trước switch kiểm mounts, health, active leases và in-flight workers. Auth sessions
 lưu DB được giữ; Guest RAM không sống qua API recreate. Exec process mới không đọc
 được GuestStore của process đang chạy. Không coi worker count là số idle sessions.

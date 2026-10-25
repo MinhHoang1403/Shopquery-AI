@@ -2,8 +2,34 @@
 
 **MAIN CONSOLIDATED — 8080 ACTIVE — ACCEPTANCE PARTIAL — PROVIDER GATE OFF**
 
-Updated 2026-10-24 (Asia/Saigon). No release tag or full Stage 2 acceptance.
+Updated 2026-10-25 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
+
+## Knowledge connectivity investigation — 25/10/2026
+
+No generation or embedding requests; gate stayed OFF. Effective URL/model/timeout/
+attempt config matches Compose. DNS/TCP/verified TLS from serving API container PASS,
+no proxy environment or HTTP-client proxy mounts. GET model-list and health return
+503 text/html,107bytes,about75–80ms. A credential-free GET models over direct TLS
+without SDK returns the same body/hash. Readiness/model listing not confirmed.
+
+Response exactly matches HAProxy's default503 template; reverse-proxy/load-balancer
+origin is strongly inferred, not instance/backend identity proof. Backend DOWN,
+unmatched Host/path/default_backend,maintenance or other serving cause cannot be
+distinguished without upstream logs/health-check state. User has no server admin
+access. No Retry-After/upstream request ID received. Original24/10 correlation
+2424518bb21940e2b878641eae2e0609 was local, not forwarded as a request header;
+original503 body/headers were not captured. Do not claim new GET fingerprint proves
+the historical response body or exact model-worker failure.
+
+Offline real-SDK serializers send the configured prefix +chat/completions,model
+knowledge,and strict json_schema correctly; real server support remains UNVERIFIED.
+No source/config/serving change justified, no repeat EV tests. Administrator must
+check vhost/path routing,selected backend/server,termination state and LastChk,
+then restore the confirmed failing service. Private handoff and endpoint identity:
+existing ev-acceptance-20261024 backup folder,knowledge-503-admin-handoff.md and
+knowledge-admin-endpoint-private-20261025.json. Internal host/URL is not published.
+Knowledge remains BLOCKED_PROVIDER;503 not fixed. Main8080 Web/API HTTP200.
 
 ## Latest reliability deployment and bounded live window — 24/10/2026
 
