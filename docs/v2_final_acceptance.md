@@ -64,7 +64,8 @@ Hybrid verifier returns all12 exact fees, total33066538.03, correct6/6 statuses
 and citation23. The follow-up presentation contains exactly TS01–TS06 while SQL
 retains12 rows. The reconstructed old HAVING plan is rejected. No provider calls,
 test writes to main, new stack/database/workspace or document embeddings. Existing
-private evidence folder uses coverage prefixes; actual live acceptance is pending.
+private evidence folder uses coverage prefixes. These offline checks preceded the
+successful live acceptance recorded below.
 
 Technical basis: installed SQLGlot29.0.1/Pydantic2.14.1 behavior is reproduced in
 tests; [PostgreSQL SELECT](https://www.postgresql.org/docs/current/sql-select.html)
