@@ -1,9 +1,57 @@
 # ShopQuery AI V2 — current acceptance
 
-**MAIN CONSOLIDATED — 8080 ACTIVE — ACCEPTANCE PARTIAL — PROVIDER GATE OFF**
+**MAIN CONSOLIDATED — 8080 ACTIVE — GEMINI DEFAULT — ACCEPTANCE PARTIAL — PROVIDER GATE ON**
 
 Updated 2026-10-25 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
+
+## Current operation: Gemini default — 25/10/2026
+
+Operator explicitly selected Gemini for normal authenticated operation. Private
+`.env.release` overrides `AI_DEFAULT_MODEL=gemini`, generation `gemini-3.5-flash-lite`,
+embedding `gemini-embedding-2`, attempts1, fallback OFF, provider gate ON and Guest AI
+OFF. This supersedes earlier bounded-window gate-closure instructions. Do not
+turn this normal-operation gate OFF when an agent smoke window ends. Application
+quotas, concurrency and owner isolation remain unchanged. Knowledge remains configured;
+its upstream503 has not been fixed.
+
+Configuration-only API recreate and Nginx graceful reload; no source/image rebuild.
+Web/DB containers and application source5d4c595/image digests below are unchanged.
+Strict verifier PASS: 84modules, no source/image/environment drift; Web/API8080HTTP200,
+all healthy. Google session/history reload PASS. Authenticated `/api/models` shows
+Gemini default, AI enabled, both integrations configured and fallback false. New chat
+selects Gemini. One old chat switched through the existing selector and persisted on
+reload; its historical Knowledge message attribution stayed unchanged. No bulk history
+edits. UI retains3tables/3docs/2approved N:1 relationships.
+
+Key presence/equality to Compose verified without disclosing key. Two non-generation
+`models.get` calls confirm both IDs and supported actions. Three targeted provider
+selection/empty-workspace offline tests PASS. No regression/golden/BGE reruns or guard
+changes.
+
+New approved smoke budget:4chats/8generation stages/2query embeddings/0documents,
+explicit SQL/Hybrid source choices, one attempt, no retry/fallback, conditional progression:
+
+| Check | Live outcome |
+| --- | --- |
+| Total sessions/fee | PASS:360 /33066538.03; fact COUNT(*) and SUM, no filters; PostgreSQL oracle matches |
+| Per-station JOIN | PASS:12stations,30sessions each; all exact fee rows match independent PostgreSQL oracle; group station ID+name |
+| KPI Hybrid | NOT ACCEPTED: retrieval/planner/compiler/execution succeed with12rows; answer draft parses, then policy_verification refuses insufficient_evidence |
+| KPI follow-up | BLOCKED_PRECONDITION / NOT_RUN: no successful KPI premise; no fourth question |
+
+All requests selected Gemini; successful SQL requested/used Gemini, without Knowledge
+or fallback. KPI correlation `2532bcfc7ff0471786da83ed06dd385d`: phase verification,
+origin policy_verification, category insufficient_evidence. No HTTP503 or invalid
+structured output in this window. Intermediate Hybrid SQL/rows/chunk IDs/draft were
+not retained in the error response; exact binding/refusal cause remains unresolved.
+This is not proof of incorrect SQL. No extra paid diagnostics or unrelated patch.
+PDF/DOCX RAG not separately tested here.
+
+Used3chats/4generation/1query embedding/0documents. Agent smoke window ended; normal
+gate remains ON. All37tables/schema retained; only conversations/messages/resource_limits
+changed; old messages<=236 hash-preserved; uploads/docs/vectors/relationships/accounts/
+sessions unchanged. Private evidence reuses ev-acceptance-20261024 with gemini prefix.
+This is bounded SQL/JOIN acceptance, not full Hybrid/RAG/Stage2 acceptance.
 
 ## Knowledge connectivity investigation — 25/10/2026
 
@@ -361,14 +409,13 @@ is OFF. CSV/XLSX ingestion does not require a provider. This is an operational
 consent gate, not an upload parser failure. Legacy DOC and scanned PDF/OCR remain
 unsupported.
 
-The operator previously authorized normal authenticated provider operation, then
-approved a newer bounded EV window on24/10 with explicit gate closure at its end.
-Current RELEASE_PROVIDER_DATA_ENABLED=false; Guest AI/fallback OFF, vector-only,
-BGE not loaded. Earlier normal-operation consent is not a new paid test budget.
-Do not reopen or reuse unused calls without the latest explicit approval.
+The operator closed the24/10bounded window,then explicitly reopened normal operation
+with Gemini default on25/10. Current RELEASE_PROVIDER_DATA_ENABLED=true;
+GuestAI/fallbackOFF,vector-only,noBGE. Normal operation is separate from agent test
+budgets;do not reuse unused calls or auto-close the normal gate after smoke tests.
 
-Google session/history and tabular data stay available while the gate is closed.
-No source fix or parser change should silently alter this consent boundary.
+Google session/history and tabular data remain available. No source fix or parser
+change should silently alter this consent boundary.
 
 ## G. Future workflow
 

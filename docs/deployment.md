@@ -25,6 +25,29 @@ Web source `5d4c595965ad379b85627dac227034446e673ef7`, digest `bd7601be72e6d60aa
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
 
+### Vận hành hiện tại — Gemini mặc định, 25/10/2026
+
+Operator yêu cầu dùng Gemini cho tài khoản đăng nhập. Private `.env.release`, nạp
+sau `.env`, đặt `AI_DEFAULT_MODEL=gemini`, generation `gemini-3.5-flash-lite`,
+embedding `gemini-embedding-2`, `GEMINI_RETRY_ATTEMPTS=1`, fallback OFF,
+`RELEASE_PROVIDER_DATA_ENABLED=true`, Guest AI OFF; reranker path vẫn rỗng.
+Embedding model cũng được cố định trong base Compose. Key khớp cấu hình hiệu lực;
+`models.get` xác nhận cả hai model và loại tác vụ, không gọi generation/embedding.
+
+Không sửa source/build inputs hoặc rebuild. API-only recreate và Nginx syntax check/
+graceful reload PASS; Web/DB/images giữ nguyên. Strict verifier PASS: 84 modules,
+không source/image/environment drift. `/api/models` authenticated trả default Gemini,
+AI enabled và fallback false. Chat mới mặc định Gemini; chat cũ đổi được bằng selector,
+không bulk rewrite history. Knowledge adapter/config được giữ; chọn Knowledge vẫn có
+thể nhận503 từ upstream.
+
+Smoke có điều kiện đã duyệt: SQL tổng360/33066538.03 PASS; JOIN12trạm, mỗi trạm30phiên
+và toàn bộ phí khớp PostgreSQL oracle PASS; Hybrid từ chối tại policy_verification /
+insufficient_evidence sau retrieval/planning/SQL12rows thành công; follow-up NOT_RUN.
+Dùng3chats/4generation/1query embedding/0document embeddings, không retry/fallback.
+Không tự reuse budget dư để dò lỗi. Normal-operation gate vẫn ON sau smoke; Guest AI
+OFF, quotas/concurrency/owner scope giữ nguyên. Xem acceptance để biết giới hạn.
+
 ### Reliability artifacts — deployed 24/10/2026
 
 Application source `5d4c595965ad379b85627dac227034446e673ef7` đã push main;
@@ -193,10 +216,10 @@ Trong các bounded live window, SDK retry attempts đặt1 cho cả Gemini và
 Knowledge; không manual retry. Chỉ dùng verified synthetic fixture; hết cửa sổ
 hoặc gặp blocker thì tắt `RELEASE_PROVIDER_DATA_ENABLED` và recreate riêng API.
 Điều đó giữ Google/history/tabular upload, chặn paid chats/document embeddings.
-Sau yêu cầu bật normal operation trước đó, operator đã duyệt cửa sổ Xe điện mới
-ngày24/10 và yêu cầu đóng gate cuối lượt. Trạng thái mới nhất: provider gate OFF,
-Guest AI/fallback OFF, vector-only/no BGE. Không tự reuse budget hoặc tự bật gate.
-Normal operation gate chỉ đổi theo phê duyệt rõ ràng mới nhất của operator.
+Sau khi đóng cửa sổ24/10,operator yêu cầu25/10 dùngGemini làmdefault và bật lại
+normal operation. Trạng thái mới nhất:provider gateON,GuestAI/fallbackOFF,
+vector-only/noBGE. Không auto-close normal gate khi agent smoke kết thúc;không reuse
+unused paid test budget. Normal gate chỉ đổi theo phê duyệt mới nhất của operator.
 
 Windows scripts dùng invoke-python.ps1 với đúng .venv executable hiện hành,
 redirect stdout/stderr trước khi đặt encoding và đọc cả hai stream bất đồng bộ.
