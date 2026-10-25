@@ -178,6 +178,14 @@ def record_facts(**facts: Any) -> None:
     if trace is None:
         return
     for key, value in facts.items():
+        if key == "policy_verification" and isinstance(value, ErrorContext):
+            trace.facts[key] = value.model_copy(
+                update={
+                    "origin_stage": "policy_verification",
+                    "correlation_id": trace.correlation_id,
+                }
+            ).model_dump(exclude_none=True)
+            continue
         if (
             key in AGGREGATE_FACTS
             and isinstance(value, str)

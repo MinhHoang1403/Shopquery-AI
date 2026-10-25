@@ -5,14 +5,16 @@ from typing import Any, Literal, NoReturn
 from pydantic import BaseModel, ConfigDict, Field
 from sqlglot import exp
 
-from app.core.errors import ModelResponseError
+from app.core.errors import ModelResponseError, VerificationReason
 from app.datasets.context import DatasetSqlContext
 from app.rag.repository import RetrievedChunk
-from app.routing.hybrid_policy import evaluate
+from app.routing.hybrid_policy import NumericPolicy, evaluate
 from app.routing.hybrid_policy_binding import (
+    identity_source,
     projection_bindings,
     source_column,
     validate_policy_binding,
+    verification_error,
     verified_policies,
 )
 from app.text_to_sql.pipeline import SqlResult
@@ -49,8 +51,15 @@ class HybridAnswerDraft(BaseModel):
     used_chunk_ids: list[int]
 
 
-def _fail() -> NoReturn:
-    raise ModelResponseError("Hybrid decision evidence could not be verified")
+def _fail(reason: VerificationReason) -> NoReturn:
+    raise verification_error(reason)
+
+
+def _evaluate(value: object, policy: NumericPolicy) -> str:
+    try:
+        return evaluate(value, policy)
+    except ModelResponseError as exc:
+        raise verification_error("classification_metric_invalid") from exc
 
 
 def _cell(value: object) -> str:
@@ -78,7 +87,7 @@ def _table(rows: list[dict[str, Any]], statuses: list[str] | None, language: str
         return "Không có dòng dữ liệu." if language == "vi" else "No SQL rows."
     fields = list(rows[0])
     if any(set(row) != set(fields) for row in rows):
-        _fail()
+        _fail("answer_draft_inconsistent")
     labels = (
         {
             "qualified": "Đạt",
@@ -110,25 +119,21 @@ def _identities(
     result: SqlResult, fields: list[str], context: DatasetSqlContext | None = None
 ) -> list[tuple[str, ...]]:
     if not fields or len(fields) != len(set(fields)):
-        _fail()
+        _fail("classification_identity_mismatch")
     root, bindings = projection_bindings(result)
     grouped = root.args.get("group")
     for field in fields:
         column = bindings.get(field)
         if not isinstance(column, exp.Column):
-            _fail()
-        # No PK registry for single-table upload sources: only explicit ID/code bindings
-        # are supported here; uniqueness is checked over returned evidence, not inferred.
+            _fail("classification_identity_mismatch")
+        # Approved N:1 keys also establish identity; a naming prefix alone does not.
+        # Returned entities must still be grouped and unique.
         name = column.name.lower()
         if name not in {"id", "code"} and not name.endswith(("_id", "_code")):
             if context is None:
-                _fail()
+                _fail("policy_identity_unbound")
             table, _ = source_column(root, column, context)
-            if not any(
-                r.target_table == table and r.target_column == column.name
-                for r in context.approved_joins
-            ):
-                _fail()
+            identity_source(table, column.name, context)
         if root.find(exp.AggFunc) is not None and (
             grouped is None
             or not any(
@@ -136,7 +141,7 @@ def _identities(
                 for g in grouped.expressions
             )
         ):
-            _fail()
+            _fail("policy_grouping_mismatch")
     identities = []
     for row in result.rows:
         if any(
@@ -145,10 +150,10 @@ def _identities(
             or isinstance(row[field], bool)
             for field in fields
         ):
-            _fail()
+            _fail("classification_identity_mismatch")
         identity = tuple(str(row[field]) for field in fields)
         if identity in identities:
-            _fail()
+            _fail("classification_duplicate_entities")
         identities.append(identity)
     return identities
 
@@ -165,16 +170,16 @@ def compose_answer(
         or not draft.used_chunk_ids
         or len(set(draft.used_chunk_ids)) != len(draft.used_chunk_ids)
     ):
-        _fail()
+        _fail("citation_missing")
     if any(chunk_id not in by_id for chunk_id in draft.used_chunk_ids):
-        _fail()
+        _fail("citation_chunk_not_retrieved")
     for note in draft.notes:
         if (
             note.chunk_id not in draft.used_chunk_ids
             or not note.quote.strip()
             or note.quote not in by_id[note.chunk_id].content
         ):
-            _fail()
+            _fail("citation_quote_mismatch")
     if draft.mode == "explanation":
         if (
             draft.decisions
@@ -184,7 +189,7 @@ def compose_answer(
             or not draft.notes
             or {note.chunk_id for note in draft.notes} != set(draft.used_chunk_ids)
         ):
-            _fail()
+            _fail("answer_draft_inconsistent")
         label = (
             "Trích dẫn tài liệu — không phải phân loại đã xác minh"
             if draft.language == "vi"
@@ -200,19 +205,23 @@ def compose_answer(
         )
     identities = _identities(result, draft.identity_fields, context)
     decisions = {tuple(item.entity_values): item for item in draft.decisions}
-    if len(decisions) != len(draft.decisions) or set(decisions) != set(identities):
-        _fail()
-    policies = verified_policies(result, chunks, context)
+    if len(decisions) != len(draft.decisions):
+        _fail("classification_duplicate_entities")
+    if set(decisions) != set(identities):
+        _fail("classification_missing_entities")
+    policies = verified_policies(
+        result, chunks, context, require_verified=draft.rule_id is not None
+    )
     policy = None
     rule_chunk = None
     if draft.rule_id is not None:
         # Multiple executable rules require a policy-composition contract not provided here.
         if len(policies) != 1 or draft.rule_id not in policies:
-            _fail()
+            _fail("classification_policy_reference_invalid")
         policy, rule_chunk = policies[draft.rule_id]
         validate_policy_binding(result, draft.identity_fields, draft.metric_field, policy)
     elif policies:
-        _fail()
+        _fail("classification_policy_reference_invalid")
     statuses = []
     cited = set()
     for identity, row in zip(identities, result.rows, strict=True):
@@ -223,26 +232,26 @@ def compose_answer(
             or len(refs) != len(set(refs))
             or any(i not in draft.used_chunk_ids for i in refs)
         ):
-            _fail()
+            _fail("citation_missing")
         cited.update(refs)
         if policy is None:
             if decision.status not in {"unverified", "insufficient_evidence"}:
-                _fail()
+                _fail("classification_status_mismatch")
             if draft.metric_field is not None and draft.metric_field not in row:
-                _fail()
+                _fail("policy_metric_unbound")
             if decision.status == "insufficient_evidence" and (
                 draft.metric_field is None or row[draft.metric_field] is not None
             ):
-                _fail()
+                _fail("classification_status_mismatch")
         else:
-            if rule_chunk not in refs or decision.status != evaluate(
-                row[draft.metric_field], policy
-            ):
-                _fail()
+            if rule_chunk not in refs:
+                _fail("citation_rule_source_mismatch")
+            if decision.status != _evaluate(row[draft.metric_field], policy):
+                _fail("classification_status_mismatch")
         statuses.append(decision.status)
     cited.update(note.chunk_id for note in draft.notes)
     if cited != set(draft.used_chunk_ids):
-        _fail()
+        _fail("citation_rule_source_mismatch")
     # Both summary and detail are derived from this same ordered status vector.
     parts = []
     for status in ("qualified", "not_qualified", "insufficient_evidence", "unverified"):
@@ -301,7 +310,7 @@ def verified_classification(
                 continue
             pairs.append((identity, metric))
     if len(pairs) != 1:
-        _fail()
+        _fail("policy_ambiguous")
     identity, metric = pairs[0]
     identities = _identities(result, [identity], context)
     chunk = next(chunk for chunk in chunks if chunk.chunk_id == chunk_id)
@@ -314,7 +323,7 @@ def verified_classification(
         decisions=[
             EntityDecision(
                 entity_values=list(entity),
-                status=evaluate(row[metric], policy),
+                status=_evaluate(row[metric], policy),
                 supporting_chunk_ids=[chunk_id],
             )
             for entity, row in zip(identities, result.rows, strict=True)

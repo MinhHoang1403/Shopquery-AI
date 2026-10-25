@@ -40,6 +40,36 @@ ErrorPhase = Literal[
     "verification",
 ]
 
+VerificationReason = Literal[
+    "policy_not_retrieved",
+    "policy_parse_failed",
+    "policy_document_scope_invalid",
+    "policy_document_hash_mismatch",
+    "policy_multiple_candidates",
+    "policy_ambiguous",
+    "policy_unsupported_qualifier",
+    "policy_not_verified",
+    "policy_identity_unbound",
+    "policy_metric_unbound",
+    "policy_aggregate_mismatch",
+    "policy_source_table_mismatch",
+    "policy_grouping_mismatch",
+    "policy_unit_mismatch",
+    "policy_sql_scope_incomplete",
+    "policy_join_path_ambiguous",
+    "classification_identity_mismatch",
+    "classification_missing_entities",
+    "classification_duplicate_entities",
+    "classification_status_mismatch",
+    "classification_policy_reference_invalid",
+    "classification_metric_invalid",
+    "citation_missing",
+    "citation_chunk_not_retrieved",
+    "citation_rule_source_mismatch",
+    "citation_quote_mismatch",
+    "answer_draft_inconsistent",
+]
+
 
 class ErrorContext(BaseModel):
     """Only bounded, non-content metadata may cross provider/API/log boundaries."""
@@ -57,6 +87,11 @@ class ErrorContext(BaseModel):
     validation_location: list[str | int] = Field(default_factory=list, max_length=12)
     validation_type: str | None = None
     attempted_route: Literal["SQL", "RAG", "HYBRID", "UNSUPPORTED"] | None = None
+    reason_code: VerificationReason | None = None
+    candidate_count: int | None = Field(default=None, ge=0, le=1000000)
+    verified_policy_count: int | None = Field(default=None, ge=0, le=1000000)
+    retrieved_chunk_count: int | None = Field(default=None, ge=0, le=1000000)
+    sql_row_count: int | None = Field(default=None, ge=0, le=1000000)
 
     @field_validator("validation_location")
     @classmethod

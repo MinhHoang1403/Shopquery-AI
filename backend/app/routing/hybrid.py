@@ -18,17 +18,24 @@ from app.routing.hybrid_evidence import (
     verified_classification,
 )
 from app.routing.hybrid_policy import numeric_policies
-from app.routing.hybrid_policy_binding import policy_evidence
+from app.routing.hybrid_policy_binding import policy_evidence, verification_error
 from app.text_to_sql.count_contract import count_evidence
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
 EVIDENCE_REFUSAL = "Chưa đủ bằng chứng để kết luận chính xác từ dữ liệu hiện có."
 
 
-def _evidence_error() -> ModelResponseError:
+def _evidence_error(exc: ModelResponseError | None = None) -> ModelResponseError:
+    context = exc.error_context if exc else ErrorContext()
     return ModelResponseError(
         EVIDENCE_REFUSAL,
-        error_context=ErrorContext(phase="verification", error_category="insufficient_evidence"),
+        error_context=context.model_copy(
+            update={
+                "phase": "verification",
+                "error_category": "insufficient_evidence",
+                "reason_code": context.reason_code or "answer_draft_inconsistent",
+            }
+        ),
     )
 
 
@@ -58,8 +65,8 @@ class HybridPipeline:
         with diagnostic_stage("policy_requirements"):
             try:
                 requirements = [p.model_dump() for p, _ in numeric_policies(chunks).values()]
-            except ModelResponseError:
-                raise _evidence_error() from None
+            except ModelResponseError as exc:
+                raise verification_error("policy_parse_failed") from exc
         planning_evidence = json.dumps(
             {
                 "policy_candidates_not_verified": requirements,
@@ -75,10 +82,13 @@ class HybridPipeline:
         sql_result = self._sql_pipeline.run(
             question, evidence_context=planning_evidence, ground_answer=False
         )
-        try:
-            policies = policy_evidence(sql_result, chunks, self._context)
-        except (ModelResponseError, ValueError, TypeError, KeyError):
-            policies = []
+        with diagnostic_stage("policy_verification"):
+            try:
+                policies = policy_evidence(sql_result, chunks, self._context)
+            except ModelResponseError as exc:
+                raise _evidence_error(exc) from exc
+            except (ValueError, TypeError, KeyError) as exc:
+                raise _evidence_error() from exc
         evidence = "\n\n".join(
             f"[chunk_id={chunk.chunk_id}; file={chunk.source_file}; "
             f"section={chunk.section_title}]\n{chunk.content}"
@@ -138,14 +148,14 @@ Document evidence:
                 try:
                     answer = compose_answer(sql_result, chunks, draft, self._context)
                 except ModelResponseError as exc:
-                    raise _evidence_error() from exc
+                    raise _evidence_error(exc) from exc
             except (ValidationError, ValueError, TypeError, KeyError) as exc:
                 raise _evidence_error() from exc
             by_id = {chunk.chunk_id: chunk for chunk in chunks}
             if not draft.used_chunk_ids or any(
                 chunk_id not in by_id for chunk_id in draft.used_chunk_ids
             ):
-                raise _evidence_error()
+                raise verification_error("citation_chunk_not_retrieved")
             sources = [
                 Source(
                     chunk_id=by_id[chunk_id].chunk_id,

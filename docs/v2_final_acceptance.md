@@ -5,6 +5,57 @@
 Updated 2026-10-25 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## Hybrid policy correction — 25/10/2026 — offline verified, live pending
+
+The historical Gemini correlation `2532bcfc7ff0471786da83ed06dd385d` proves
+successful retrieval, planning, compilation and execution (12 rows), followed by
+a parsed answer draft and a verification refusal. Its SQL, retrieved chunk IDs,
+candidate count and draft remain UNKNOWN. Reconstructed fixtures do not recover
+that missing payload and cannot prove its exact rejection branch.
+
+A corresponding false-refusal class is reproduced independently: grouping a fact
+by its approved N:1 foreign key produces the same 12 identities and exact amounts
+as the successful dimension JOIN, but `_bind_prose()` previously accepted only
+the relationship target key. `_identities()` imposed the same restriction.
+The fact-side key was rejected before classification; conventional `*_id` names
+could instead fail the subject check against the fact label. Regression fixtures
+also reproduce this outside the EV domain with arbitrary `ref_unit` keys/aliases.
+
+`identity_source()` now resolves a source key to exactly one approved entity key
+for subject verification. It does not create a JOIN, infer keys from `ma_`, or
+alter the registry/compiler. Missing targets or ambiguous mappings refuse.
+AST source/aggregate/group checks and uniqueness remain mandatory. The real
+single-chunk KPI parses correctly without parser or title-guard changes. Both
+JOIN and fact-key reconstructions run the production candidate/binding/Decimal/
+classification/composer chain, matching all12 PostgreSQL oracle IDs/statuses,
+threshold2800000, all statuses and citation23. These are offline checks, not live
+Gemini acceptance.
+
+Typed, bounded `ErrorContext.reason_code` and policy counts distinguish document
+scope/hash/parser/multiple-rule, identity/metric/aggregate/coverage/unit/path,
+classification, exact numeric and citation refusals. Pipeline wrappers retain
+the reason; discarded policy candidates record sanitized verification metadata.
+No raw SQL, cells, prompts, documents or model drafts enter diagnostics. Existing
+UI refusal text, provider errors, one-attempt behavior and no-retry contract remain.
+
+Targeted tests cover the corrected equivalent-key shapes, arbitrary aliases,
+Decimal/NULL/zero, missing/ambiguous relationships, scope/hash, qualifiers,
+multiple candidates, SQL coverage, identity/decision/citation consistency,
+injection, COUNT/JOIN security and successful/failed/cross-owner context.
+The reconstructed complete answer fits the existing bounded context contract;
+conversation code is unchanged. Ruff and read-only PostgreSQL oracle checks PASS.
+No full historical/golden/BGE suite, second stack, database or workspace is created.
+
+Only backend core errors/diagnostics and the three Hybrid modules change; tests
+and this current acceptance document supply the evidence. No SQL compiler,
+registry, schema, policy contents/thresholds, provider, model or Web changes.
+API-only build/deployment and the two newly approved UI questions remain pending.
+Budget:2 questions/6 generation/2 query embeddings/0 document embeddings, one
+attempt, no retry/fallback/extra diagnostics; Q2 only after actual Q1 PASS.
+Gemini default/provider gate remain ON for normal operation; Guest/fallback OFF.
+Historical exact root cause remains unresolved; FULL PASS requires both live
+questions plus strict runtime/data verification.
+
 ## Current operation: Gemini default — 25/10/2026
 
 Operator explicitly selected Gemini for normal authenticated operation. Private
