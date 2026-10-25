@@ -5,7 +5,7 @@
 Updated 2026-10-25 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
-## Hybrid policy correction — 25/10/2026 — offline verified, live pending
+## Hybrid policy correction — 25/10/2026 — PARTIAL / LIVE FAILED
 
 The historical Gemini correlation `2532bcfc7ff0471786da83ed06dd385d` proves
 successful retrieval, planning, compilation and execution (12 rows), followed by
@@ -49,12 +49,59 @@ No full historical/golden/BGE suite, second stack, database or workspace is crea
 Only backend core errors/diagnostics and the three Hybrid modules change; tests
 and this current acceptance document supply the evidence. No SQL compiler,
 registry, schema, policy contents/thresholds, provider, model or Web changes.
-API-only build/deployment and the two newly approved UI questions remain pending.
+Application source `f90592dae6810dff3a45b2fbc19a46c52c99010a` was pushed to main
+and deployed API-only after explicit timing approval. API digest:
+`sha256:5bc66e195142d838204b3ea4b81f43068193b034c13a8f107f2b84526dfa26e4`.
+369 targeted cases pass across the bounded run and corrected test-only assertion
+rerun (368 passed initially; its JSON-escaped premise assertion was corrected,
+then the19-case delta passed). Ruff/diff checks pass. Full CI/golden/BGE were
+intentionally skipped; no unchanged Web build.
+
 Budget:2 questions/6 generation/2 query embeddings/0 document embeddings, one
 attempt, no retry/fallback/extra diagnostics; Q2 only after actual Q1 PASS.
 Gemini default/provider gate remain ON for normal operation; Guest/fallback OFF.
 Historical exact root cause remains unresolved; FULL PASS requires both live
 questions plus strict runtime/data verification.
+
+Q1 was sent once through Computer Use on8080 with Gemini + Hybrid. Message244,
+correlation `79abb63129e34b1caa1561e8502253d8`: SQL validation/execution succeeded,
+but returned only6 rows. The actual persisted SQL groups on the approved fact-side
+key and adds `HAVING SUM(q0.phi_sac_vnd) >= 2800000`. Independent read-only
+PostgreSQL comparison confirms those six fees are correct, while TS01–TS06 are
+omitted. Citation23 is the correct MD policy. This is a new, precisely observed
+coverage failure, not proof of the missing historical SQL's shape.
+
+`verified_policies()` correctly refuses the HAVING branch before candidate parsing:
+`policy_sql_scope_incomplete`, origin policy_verification, phase verification,
+category insufficient_evidence. The early metadata candidate_count=0 means not
+computed at that branch, not proof that the document parser found no candidate;
+independent offline parsing finds exactly1. `verified_classification()` returns
+None; one structured answer draft is then composed as explicitly UNVERIFIED,
+with no qualified verdict asserted. Consequently HTTP200/request-success is not
+business acceptance. The UI shows six unverified stations, not the required12
+classifications. The existing coverage guard must not be removed or HAVING
+silently stripped to relabel this as PASS.
+
+Confirmed remaining boundaries:
+
+- `QueryPlanner.generate()` accepts a typed plan containing the document-threshold
+  HAVING despite its existing prompt prohibition. The SQL compiler accepts it as
+  valid read-only SQL; it is the Hybrid evidence requirement that is violated.
+  A further fix needs deterministic coverage enforcement at the planning/execution
+  boundary, not another prompt patch or a paid repair call.
+- `_persist_chat_turn()` persists this unverified result with route HYBRID and
+  error=null. A read-only offline call with that actual conversation proves
+  `contextual_question()` accepts it as a successful premise. Valid verified
+  classification must be distinguishable in the context contract; no follow-up
+  was sent using this premise. No conversation source patch is included here.
+
+The user-required stop-on-Q1-failure rule was followed: Q2 NOT_RUN /
+BLOCKED_PRECONDITION, no source repair followed by another paid request. Actual
+usage:1 question,2 generation stages (planner + draft),1 query embedding,
+0 document embeddings; one attempt, no retry/fallback/Knowledge request.
+Normal-operation gate stays ON. Evidence remains private in the existing folder,
+with hybrid-correction prefixes and a screenshot. This task is PARTIAL; Hybrid
+and conversational business acceptance are not complete.
 
 ## Current operation: Gemini default — 25/10/2026
 
