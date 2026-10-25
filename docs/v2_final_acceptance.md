@@ -2,10 +2,10 @@
 
 **MAIN CONSOLIDATED — 8080 ACTIVE — GEMINI DEFAULT — ACCEPTANCE PARTIAL — PROVIDER GATE ON**
 
-Updated 2026-10-25 (Asia/Saigon). No release tag or full Stage 2 acceptance.
+Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
-## SQL evidence coverage and verified conversation — OFFLINE_PASS / LIVE_PENDING
+## SQL evidence coverage and verified conversation — FULL PASS (bounded scope)
 
 The actual SQL244/correlation79abb63129e34b1caa1561e8502253d8 established a
 planning semantic failure: document-threshold HAVING removed the unqualified
@@ -77,6 +77,64 @@ New live budget explicitly approved:2 questions/6 generation/2 query embeddings/
 diagnostics; Q2 only after Q1 PASS. Gate stays ON for authenticated normal use,
 Guest/fallback OFF, vector-only. API-only build and approved cutover follow the
 deployment runbook; no Web rebuild or PostgreSQL recreation.
+
+### Controlled deployment and live acceptance — 26/10/2026
+
+Operator explicitly approved cutover and restored Computer Use. API-only promotion
+deployed application source `3364da43bc0c2828fe0bd2b2ec3504a59955b7f9`, immutable
+API digest `sha256:de4bf4c27fab2025ef59f6ae37e6ba2ce9175997f501be147a4ca64e33df123a`.
+No active leases/Guest workers before recreate; Nginx configuration/graceful reload
+PASS. Existing Web/main PostgreSQL containers and protected volume are unchanged;
+rollback image retained. No source modification or rebuild during live acceptance.
+
+Both approved natural questions were sent once through Computer Use on8080 in one
+dataset15 conversation. Q1 selected Gemini + Hybrid. Q2 was sent only after Q1
+passed full SQL/policy/oracle verification, keeping Gemini and selecting Auto.
+
+| Question | Actual live result |
+| --- | --- |
+| Theo tài liệu KPI, trạm nào đạt và trạm nào chưa đạt? | PASS: message246,12 exact station IDs/fees, all-status scope, threshold2800000, TS01–TS06 not qualified and TS07–TS12 qualified; citation23; backend verified_classification |
+| Vậy những trạm chưa đạt KPI là trạm nào? | PASS: message248, same conversation, Auto routes HYBRID; verified Q1 premise, fresh retrieval/SQL; complete12-row SQL evidence, presentation exactly TS01–TS06, citation23; backend verified_classification |
+
+Q1 correlation `9e5b0a2ca8a74d26ab077e27cbd77b81`, Q2
+`f5ad272356774f118f8f869b1c6b56e4`. Both record
+coverage_requirement=full_entity_classification and successful pre-execution
+coverage validation, compilation, relationship guard, SQL execution and policy
+verification. Actual persisted SQL has the approved N:1 JOIN, grouping on the
+dimension key, correct fact SUM and no WHERE/HAVING/LIMIT/OFFSET. Independent
+read-only PostgreSQL oracle checks all12 fees (total33066538.03;30 fact rows per
+station), then production policy binding/Decimal/composer verifies every status
+and exact summary/table consistency. Scope/hash and the actual cited MD content
+match. The Q2 six-row display is selected after complete classification; its
+12-row SQL evidence is intentionally retained. The final presentation verification
+diagnostic reports6 rows, while sql_execution/result_rows remains12.
+
+The backend-generated verification metadata is persisted for both responses and
+survives reload. Google session, workspace, previous history and both new answers
+remain visible on8080. A read-only context check confirms the verified premise is
+eligible while the prior unverified message244 is rejected. Source-path and unit
+contract checks verify fresh evidence rather than treating history as authority.
+
+Actual paid use:2 user questions,1 generation stage (Auto router only),2 query
+embeddings,0 document embeddings. The source-bound deterministic plan/evaluator
+needs no planner or verdict generation. No retries, fallback, Knowledge requests
+or additional paid diagnostics. This agent test window is finished; normal
+authenticated provider gate remains ON, Gemini default, Guest/fallback OFF.
+
+Postdeploy strict verifier PASS:86 source modules, exact API identity and no
+source/environment drift. Web/API8080 health PASS. All37 table/schema fingerprints
+checked; only chat_conversations/chat_messages/resource_limits changed. Every
+pre-window message<=244 is hash-identical. Uploaded data, documents/chunks/vectors,
+relationships, users and Google sessions remain unchanged. Main is pushed clean;
+only acceptance documentation is committed after application source3364da4.
+
+FULL PASS applies to the two corrected failure classes and this bounded Q1/Q2
+acceptance. Deterministic coverage supports one complete, unconditional closed-
+grammar SUM/AVG policy with uniquely bound sources and supported classification
+wording. Unknown wording/extra filters, exceptions, multiple rules, ambiguous
+paths or incomplete entity coverage do not gain verified classification. No
+claim of universal natural-language support, full historical CI/golden coverage,
+Knowledge503 recovery, BGE/Gate C or Stage2/release completion. No tag is created.
 
 ## Hybrid policy correction — 25/10/2026 — PARTIAL / LIVE FAILED
 
