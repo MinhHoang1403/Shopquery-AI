@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.core.diagnostics import diagnostic_request
-from app.core.errors import ErrorContext, ProviderError, SqlUnsupportedError
+from app.core.errors import ErrorContext, ProviderError, SqlUnsupportedError, SqlValidationError
 from app.datasets.context import DatasetSqlContext
 from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.planner import QueryPlanner
@@ -95,5 +95,21 @@ def test_provider_failures_keep_category_and_neutral_planning_stage(category):
     assert error.value.error_context.model_id == "inetcloud-knowledge"
     assert error.value.error_context.catalog_table_count == len(tuition_context().table_columns)
     assert error.value.error_context.reason_code is None
+    compiler.compile.assert_not_called()
+    executor.execute.assert_not_called()
+
+
+def test_valid_wire_query_can_fail_binding_without_a_model_unsupported_outcome():
+    from tests.test_plan_binding import setup_plan
+
+    context, _, plan = setup_plan()
+    invalid = plan.model_copy(update={"source": "unknown_source"})
+    service, _, compiler, executor = pipeline(context, PlanDecision(plan=invalid))
+    with diagnostic_request() as trace, pytest.raises(SqlValidationError) as error:
+        service.run("Q")
+    assert not isinstance(error.value, SqlUnsupportedError)
+    assert error.value.error_context.response_outcome == "query"
+    assert error.value.error_context.reason_code is None
+    assert trace.facts["response_outcome"] == "query"
     compiler.compile.assert_not_called()
     executor.execute.assert_not_called()

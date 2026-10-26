@@ -37,7 +37,8 @@ private pre-cutover config snapshot. See current acceptance for budget/evidence.
 26/10 Knowledge endpoint recheck: running API already has the administrator-updated
 URL from private .env; resolved Compose/runtime match, so no recreate was needed.
 Connectivity and two bounded text/strict-schema probes PASS. First live SQL UI
-question returned PlanDecision.plan=None before execution; acceptance stopped.
+question failed planning sql_validation before execution; acceptance stopped.
+The prior plan=None inference is unproven because the old stage also wrapped binding.
 Knowledge default/fallback switch was NOT performed. Gemini/default, fallbackOFF,
 gateON, GuestOFF, current images/containers and data remain unchanged. A tested
 fallback candidate is held privately, not applied or deployed; see current acceptance

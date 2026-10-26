@@ -8,8 +8,12 @@ Operator authorized consolidation before completion of AI/BGE acceptance.
 ## Knowledge planning diagnostics and bounded fallback correction — source verification
 
 Investigation on main74f29f7 does NOT establish the nested wire schema as the cause
-of the old unsupported response. Old correlation48ebf698… still has UNKNOWN raw
-unsupported_reason. A newly approved single diagnostic at11:13:23 Asia/Saigon used
+of the old planning failure. Correction to the earlier report: old
+correlation48ebf698… has UNKNOWN model outcome/raw reason. The old stage wrapped
+both generation and bind_approved_grain; sql_validation under generator_unsupported
+does not prove plan=None. A valid wire query with an unknown source also reproduces
+that ambiguous stage before compiler/executor. A newly approved single diagnostic
+at11:13:23 Asia/Saigon used
 the unchanged Knowledge PlanDecision/json_schema/stricttrue contract and identical
 question/catalog: HTTP200, finishstop, valid COUNTrows+SUMnumeric plan, no JOIN/filter,
 19588.52ms. No explicit output-token cap or truncation was observed. The diagnostic
@@ -87,19 +91,20 @@ at most10 total generation stages (including two probes),4 query embeddings,
 | --- | --- |
 | One synthetic text probe | PASS:17+25=42;483.22ms; HTTP200; modelknowledge; finishstop |
 | One small Pydantic structured probe | PASS:statusok/total42;682.60ms; HTTP200; json_schema/stricttrue, validation PASS |
-| Q1 SQL via actual8080 UI, dataset15 | FAIL: routedSQL, PlanDecision.plan=None; safe refusal before compilation/execution |
+| Q1 SQL via actual8080 UI, dataset15 | FAIL: routedSQL, planning sql_validation; model outcome UNKNOWN; no execution |
 | Q2 RAG, Q3 Hybrid, Q4 follow-up | NOT_RUN: stopped on Q1; no paid repair/diagnostic |
 
 Q1: "Cho tôi tổng số phiên sạc và tổng phí của toàn bộ dữ liệu xe điện."
 Correlation `48ebf69816524379924a2c34b25b6696`,10:54:22–10:54:44 Asia/Saigon.
 Metadata/approved edges3tables/2edges loaded; routing5810.085ms succeeded;
 generator_unsupported14926.382ms failed with sql_validation/compilation.
-`QueryPlanner.generate` checks `decision.plan is None` immediately after its one
-structured call; no compiler/executor stage was reached, no fallback occurred.
-This is a semantic unsupported decision, not evidence of a transport503 or malformed
-JSON. The specific unsupported_reason/raw plan and wire status/token usage are not
-persisted for this UI call, so the model's reason cannot be established further
-without newly authorized evidence capture. No prompt/SQL/guard changes were made.
+`QueryPlanner.generate` checks `decision.plan is None` after its structured call,
+but the old stage also included bind_approved_grain. The earlier plan=None conclusion
+was not established by these diagnostics. No compiler/executor stage was reached,
+no fallback occurred. A semantic unsupported decision and a valid query rejected by
+binding cannot be distinguished from the saved stage alone. Raw response/reason and
+wire status/token usage were not persisted; no transport503 or malformed JSON was
+recorded. No prompt/SQL/guard changes were made in that earlier window.
 
 Independent read-only PostgreSQL oracle:360 sessions,33066538.03 total fees;
 12 stations each30 sessions; document chunk23 defines all-status threshold2800000
