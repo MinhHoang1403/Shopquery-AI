@@ -5,6 +5,72 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## Current result — PARTIAL_KNOWLEDGE_SQL_FAILED / ROOT_CAUSE_UNRESOLVED
+
+Application source `e49f838e71ce902ae8532dd1034694d08aaa7aa6` is deployed API-only,
+immutable image `sha256:fbfeb03fd137aadbfeb038d9858eac2ceea3e9dacd96e7abbba8bb0e2c798c9a`.
+Mainab97c0c adds only tests/docs to identical build inputs.
+[Exact-main CI40269103172](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40269103172)
+PASS:497 backend tests,116 PostgreSQL tests; frontend skipped because inputs unchanged.
+The first CI run had12 failures in the newly written fixture (PlanSort uses field,
+not reference); this test-only mistake was corrected, not a production guard change.
+Existing tests prove both real SDK serializers, COUNT/SUM/combined/GROUP BY/two- and
+three-table N:1 execution on energy/maintenance data against independent numeric
+oracles, plus negative/security/coverage/Decimal/NULL/context/follow-up contracts.
+No live success is inferred from those mocked-provider integration tests.
+
+Operator-approved API cutover completed26/10 at11:28 Asia/Saigon; Nginx syntax and
+graceful reload PASS. API5d3f9da1 replaced7db3b21e; Web6eb09241 and DB511c4f5a,
+their images/start times and protected volume are unchanged. Strict verifier86
+modules/source/image/config PASS, HTTP200 Web/API8080. Gemini default/fallbackOFF,
+gateON, GuestOFF, Gemini embeddinggemini-embedding-2/768, noBGE/migration retained.
+Rollback API626a8704 and private pre-cutover config remain available.
+
+Window1 closed on Q1: diagnostic1 plus actual UIrouter1/planner1 =3 logical generation
+stages,0query/document embeddings. UI sent exactly once in a fresh dataset15
+conversation4ae60557-168b-4ebe-948d-73e06695fd1c; response284 persisted an error.
+Correlation `1094326fe8a84e06ae90a91dec7eebf9`,13:44:49–13:45:06 Asia/Saigon:
+SQLrouter3089.621ms succeeded; sql_plan_generation17246.7ms failed. New diagnostics
+prove response_outcome=query (not model_unsupported), catalog3tables/37columns/2edges,
+then sql_validation in bind_approved_grain before compiler/executor. Raw response
+was not captured for the UI call: unknown source/relationship, duplicate relationship,
+identity alias collision or bound-contract failure cannot be distinguished further.
+There is no evidence authorizing a specific guard/prompt/schema correction yet.
+Q2JOIN/Q3RAG/Q4Hybrid/Q5follow-up NOT_RUN; no repeated UI question in this window.
+
+The earlier approved diagnostic's actual captured model plan was subsequently bound,
+compiled and executed READ ONLY using production code without another provider call:
+360sessions and33066538.03 total fees. Thus nested schema Knowledge can produce a
+correct plan, but successful diagnostics do not establish stable UI acceptance.
+The old48ebf698… model outcome remains UNKNOWN; prior plan=None inference is corrected.
+
+After operator explicitly approved a separate NEW window, its one diagnostic at
+13:50:57 Asia/Saigon failed at the provider adapter's wire_validation. HTTP200,
+finishstop, strictjson_schema PlanDecision,15831.69ms, rootlocation[]/value_error,
+3781prompt+1081completion=4862tokens. PlanDecision.one_outcome is the only root
+model validator: a nonempty plan and unsupported reason simultaneously, or neither
+valid outcome, violates it. The precise raw alternative was not retained; no reason
+or plan was fabricated. No transport503, truncation or backend execution occurred.
+This is a NEW blocker, so window2 stopped at1 generation/0embeddings,0 UIquestions.
+No fallback, SDK retry, schema-variant search or paid repair/diagnostic followed it.
+
+Total agent calls across these two separately approved windows:4 logical generation
+stages,0query embeddings,0document embeddings,0Gemini generation. Diagnostic usage
+10040total tokens; UI tokens/monetary cost are not independently measured. Operator
+normal-operation hotel chats were observed between sessions and are not attributed
+to this acceptance budget or reported as test results. Both windows are closed;
+unused capacity is not reused after blockers. Provider gate remainsON as requested.
+
+The two proven fallback defects and safe planning telemetry are deployed and offline
+verified; actual Knowledge SQL remains FAIL and its original root cause UNRESOLVED.
+No Knowledge wire contract/prompt, compiler/validator, JOIN/COUNT/coverage/Hybrid
+algorithm or dataset was changed speculatively. Knowledge default/fallback activation
+conditions did not pass, so activation was not performed. Live fallback was not run.
+Before/after fingerprints preserve schema/business data/documents/vectors/relationships
+and all old messages; only new conversation/messages and rate bookkeeping changed.
+Google session and persisted history checked through8080. Private evidence under
+knowledge-root-cause-20261026 includes both windows, logs, oracles, usage and screenshot.
+
 ## Knowledge planning diagnostics and bounded fallback correction — source verification
 
 Investigation on main74f29f7 does NOT establish the nested wire schema as the cause

@@ -20,10 +20,19 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-Current API source `b48cfc25275a4c69c2b74751ddd76a0ea9f2aa5f`, digest `626a8704c2ba370f00f54ae4aa5c83b23847a94d7890f0170f69ec7afd453a17`.
+Current API source `e49f838e71ce902ae8532dd1034694d08aaa7aa6`, digest `fbfeb03fd137aadbfeb038d9858eac2ceea3e9dacd96e7abbba8bb0e2c798c9a`.
 Current Web source `881bfe165502be927346408a46c263efb09af0dd`, digest `5f4ab329c750f58c5514e7e2929a6ca8bb4ef3fa4375c9520cfc1ff130192955`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
+
+26/10 planning/fallback correction deployed API-only after operator approval and
+exact-main CI497unit/116PostgreSQL PASS. Strict86modules and Nginx reload PASS.
+Knowledge live SQL failed binding with outcomequery, then a separately approved
+diagnostic failed root PlanDecision wire validation. No speculative prompt/schema/
+guard change or activation followed; Gemini default/fallbackOFF/gateON/GuestOFF
+retained. Current acceptance details the blockers and two closed paid windows.
+Web/DB identities unchanged. Immediate API rollback sourceb48cfc2/digest626a8704
+retained with private .env.release.before under knowledge-root-cause-20261026.
 
 26/10 PDF correction: operator-approved API-only cutover, Nginx syntax/graceful
 reload and strict verifier86 modules PASS. Original PDF uploaded once via8080,
