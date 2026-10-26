@@ -711,7 +711,9 @@ test("shows provider failures without invented answers or evidence", async ({ pa
   await openApp(page);
   await page.getByLabel("Nhập câu hỏi cho ShopQuery AI").fill("Top sản phẩm");
   await page.getByRole("button", { name: "Gửi câu hỏi" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Knowledge tạm thời không khả dụng.");
+  await expect(page.getByRole("alert")).toHaveText("Chưa thể hoàn tất truy vấn này.");
+  await page.getByRole("button", {name:"Chi tiết lỗi"}).click();
+  await expect(page.getByText("Knowledge tạm thời không khả dụng.", {exact:true})).toHaveCount(1);
   await expect(page.locator(".assistant-content")).toHaveCount(0);
   await expect(page.locator(".model-attribution, .route-badge")).toHaveCount(0);
   await expect(page.getByRole("group", { name: "Bằng chứng hỗ trợ" })).toHaveCount(0);
