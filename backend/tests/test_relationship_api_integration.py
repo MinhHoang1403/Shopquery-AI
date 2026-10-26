@@ -174,9 +174,7 @@ def test_join_api_pipelines_and_persisted_history(
             raise AssertionError(schema)
 
         def generate_text(self, prompt):
-            calls.append("answer")
-            assert '"total": "5"' in prompt
-            return "Synthetic total 5"
+            raise AssertionError("Structured pipelines must not add a text generation call")
 
     selected = []
 
@@ -197,7 +195,9 @@ def test_join_api_pipelines_and_persisted_history(
     response = result.json()["assistant_message"]["response"]
     assert response["error"] is None and response["route"] == pipeline
     assert response["used_model"] == model and selected == [model]
-    assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 3}[pipeline]
+    assert len(calls) == {"SQL": 2, "RAG": 2, "HYBRID": 3}[pipeline]
+    if pipeline == "SQL":
+        assert "| total |" in response["answer"] and "| 5 |" in response["answer"]
     if pipeline != "RAG":
         assert response["rows"] == [{"total": "5"}] and " JOIN " in response["sql"]
         root = parse_one(response["sql"], read="postgres")

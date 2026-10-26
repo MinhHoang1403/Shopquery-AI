@@ -29,7 +29,11 @@ does not update ready sources. File names supply table names. No auto AI message
 Local targeted backend113 tests and Ruff PASS. Frontend75 unit tests, lint,
 typecheck and production build PASS. The six browser cases affected by ambiguous
 file-input labelling passed after an explicit accessible label; exact-head CI and
-isolated PostgreSQL validation are pending. API/Web runtime8080 is still the previously
+isolated PostgreSQL validation are pending. The first PostgreSQL CI run passed the
+new scoped preview and detector checks but exposed eight stale SQL integration
+expectations for a third provider answer call. Current SQL presentation is already
+deterministic; tests now prohibit text calls and assert exact answer cells instead.
+Production SQL code is unchanged. API/Web runtime8080 is still the previously
 accepted images; this section does not claim deployment or real UI acceptance yet.
 
 ## SQL evidence coverage and verified conversation — FULL PASS (bounded scope)

@@ -180,9 +180,7 @@ def test_upload_chat_and_history_with_automatic_relation(
             return decision_from_sql(sql, prompt)
 
         def generate_text(self, prompt):
-            calls.append("answer")
-            assert '"total": "20.00"' in prompt and '"total": null' in prompt
-            return "An: 20.00, 2; Binh: NULL, 1."
+            raise AssertionError("SQL presentation must not call a generation provider")
 
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
     conversation = a.chats.create(dataset.dataset_id, model)
@@ -194,11 +192,13 @@ def test_upload_chat_and_history_with_automatic_relation(
     response = response.json()["assistant_message"]["response"]
     assert response["route"] == "SQL" and response["used_model"] == model
     assert response["fallback_used"] is False and not response["error"]
-    assert calls == ["RouteDecision", "PlanDecision", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision"]
     assert response["rows"] == [
         {"student_id": "S1", "student_name": "An", "total": "20.00", "fact_row_count": 2},
         {"student_id": "S2", "student_name": "Binh", "total": None, "fact_row_count": 1},
     ]
+    assert "| S1 | An | 20.00 | 2 |" in response["answer"]
+    assert "| S2 | Binh | NULL | 1 |" in response["answer"]
     with get_setup_engine().connect() as connection:
         oracle = connection.execute(
             text(

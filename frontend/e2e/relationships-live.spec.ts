@@ -55,7 +55,7 @@ test("live local guest relationship lifecycle and capability security without AI
   const preview = await checked.json();
   expect(preview.valid).toBe(true);
   expect([preview.source_rows, preview.target_rows, preview.orphan_rows]).toEqual([3, 2, 0]);
-  const confirmed = await request.post("/api/guest/relationships", { headers, data: { ...selection, revision: preview.revision } });
+  const confirmed = await request.post("/api/guest/relationships", { headers, data: { ...selection, revision: preview.revision, confirmed: true } });
   expect(confirmed.status()).toBe(200);
   const relation = await confirmed.json();
   expect(relation.relationship_id).toBe(automatic.relationships[0].relationship_id);
