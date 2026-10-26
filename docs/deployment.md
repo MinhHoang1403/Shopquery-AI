@@ -20,10 +20,19 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-Current API source `df10688740f945b9b68f240673b74248b260081d`, digest `df8dff610cd912e048964ba8350fa1dfc240c2fe948cec013184b97750465741`.
+Current API source `b48cfc25275a4c69c2b74751ddd76a0ea9f2aa5f`, digest `626a8704c2ba370f00f54ae4aa5c83b23847a94d7890f0170f69ec7afd453a17`.
 Current Web source `881bfe165502be927346408a46c263efb09af0dd`, digest `5f4ab329c750f58c5514e7e2929a6ca8bb4ef3fa4375c9520cfc1ff130192955`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
+
+26/10 PDF correction: operator-approved API-only cutover, Nginx syntax/graceful
+reload and strict verifier86 modules PASS. Original PDF uploaded once via8080,
+3 chunks/vectors persisted and visible after reload. Web/DB not recreated;
+schema, business data, old documents/vectors, relationships and history unchanged.
+Gemini/provider gateON retained, no BGE/migration. Immediate API rollback source
+`df10688740f945b9b68f240673b74248b260081d`, digest
+`df8dff610cd912e048964ba8350fa1dfc240c2fe948cec013184b97750465741` retained with
+private pre-cutover config snapshot. See current acceptance for budget/evidence.
 
 ### Vận hành hiện tại — Gemini mặc định, 25/10/2026
 

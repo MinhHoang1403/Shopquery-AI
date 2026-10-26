@@ -5,7 +5,7 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
-## PDF upload NUL correction — source verified, deployment pending
+## PDF upload NUL correction — deployed and live accepted (26/10/2026)
 
 The real failed PDF yielded four NUL codepoints on page3; API logs show psycopg
 DataError at the document_chunks INSERT after embedding, not a provider failure.
@@ -22,8 +22,30 @@ parser/API tests PASS. Exact original41,666byte PDF:4 NUL→0,3 readable chunks,
 every original text line preserved except control-to-space; no provider requests.
 An isolated CI API→mock embedding→PostgreSQL test covers persistence/reload,
 cross-owner denial, duplicate409 without re-embedding, unreadable422 before provider.
-Live re-upload needs one new explicitly bounded3-document-embedding approval;
-no automatic retry, generation, query embedding or other document upload.
+Exact source main `b48cfc25275a4c69c2b74751ddd76a0ea9f2aa5f` passed
+[targeted CI40264964046](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40264964046):
+backend23 tests and the PostgreSQL upload integration test PASS; frontend skipped.
+Approved API-only cutover uses immutable image
+`sha256:626a8704c2ba370f00f54ae4aa5c83b23847a94d7890f0170f69ec7afd453a17`.
+Strict verifier86 modules/source/image/environment PASS, health8080 HTTP200;
+Web and protected main PostgreSQL container identities/start times unchanged.
+
+After separate approval, Computer Use uploaded the original PDF exactly once on
+8080 into existing dataset16. UI showed success and PDF3 chunks, including after
+reload. Read-only PostgreSQL verification found exactly one new document and
+3 finite, nonzero 768-dimensional vectors. Every stored chunk, section and
+namespaced hash matches the corrected parser/chunker; source file hash unchanged,
+NUL0. Existing document/vector fingerprints, schema, business data, relationships
+and chat history unchanged; Google session/history remain visible after reload.
+Private evidence: `pdf-upload-20261026-b48cfc2` (before/after fingerprints,
+live-result.json and PDF list screenshot). This verifies upload/persistence;
+no paid chat/retrieval acceptance was performed.
+
+Budget used:3 logical document embedding requests,0 generation,0 query embeddings,
+one UI upload, SDK attempts1, no manual retry/fallback or other document upload.
+Provider HTTP request count/cost was not independently instrumented. Gemini default,
+provider gateON, Guest/fallbackOFF and no BGE remain unchanged. API rollback image
+df8dff61 and its private config snapshot retained; no migrations.
 
 ## Web image cleanup and Knowledge recovery check — 26/10/2026
 
