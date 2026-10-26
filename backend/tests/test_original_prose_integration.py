@@ -1,6 +1,7 @@
 """Original saved prose, real scoped PostgreSQL retrieval/execution, fake providers."""
 
 import json
+import re
 
 import pytest
 
@@ -160,7 +161,9 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
             assert schema is RouteDecision
             if "Vậy còn" in prompt:
                 assert "Previous successful turns" in prompt
-                assert "KHO02, KHO03, KHO05" in prompt
+                assert set(re.search(r"(?<!Chưa )Đạt: ([^.]+)\.", prompt)[1].split(", ")) == {
+                    "KHO02", "KHO03", "KHO05"
+                }
                 assert "Account 1" not in prompt
             return RouteDecision(route=RouteLabel.HYBRID, reason="Verified premise")
 
@@ -182,8 +185,10 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
         response = sent.json()["assistant_message"]["response"]
         assert response["error"] is None
         assert response["verification_status"] == "verified_classification"
-        assert {row["entity_id"]: row["metric"] for row in response["rows"]} == expected
-        assert "Chưa đạt: KHO01, KHO04." in response["answer"]
+        assert {row["entity_id"]: row["metric_value"] for row in response["rows"]} == expected
+        assert set(re.search(r"Chưa đạt: ([^.]+)\.", response["answer"])[1].split(", ")) == {
+            "KHO01", "KHO04"
+        }
         assert response["sources"][0]["content"] == ORIGINAL.split("\n\n", 1)[1].strip()
         assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
         assert actors.b.client.get(path).status_code == 404
