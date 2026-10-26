@@ -15,6 +15,7 @@ from sqlglot import exp, parse_one
 from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.datasets.context import DatasetSqlContext
 from app.datasets.repository import SQL_TYPES
+from app.text_to_sql.answer import ResultColumn, column_label
 from app.text_to_sql.count_contract import analyze_counts
 from app.text_to_sql.expressions import ExpressionBinding, ExpressionCompiler
 from app.text_to_sql.join_policy import ApprovedJoin, resolve_join_tree
@@ -54,6 +55,7 @@ class CompiledQuery:
     validated: ValidatedSql
     parameters: dict[str, Any]
     evidence_sql: str
+    result_columns: tuple[ResultColumn, ...] = ()
 
 
 class QueryCompiler:
@@ -182,6 +184,7 @@ class QueryCompiler:
             raise SqlValidationError("Plan output aliases must be unique")
         outputs = {}
         output_bindings = []
+        result_columns = []
         for field in plan.fields:
             if field.aggregate == "row_count":
                 if field.reference is not None:
@@ -244,6 +247,34 @@ class QueryCompiler:
                                 grain_reason="dimension_measure",
                             )
             outputs[field.alias] = expression.label(field.alias)
+            direct = self.references.columns.get(field.reference) if not field.aggregate else None
+            header = (
+                self._context.column_headers.get(direct[0], {}).get(direct[1]) if direct else None
+            )
+            identifier = direct is not None and any(
+                direct
+                in {
+                    (edge.source_table, edge.source_column),
+                    (edge.target_table, edge.target_column),
+                }
+                for edge in self._context.approved_joins
+            )
+            # Bare BIGINT may be a date code or identifier. Only proven metrics and
+            # non-key NUMERIC columns opt into numeric presentation.
+            numeric = (
+                binding.kind in {"BIGINT", "NUMERIC"}
+                and not identifier
+                and (
+                    binding.aggregate
+                    or binding.kind == "NUMERIC"
+                    and not binding.temporal_transform
+                )
+            )
+            result_columns.append(
+                ResultColumn(
+                    key=field.alias, label=column_label(header or field.alias), numeric=numeric
+                )
+            )
         has_aggregate = any(binding.aggregate for _, binding in output_bindings)
         grouped_columns = {ref for ref in plan.group_by if ref in self.references.columns}
         if has_aggregate or plan.group_by:
@@ -371,6 +402,7 @@ class QueryCompiler:
             replace(parameterized, statement=str(compiled)),
             dict(compiled.params),
             checked.statement,
+            tuple(result_columns),
         )
 
     @staticmethod

@@ -294,6 +294,34 @@ async function openApp(page: Page) {
   await expect(page.getByRole("status", { name: "API sẵn sàng" })).toBeVisible();
 }
 
+for (const size of [12, 16, 200]) {
+  test(`inline ${size} results keep exact values, bounded DOM and history`, async ({page}, info) => {
+    const rows = Array.from({length:size}, (_,i) => ({id:`KS${String(i).padStart(3,"0")}`, code:"000123", amount:"638885507.75", note:"<img src=x onerror=alert(1)>"}));
+    await installApi(page, {response:{answer:`Tìm thấy ${size} kết quả:`,rows,result_columns:[{key:"amount",label:"Tổng tiền",numeric:true}]}});
+    await openApp(page);
+    await page.getByLabel("Nhập câu hỏi cho ShopQuery AI").fill("Kết quả thử nghiệm");
+    await page.getByLabel("Nhập câu hỏi cho ShopQuery AI").press("Enter");
+    const message = page.locator(".message--assistant").last();
+    await expect(message.getByRole("row")).toHaveCount(Math.min(size,20)+1);
+    await expect(message.getByRole("cell",{name:"638.885.507,75"})).toHaveCount(Math.min(size,20));
+    await expect(message.getByRole("cell",{name:"000123"})).toHaveCount(Math.min(size,20));
+    await expect(message.locator("img,script")).toHaveCount(0);
+    await expect(message.getByRole("button",{name:/Bảng dữ liệu/})).toHaveAttribute("aria-expanded","false");
+    await expectNoPageOverflow(page);
+    await page.screenshot({path:info.outputPath(`inline-${size}.png`),fullPage:true});
+    if (size===200) {
+      await message.getByRole("button",{name:"Tiếp",exact:true}).click();
+      await expect(message.getByRole("cell",{name:"KS020"})).toBeVisible();
+      await expect(message.getByRole("row")).toHaveCount(21);
+    }
+    await message.getByRole("button",{name:/Bảng dữ liệu/}).click();
+    await expect(message.getByRole("table")).toHaveCount(1);
+    await expect(message.getByRole("columnheader",{name:"amount",exact:true})).toBeVisible();
+    await page.reload();
+    await expect(page.locator(".message--assistant").last().getByRole("row")).toHaveCount(Math.min(size,20)+1);
+  });
+}
+
 async function openSidebar(page: Page) {
   if (await page.getByRole("button", { name: "Mở thanh điều hướng" }).isVisible()) {
     await page.getByRole("button", { name: "Mở thanh điều hướng" }).click();
@@ -429,7 +457,7 @@ test("creates chat once and renders SQL evidence with history controls", async (
   await expect(tableControl).toHaveAttribute("aria-expanded", "false");
   await expect(sqlControl).toHaveAttribute("aria-expanded", "false");
   await expect(sqlCode).toHaveCount(0);
-  await expect(table).toHaveCount(0);
+  await expect(table).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("user-message-short.png"), fullPage: true });
   await page.screenshot({ path: testInfo.outputPath("sql-result-collapsed.png"), fullPage: true });
 
@@ -446,7 +474,7 @@ test("creates chat once and renders SQL evidence with history controls", async (
   await expect(tableControl).toHaveAttribute("aria-expanded", "false");
   await expect(sqlControl).toHaveAttribute("aria-expanded", "true");
   await expect(sqlCode).toBeVisible();
-  await expect(table).toHaveCount(0);
+  await expect(table).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("sql-code-expanded.png"), fullPage: true });
   await firstResponse.getByRole("button", { name: "Sao chép SQL" }).click();
   await expect(firstResponse.getByRole("button", { name: "Sao chép SQL" })).toContainText("Đã sao chép");
@@ -471,10 +499,10 @@ test("creates chat once and renders SQL evidence with history controls", async (
   await expect(page.getByText(sqlResponse.answer)).toHaveCount(2);
   await expect(page.locator(".message--assistant")).toHaveCount(2);
   const secondResponse = page.locator(".message--assistant").nth(1);
-  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
   await firstResponse.getByRole("button", { name: "Bảng dữ liệu · 2" }).click();
   await expect(firstResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
-  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+  await expect(secondResponse.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("user-message-long.png"), fullPage: true });
   if ((page.viewportSize()?.width ?? 1_000) <= 390) {
     await page.screenshot({ path: testInfo.outputPath("mobile-conversation.png"), fullPage: true });
@@ -518,7 +546,7 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await expect(hybridSql).toHaveAttribute("aria-expanded", "false");
   await expect(hybridSources).toHaveAttribute("aria-expanded", "false");
   await expect(hybridMessage.getByText(/SELECT product_name/)).toHaveCount(0);
-  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
   await expect(hybridMessage.getByLabel("Nguồn tham khảo")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("hybrid-collapsed.png"), fullPage: true });
   if ((page.viewportSize()?.width ?? 1_000) <= 390) {
@@ -529,7 +557,7 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("hybrid-table-expanded.png"), fullPage: true });
   await hybridSql.click();
-  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+  await expect(hybridMessage.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
   await expect(hybridMessage.getByText(/SELECT product_name/)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("hybrid-sql-expanded.png"), fullPage: true });
   await hybridSources.click();

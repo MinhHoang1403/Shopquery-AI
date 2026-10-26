@@ -112,6 +112,7 @@ def test_three_table_categories_merge_entities_and_keep_exact_fact_totals(monkey
         } == oracle
         assert sum(r["bookings"] for r in result.rows) == 2400 and len(calls) == 2
         assert result.sql.count("JOIN") == 2
+        assert {c.key for c in result.result_columns if c.numeric} == {"bookings", "total"}
         # A separate simple numeric filter must stay single-table for all paraphrases.
         expected = sorted(row[1] for row in hotels if row[3] > 100)
         from app.text_to_sql.executor import SqlExecutor
@@ -132,5 +133,21 @@ def test_three_table_categories_merge_entities_and_keep_exact_fact_totals(monkey
             sorted(r["name"] for r in rows) == expected
             and "JOIN" not in compiled.validated.statement
         )
+        gateway, calls = gateway_harness(
+            monkeypatch,
+            provider,
+            [
+                response(provider, '{"route":"SQL","reason":"Numeric filter"}'),
+                response(provider, PlanDecision(plan=filtered).model_dump_json()),
+            ],
+        )
+        try:
+            answer = _build_dataset_chat_service(settings, context, gateway).chat(
+                "Hotels with more than 100 rooms"
+            )
+            assert sorted(r["name"] for r in answer.rows) == expected
+            assert "JOIN" not in answer.sql and len(calls) == 2
+        finally:
+            gateway.close()
     finally:
         repo.delete(dataset.dataset_id, delete_conversations=True)

@@ -10,6 +10,7 @@ from app.ai.providers import ModelId
 from app.core.errors import ErrorContext
 from app.routing.hybrid_evidence import VerificationStatus
 from app.routing.router import RouteLabel
+from app.text_to_sql.answer import ResultColumn
 
 
 class ChatRequest(BaseModel):
@@ -57,6 +58,10 @@ class ChatResponse(BaseModel):
     fallback_error_context: ErrorContext | None = None
     error_context: ErrorContext | None = None
     verification_status: VerificationStatus | None = None
+    result_columns: list[ResultColumn] = Field(default_factory=list)
+    answer_row_indices: list[Annotated[int, Field(strict=True, ge=0, lt=200)]] | None = Field(
+        default=None, max_length=200
+    )
 
 
 class ModelOption(BaseModel):

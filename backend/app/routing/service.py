@@ -10,6 +10,7 @@ from app.rag.pipeline import RagPipeline, Source
 from app.routing.hybrid import HybridPipeline
 from app.routing.hybrid_evidence import VerificationStatus
 from app.routing.router import QueryRouter, RouteLabel
+from app.text_to_sql.answer import ResultColumn
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
 INSUFFICIENT_INFORMATION = (
@@ -32,6 +33,8 @@ class ChatResult:
     fallback_reason: str | None = None
     fallback_error_context: ErrorContext | None = None
     verification_status: VerificationStatus | None = None
+    result_columns: tuple[ResultColumn, ...] = ()
+    answer_row_indices: tuple[int, ...] | None = None
 
 
 def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
@@ -70,7 +73,9 @@ class ChatService:
         route = self._router.route(question).route
         if route == RouteLabel.SQL:
             result = self._sql_pipeline.run(question)
-            return ChatResult(result.answer, route, result.sql, result.rows)
+            return ChatResult(
+                result.answer, route, result.sql, result.rows, result_columns=result.result_columns
+            )
         if route == RouteLabel.RAG:
             result = self._rag_pipeline.run(question)
             return ChatResult(result.answer, route, sources=result.sources)
@@ -86,6 +91,8 @@ class ChatService:
                 result.rows,
                 result.sources,
                 verification_status=result.verification_status,
+                result_columns=result.result_columns,
+                answer_row_indices=result.answer_row_indices,
             )
         return ChatResult(
             answer=INSUFFICIENT_INFORMATION,
@@ -131,7 +138,9 @@ class DatasetChatService:
                 result = self._sql_pipeline.run(question)
             except SqlUnsupportedError as exc:
                 return _sql_refusal(exc)
-            return ChatResult(result.answer, route, result.sql, result.rows)
+            return ChatResult(
+                result.answer, route, result.sql, result.rows, result_columns=result.result_columns
+            )
         if route == RouteLabel.RAG and self._rag_pipeline is not None:
             result = self._rag_pipeline.run(question)
             return ChatResult(result.answer, route, sources=result.sources)
@@ -154,6 +163,8 @@ class DatasetChatService:
                 result.rows,
                 result.sources,
                 verification_status=result.verification_status,
+                result_columns=result.result_columns,
+                answer_row_indices=result.answer_row_indices,
             )
         return ChatResult(
             INSUFFICIENT_INFORMATION,

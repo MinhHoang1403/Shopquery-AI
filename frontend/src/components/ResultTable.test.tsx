@@ -8,17 +8,18 @@ describe("lossless SQL result cells", () => {
   it("renders decimal strings exactly and keeps zero distinct from null", () => {
     const values = ["12345678901234567890.12", "0.000000000000000000000002", "0.00", null, 0, 4, "9007199254740993"];
     const wireRows = JSON.parse(JSON.stringify(values.map((value) => ({ amount: value }))));
-    render(<ResultTable rows={wireRows} />);
+    render(<ResultTable rows={wireRows} metadata={[{key:"amount",label:"Tổng",numeric:true}]} />);
     const cells = screen.getAllByRole("row").slice(1).map((row) => within(row).getByRole("cell").textContent);
-    expect(cells).toEqual(["12.345.678.901.234.567.890,12", "0,000000000000000000000002", "0,00", "—", "0", "4", "9007199254740993"]);
+    expect(cells).toEqual(["12.345.678.901.234.567.890,12", "0,000000000000000000000002", "0,00", "—", "0", "4", "9.007.199.254.740.993"]);
   });
 
   it("preserves business COUNT labels and row/value counts after a history wire roundtrip", () => {
     const rows = [{ entity_id: "A", delivery_count: 7, present_values: 4, Đếm: 0, total: "0.00" }];
-    const { rerender } = render(<ResultTable rows={rows} />);
+    const metadata = [{key:"total",label:"Tổng",numeric:true}];
+    const { rerender } = render(<ResultTable rows={rows} metadata={metadata} />);
     const labels = () => screen.getAllByRole("columnheader").map((cell) => cell.textContent);
     expect(labels()).toEqual(["entity_id", "delivery_count", "present_values", "Đếm", "total"]);
-    rerender(<ResultTable rows={JSON.parse(JSON.stringify(rows))} />);
+    rerender(<ResultTable rows={JSON.parse(JSON.stringify(rows))} metadata={metadata} />);
     expect(labels()).toEqual(["entity_id", "delivery_count", "present_values", "Đếm", "total"]);
     const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
     expect(cells.map((cell) => cell.textContent)).toEqual(["A", "7", "4", "0", "0,00"]);

@@ -2,9 +2,10 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_core import PydanticCustomError
 
+from app.core.errors import ContractConversionError, ErrorContext, validation_context
 from app.text_to_sql.query_plan import (
     ExpressionOperation,
     PlanDecision,
@@ -36,15 +37,27 @@ class GenerationExpression(BaseModel):
     def expression(self) -> PlanExpression:
         if self.operation == "literal":
             if self.value_type == "none":
-                raise ValueError("A literal needs its declared type")
+                raise ContractConversionError(
+                    ErrorContext(
+                        validation_branch="literal_type_missing", validation_location=["value_type"]
+                    )
+                )
             return PlanExpression(
                 operation=self.operation,
                 arguments=self.arguments,
                 value=self.value,
                 value_type=self.value_type,
             )
-        if self.value or self.value_type != "none":
-            raise ValueError("Only literals take a value/type")
+        if self.value:
+            raise ContractConversionError(
+                ErrorContext(validation_branch="nonliteral_value", validation_location=["value"])
+            )
+        if self.value_type != "none":
+            raise ContractConversionError(
+                ErrorContext(
+                    validation_branch="nonliteral_type", validation_location=["value_type"]
+                )
+            )
         return PlanExpression(operation=self.operation, arguments=self.arguments)
 
 
@@ -114,16 +127,39 @@ class GenerationDecision(BaseModel):
                     self.having,
                 )
             ):
-                raise ValueError("Unsupported outcome cannot contain a query")
+                raise ContractConversionError(
+                    ErrorContext(
+                        validation_branch="outcome_conflict", response_outcome=self.outcome
+                    )
+                )
             return PlanDecision(unsupported_reason=self.reason)
         if self.reason:
-            raise ValueError("A query cannot include an unsupported reason")
-        return PlanDecision(
-            plan=QueryPlan(
+            raise ContractConversionError(
+                ErrorContext(validation_branch="outcome_conflict", response_outcome=self.outcome)
+            )
+        expressions = []
+        for index, node in enumerate(self.expressions):
+            try:
+                expressions.append(node.expression())
+            except ContractConversionError as exc:
+                raise ContractConversionError(
+                    exc.error_context.model_copy(
+                        update={
+                            "validation_location": [
+                                "expressions",
+                                index,
+                                *exc.error_context.validation_location,
+                            ],
+                            "response_outcome": self.outcome,
+                        }
+                    )
+                ) from exc
+        try:
+            plan = QueryPlan(
                 source=self.source,
                 grouping=self.grouping,
                 fields=[PlanField(**field.model_dump()) for field in self.fields],
-                expressions=[node.expression() for node in self.expressions],
+                expressions=expressions,
                 filters=self.filters,
                 group_by=self.group_by,
                 sort=self.sort,
@@ -132,4 +168,19 @@ class GenerationDecision(BaseModel):
                 where=self.where or None,
                 having=self.having or None,
             )
-        )
+        except ValidationError as exc:
+            raise ContractConversionError(
+                ErrorContext(
+                    **{"validation_branch": "query_plan_contract", **validation_context(exc)},
+                    response_outcome=self.outcome,
+                )
+            ) from exc
+        try:
+            return PlanDecision(plan=plan)
+        except ValidationError as exc:
+            raise ContractConversionError(
+                ErrorContext(
+                    **{"validation_branch": "plan_decision_contract", **validation_context(exc)},
+                    response_outcome=self.outcome,
+                )
+            ) from exc

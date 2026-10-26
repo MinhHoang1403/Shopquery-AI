@@ -18,6 +18,7 @@ from app.core.errors import (
     ModelResponseError,
     ProviderError,
     StructuredResponseError,
+    conversion_context,
     provider_category,
     validation_context,
 )
@@ -169,7 +170,13 @@ class GeminiGateway:
                 "generation",
                 phase=phase,
                 error_category=category,
-                **(validation_context(exc) if isinstance(exc, ValidationError) else {}),
+                **(
+                    conversion_context(exc)
+                    if phase == "domain_conversion"
+                    else validation_context(exc)
+                    if isinstance(exc, ValidationError)
+                    else {}
+                ),
             ),
         )
 

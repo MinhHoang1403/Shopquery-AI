@@ -110,6 +110,15 @@ class ErrorContext(BaseModel):
             "outcome_missing",
             "row_limit",
             "database_error",
+            "literal_type_missing",
+            "nonliteral_value",
+            "nonliteral_type",
+            "query_plan_contract",
+            "plan_decision_contract",
+            "response_contract",
+            "expression_forward_reference",
+            "expression_depth",
+            "expression_expansion",
         ]
         | None
     ) = None
@@ -125,6 +134,7 @@ class ErrorContext(BaseModel):
         fields = {
             "plan",
             "source",
+            "grouping",
             "fields",
             "expressions",
             "filters",
@@ -169,6 +179,9 @@ class ErrorContext(BaseModel):
             "value_error",
             "outcome_conflict",
             "outcome_missing",
+            "expression_forward_reference",
+            "expression_depth",
+            "expression_expansion",
             "json_invalid",
             "string_type",
             "int_type",
@@ -195,9 +208,31 @@ def validation_context(exc: ValidationError) -> dict:
         validation_location=list(details["loc"])[:12], validation_type=details["type"]
     )
     result = clean.model_dump(include={"validation_location", "validation_type"})
-    if details["type"] in {"outcome_conflict", "outcome_missing"}:
+    if details["type"] in {
+        "outcome_conflict",
+        "outcome_missing",
+        "expression_forward_reference",
+        "expression_depth",
+        "expression_expansion",
+    }:
         result["validation_branch"] = details["type"]
     return result
+
+
+class ContractConversionError(ValueError):
+    """A known conversion invariant, carrying only allowlisted structural metadata."""
+
+    def __init__(self, context: ErrorContext) -> None:
+        super().__init__("Generation contract conversion failed")
+        self.error_context = context
+
+
+def conversion_context(exc: Exception) -> dict:
+    if isinstance(exc, ContractConversionError):
+        return exc.error_context.model_dump(exclude_none=True, exclude_unset=True)
+    if isinstance(exc, ValidationError):
+        return {"validation_branch": "response_contract", **validation_context(exc)}
+    return {"validation_branch": "response_contract"}
 
 
 def provider_category(status: int) -> ErrorCategory:

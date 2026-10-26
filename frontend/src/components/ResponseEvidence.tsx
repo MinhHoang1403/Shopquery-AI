@@ -1,14 +1,14 @@
 import { Check, ChevronDown, ChevronUp, Copy, Database, FileText, Table2 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
-import type { ChatResponse, ResultRow, SourceReference } from "../types";
+import type { ChatResponse, ResultColumn, ResultRow, SourceReference } from "../types";
 import { displayNumber } from "../numberFormat";
 
 type EvidencePanel = "rows" | "sql" | "sources";
 
-function displayValue(value: unknown, formatNumbers = true): string {
+function displayValue(value: unknown, numeric = false): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "object") return JSON.stringify(value);
-  return formatNumbers ? displayNumber(value) : String(value);
+  return numeric ? displayNumber(value, true) : String(value);
 }
 
 function DetailsChevron({ size = 17 }: { size?: number }) {
@@ -64,22 +64,42 @@ function SqlPanel({ sql }: { sql: string }) {
   );
 }
 
-export function ResultTable({ rows, columns: registeredColumns, formatNumbers = true }: { rows: ResultRow[]; columns?: string[]; formatNumbers?: boolean }) {
+export function ResultTable({ rows, columns: registeredColumns, formatNumbers = true, metadata = [], friendly = false }: { rows: ResultRow[]; columns?: string[]; formatNumbers?: boolean; metadata?: ResultColumn[]; friendly?: boolean }) {
   const columns = registeredColumns ?? Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+  const definitions = new Map(metadata.map((column) => [column.key, column]));
+  const numeric = (column: string) => formatNumbers && definitions.get(column)?.numeric === true;
   return (
     <div className="table-shell" aria-label="Kết quả truy vấn" role="region" tabIndex={0}>
       <table>
-        <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+        <thead><tr>{columns.map((column) => <th className={numeric(column) ? "numeric-cell" : undefined} key={column}>{friendly ? definitions.get(column)?.label ?? column.replaceAll("_", " ") : column}</th>)}</tr></thead>
         <tbody>
           {rows.map((row, rowIndex) => (
             <tr key={rowIndex}>
-                {columns.map((column) => <td key={column}>{displayValue(row[column], formatNumbers)}</td>)}
+                {columns.map((column) => <td className={numeric(column) ? "numeric-cell" : undefined} key={column}>{displayValue(row[column], numeric(column))}</td>)}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function PagedResults({ response, friendly }: { response: ChatResponse; friendly: boolean }) {
+  const [page, setPage] = useState(0);
+  const pageSize = 20;
+  const rows = friendly && response.answer_row_indices != null
+    ? response.answer_row_indices.filter((i) => Number.isInteger(i) && i >= 0 && i < response.rows.length).map((i) => response.rows[i])
+    : response.rows;
+  const start = page * pageSize;
+  const end = Math.min(start + pageSize, rows.length);
+  return <div className="inline-results" aria-label={friendly ? "Kết quả trong câu trả lời" : "Dữ liệu chi tiết"}>
+    <ResultTable rows={rows.slice(start, end)} metadata={response.result_columns} friendly={friendly} />
+    {rows.length > pageSize ? <div className="result-pagination" role="group" aria-label="Trang kết quả">
+      <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>Trước</button>
+      <span>{start + 1}–{end} / {rows.length} kết quả</span>
+      <button type="button" disabled={end === rows.length} onClick={() => setPage(page + 1)}>Tiếp</button>
+    </div> : null}
+  </div>;
 }
 
 function Sources({ sources }: { sources: SourceReference[] }) {
@@ -123,6 +143,7 @@ export function ResponseEvidence({ response }: { response: ChatResponse }) {
 
   return (
     <div className="evidence-stack">
+      {hasRows && activePanel !== "rows" ? <PagedResults response={response} friendly /> : null}
       <div className="evidence-toolbar" aria-label="Bằng chứng hỗ trợ" role="group">
         {hasRows ? (
           <EvidenceButton
@@ -154,7 +175,7 @@ export function ResponseEvidence({ response }: { response: ChatResponse }) {
       </div>
 
       {activePanel === "rows" && hasRows ? (
-        <div className="evidence-panel" id={panelIds.rows}><ResultTable rows={response.rows} /></div>
+        <div className="evidence-panel" id={panelIds.rows}><PagedResults response={response} friendly={false} /></div>
       ) : null}
       {activePanel === "sql" && response.sql ? (
         <div className="evidence-panel" id={panelIds.sql}><SqlPanel sql={response.sql} /></div>

@@ -11,6 +11,35 @@ from tests.auth_helpers import TEST_OWNER, TestClient
 from tests.test_management_api import FakeChatService, FakeConversationRepository
 
 
+@pytest.mark.integration
+def test_result_presentation_metadata_survives_postgres_json_history():
+    from app.api.models import ChatResponse
+    from app.text_to_sql.answer import ResultColumn
+
+    engine = get_setup_engine()
+    create_schema(engine)
+    repo = ConversationRepository(engine, TEST_OWNER)
+    conversation = repo.create(None, "gemini")
+    response = ChatResponse(
+        answer="Chưa đạt",
+        route="HYBRID",
+        rows=[{"id": "000123", "total": "0.00"}],
+        verification_status="verified_classification",
+        answer_row_indices=[0],
+        result_columns=[ResultColumn(key="total", label="Tổng", numeric=True)],
+    )
+    repo.add_response_message(
+        conversation.conversation_id,
+        content=response.answer,
+        response_metadata=response.model_dump(mode="json"),
+        is_error=False,
+    )
+    restored = ChatResponse.model_validate(
+        repo.get(conversation.conversation_id).messages[-1].response_metadata
+    )
+    assert restored == response
+
+
 def test_api_preserves_selection_and_restores_attribution(monkeypatch, contract_session):
     repository = FakeConversationRepository()
     monkeypatch.setattr("app.api.routes.build_conversation_repository", lambda owner: repository)

@@ -252,6 +252,10 @@ def chat(request: Request, guest: CurrentGuest, body: GuestChatRequest) -> dict:
             route=result.route,
             sql=result.sql,
             rows=result.rows,
+            result_columns=list(result.result_columns),
+            answer_row_indices=list(result.answer_row_indices)
+            if result.answer_row_indices is not None
+            else None,
             sources=[source.__dict__ for source in result.sources],
             requested_model=result.requested_model,
             used_model=result.used_model,

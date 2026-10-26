@@ -36,6 +36,8 @@ def test_chat_has_consistent_response(monkeypatch) -> None:
         "route": "SQL",
         "sql": "SELECT 10",
         "rows": [{"total": 10}],
+        "result_columns": [],
+        "answer_row_indices": None,
         "sources": [],
         "error": None,
         "requested_model": None,

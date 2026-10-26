@@ -89,8 +89,9 @@ describe("Assistant content", () => {
 
   it("keeps one authoritative rows table when restored Markdown also contains a table", async () => {
     const text="Có một kết quả.\n\n| total |\n| --- |\n| 100.00 |";
-    render(<ChatMessage entry={{id:"one",role:"assistant",text,response:{answer:text,route:"SQL",error:null,sql:"SELECT 100",rows:[{total:"100.00"}],sources:[]}}} />);
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    render(<ChatMessage entry={{id:"one",role:"assistant",text,response:{answer:text,route:"SQL",error:null,sql:"SELECT 100",rows:[{total:"100.00"}],result_columns:[{key:"total",label:"Tổng",numeric:true}],sources:[]}}} />);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.getByRole("cell",{name:"100,00"})).toBeVisible();
     await userEvent.setup().click(screen.getByRole("button",{name:/Bảng dữ liệu/}));
     expect(screen.getAllByRole("table")).toHaveLength(1);
     expect(screen.getByRole("cell",{name:"100,00"})).toBeVisible();

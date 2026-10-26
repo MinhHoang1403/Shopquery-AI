@@ -596,6 +596,10 @@ def _chat_response(result: ChatResult) -> ChatResponse:
         fallback_reason=result.fallback_reason,
         fallback_error_context=result.fallback_error_context,
         verification_status=result.verification_status,
+        result_columns=list(result.result_columns),
+        answer_row_indices=list(result.answer_row_indices)
+        if result.answer_row_indices is not None
+        else None,
         sources=[
             SourceResponse.model_validate(source, from_attributes=True) for source in result.sources
         ],
@@ -619,9 +623,7 @@ def _chat_error(exc: ShopQueryError, requested_model: str | None = None) -> Chat
         verification_status="refused" if context.attempted_route == "HYBRID" else None,
         requested_model=exc.requested_model if isinstance(exc, ChatTurnError) else requested_model,
         fallback_used=isinstance(exc, ChatTurnError) and exc.fallback_used,
-        fallback_reason=(
-            exc.fallback_reason if isinstance(exc, ChatTurnError) else None
-        ),
+        fallback_reason=(exc.fallback_reason if isinstance(exc, ChatTurnError) else None),
         fallback_error_context=(
             exc.fallback_error_context if isinstance(exc, ChatTurnError) else None
         ),

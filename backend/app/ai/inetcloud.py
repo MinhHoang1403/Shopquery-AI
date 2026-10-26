@@ -15,6 +15,7 @@ from app.core.errors import (
     ConfigurationError,
     ErrorContext,
     ProviderError,
+    conversion_context,
     provider_category,
     validation_context,
 )
@@ -92,14 +93,14 @@ class InetCloudGateway:
             raise self._failure(
                 "domain_conversion",
                 "contract_conversion",
-                exc if isinstance(exc, ValidationError) else None,
+                exc,
             ) from exc
 
     def _failure(
         self,
         phase: str,
         category: str,
-        exc: ValidationError | None = None,
+        exc: Exception | None = None,
         *,
         status: int | None = None,
         operation: str = "generation",
@@ -111,7 +112,13 @@ class InetCloudGateway:
             error_category=category,
             http_status=status,
             attempt=1 if self._settings.inetcloud_retry_attempts == 1 else None,
-            **(validation_context(exc) if exc is not None else {}),
+            **(
+                conversion_context(exc)
+                if phase == "domain_conversion" and exc is not None
+                else validation_context(exc)
+                if isinstance(exc, ValidationError)
+                else {}
+            ),
         )
         structured = category in {"invalid_json", "wire_validation", "contract_conversion"}
         error_type = StructuredOutputError if structured else ProviderError

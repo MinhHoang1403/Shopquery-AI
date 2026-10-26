@@ -1,7 +1,7 @@
 from decimal import Decimal
 from unittest.mock import Mock
 
-from app.text_to_sql.answer import compose_sql_answer
+from app.text_to_sql.answer import ResultColumn, compose_sql_answer
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.pipeline import TextToSqlPipeline
 from app.text_to_sql.query_plan import PlanExpression, PlanField, QueryPlan
@@ -32,21 +32,25 @@ def test_compiled_count_provenance_and_exact_rows_need_no_answer_generation():
         Mock(generate=Mock(return_value=plan)), compiler, executor, gateway
     ).run("Tổng?")
     assert result.rows == values
-    assert "một kết quả" in result.answer and "|" not in result.answer
+    assert "Rows: **3**" in result.answer and "Total: **0,00**" in result.answer
+    assert "Average: **Chưa có dữ liệu**" in result.answer
     assert "VND" not in result.answer
     gateway.generate_text.assert_not_called()
 
 
 def test_neutral_table_preserves_large_numbers_null_and_does_not_invent_empty_rows():
     answer = compose_sql_answer([{"n": "9007199254740993", "x": Decimal("0.0000"), "y": None}], ())
-    assert "một kết quả" in answer and "|" not in answer
+    assert "9007199254740993" in answer and "Chưa có dữ liệu" in answer
     assert "Không tìm thấy" in compose_sql_answer([], ())
 
 
 def test_scalar_display_and_empty_are_lossless_and_do_not_invent_units():
-    assert "638.885.507,75" in compose_sql_answer([{"amount": "638885507.75"}], ())
-    assert "9.007.199.254.740.993" in compose_sql_answer([{"amount": "9007199254740993"}], ())
-    assert "0,0000" in compose_sql_answer([{"amount": "0.0000"}], ())
+    columns = (ResultColumn(key="amount", label="Tổng", numeric=True),)
+    assert "638.885.507,75" in compose_sql_answer([{"amount": "638885507.75"}], (), columns)
+    assert "9.007.199.254.740.993" in compose_sql_answer(
+        [{"amount": "9007199254740993"}], (), columns
+    )
+    assert "0,0000" in compose_sql_answer([{"amount": "0.0000"}], (), columns)
     assert "chưa có giá trị" in compose_sql_answer([{"amount": None}], ())
     assert "đồng" not in compose_sql_answer([{"vnd": "100.00"}], ())
     assert "24 kết quả" in compose_sql_answer([{"id": i} for i in range(24)], ())

@@ -24,6 +24,8 @@ class FakeRouter:
 
 @dataclass
 class PipelineResult:
+    result_columns: tuple = ()
+    answer_row_indices: tuple | None = None
     answer: str = "grounded"
     sql: str = "SELECT 1"
     rows: list[dict[str, Any]] | None = None

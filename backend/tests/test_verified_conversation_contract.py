@@ -62,6 +62,10 @@ def test_backend_status_reaches_persistence_and_reload_and_followup_rechecks_evi
         repository, conversation, ChatRequest(message=QUESTION), conversation.owner_user_id
     )
     assert first.assistant_message.response.verification_status == "verified_classification"
+    assert any(
+        c.key == "metric_value" and c.numeric
+        for c in first.assistant_message.response.result_columns
+    )
     response = ChatResponse.model_validate(stored[0].response_metadata)
     assert response.verification_status == "verified_classification"
     previous_user = MessageRecord(1, "user", QUESTION, None, datetime.now(UTC))
@@ -75,6 +79,8 @@ def test_backend_status_reaches_persistence_and_reload_and_followup_rechecks_evi
     )
     assert retrieval.retrieve.call_count == 2 and executor.execute.call_count == 2
     assert stored[1].response_metadata["verification_status"] == "verified_classification"
+    assert stored[1].response_metadata["answer_row_indices"] == [1]
+    assert stored[1].response_metadata["rows"] == rows
     assert "| U1 |" not in stored[1].content and "| U2 |" in stored[1].content
     assert "Previous successful turns" in router.route.call_args.args[0]
     gateway.generate_structured.assert_not_called()

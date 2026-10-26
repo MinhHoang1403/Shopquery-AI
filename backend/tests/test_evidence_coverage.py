@@ -229,6 +229,7 @@ def test_empty_selected_group_does_not_lose_verified_full_evidence():
     assert result.verification_status == "verified_classification"
     assert "No SQL rows." in result.answer
     assert len(result.rows) == 1
+    assert result.answer_row_indices == ()
 
 
 def test_current_question_is_not_replaced_by_untrusted_conversation_text():

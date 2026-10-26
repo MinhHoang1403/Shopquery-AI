@@ -212,6 +212,11 @@ details[open] > summary .details-chevron-up { display: block; }
 .code-wrap code { font: 13px/1.65 Consolas, "Courier New", monospace; }
 .copy-button { position: absolute; right: 9px; top: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border: 0; border-radius: 6px; color: #ddd; background: #383838; cursor: pointer; font-size: 12px; }
 .table-shell { max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
+.inline-results { min-width: 0; max-width: 100%; }
+.numeric-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.result-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; font-size: 12px; }
+.result-pagination button { border: 1px solid #ddd; border-radius: 6px; background: white; padding: 5px 10px; }
+.result-pagination button:disabled { opacity: .45; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { padding: 9px 11px; border-bottom: 1px solid #ededed; text-align: left; white-space: nowrap; }
 th { position: sticky; top: 0; color: #666; background: #fafafa; font-size: 12px; font-weight: 600; }

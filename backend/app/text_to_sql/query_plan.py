@@ -129,15 +129,20 @@ class QueryPlan(BaseModel):
             for reference in expression.arguments:
                 if reference.startswith("e"):
                     if reference not in depths:
-                        raise ValueError("Expressions must reference earlier nodes")
+                        raise PydanticCustomError(
+                            "expression_forward_reference",
+                            "Expressions must reference earlier nodes",
+                        )
                     depth = max(depth, depths[reference] + 1)
                     expanded_size += expanded_sizes[reference]
                 else:
                     expanded_size += 1
             if depth > 8:
-                raise ValueError("Expression depth exceeds eight")
+                raise PydanticCustomError("expression_depth", "Expression depth exceeds eight")
             if expanded_size > 512:
-                raise ValueError("Expression expansion exceeds 512 nodes")
+                raise PydanticCustomError(
+                    "expression_expansion", "Expression expansion exceeds 512 nodes"
+                )
             depths[f"e{index}"] = depth
             expanded_sizes[f"e{index}"] = expanded_size
         return self

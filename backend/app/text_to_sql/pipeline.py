@@ -7,7 +7,7 @@ from typing import Any
 
 from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage, record_facts
-from app.text_to_sql.answer import compose_sql_answer
+from app.text_to_sql.answer import ResultColumn, compose_sql_answer
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.count_contract import CountMetric
 from app.text_to_sql.coverage import (
@@ -28,6 +28,7 @@ class SqlResult:
     rows: list[dict[str, Any]]
     fact_table: str | None = None
     count_metrics: tuple[CountMetric, ...] = ()
+    result_columns: tuple[ResultColumn, ...] = ()
 
 
 class TextToSqlPipeline:
@@ -86,11 +87,12 @@ class TextToSqlPipeline:
         answer = ""
         if ground_answer:
             with diagnostic_stage("answer_grounding"):
-                answer = compose_sql_answer(rows, validated.count_metrics)
+                answer = compose_sql_answer(rows, validated.count_metrics, compiled.result_columns)
         return SqlResult(
             answer=answer,
             sql=compiled.evidence_sql,
             rows=rows,
             fact_table=validated.fact_table,
             count_metrics=validated.count_metrics,
+            result_columns=compiled.result_columns,
         )

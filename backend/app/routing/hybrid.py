@@ -21,6 +21,7 @@ from app.routing.hybrid_evidence import (
 )
 from app.routing.hybrid_policy import numeric_policies
 from app.routing.hybrid_policy_binding import policy_evidence, verification_error
+from app.text_to_sql.answer import ResultColumn
 from app.text_to_sql.count_contract import count_evidence
 from app.text_to_sql.pipeline import SqlResult, TextToSqlPipeline
 
@@ -48,6 +49,8 @@ class HybridResult:
     rows: list[dict[str, Any]]
     sources: list[Source]
     verification_status: VerificationStatus = "unverified"
+    result_columns: tuple[ResultColumn, ...] = ()
+    answer_row_indices: tuple[int, ...] | None = None
 
 
 class HybridPipeline:
@@ -176,6 +179,7 @@ Document evidence:
                 for chunk_id in dict.fromkeys(draft.used_chunk_ids)
             ]
             status: VerificationStatus = "unverified"
+            answer_row_indices = None
             if draft.mode == "explanation":
                 status = "explanation"
             elif (
@@ -191,6 +195,7 @@ Document evidence:
                     for i, decision in enumerate(draft.decisions)
                     if decision.status == coverage.selection
                 ]
+                answer_row_indices = tuple(selected)
                 # Select presentation only after verifying the complete SQL evidence above.
                 subset = SqlResult(
                     sql_result.answer,
@@ -205,4 +210,12 @@ Document evidence:
                     }
                 )
                 answer = compose_answer(subset, chunks, subset_draft, self._context)
-        return HybridResult(answer, sql_result.sql, sql_result.rows, sources, status)
+        return HybridResult(
+            answer,
+            sql_result.sql,
+            sql_result.rows,
+            sources,
+            status,
+            sql_result.result_columns,
+            answer_row_indices,
+        )

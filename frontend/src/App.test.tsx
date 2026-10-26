@@ -421,7 +421,7 @@ describe("ShopQuery workspace", () => {
     expect(sqlControl).toHaveAttribute("aria-expanded", "false");
     expect(tableControl).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText(/SELECT name, quantity/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
 
     await user.click(tableControl);
     expect(tableControl).toHaveAttribute("aria-expanded", "true");
@@ -430,7 +430,7 @@ describe("ShopQuery workspace", () => {
     await user.click(sqlControl);
     expect(tableControl).toHaveAttribute("aria-expanded", "false");
     expect(sqlControl).toHaveAttribute("aria-expanded", "true");
-    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
     expect(screen.getByText(/SELECT name, quantity/)).toBeVisible();
     const clipboardWrite = vi.spyOn(navigator.clipboard, "writeText");
     await user.click(screen.getByRole("button", { name: "Sao chép SQL" }));
@@ -604,7 +604,7 @@ describe("ShopQuery workspace", () => {
     await user.click(hybridRows);
     expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
     await user.click(hybridSql);
-    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
     expect(screen.getByText(/SELECT name, quantity/)).toBeVisible();
     await user.click(hybridSources);
     expect(screen.queryByText(/SELECT name, quantity/)).not.toBeInTheDocument();
