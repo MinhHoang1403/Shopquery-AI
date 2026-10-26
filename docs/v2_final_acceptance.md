@@ -5,6 +5,95 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## New Knowledge endpoint — connectivity restored, default switch blocked (26/10/2026)
+
+`KNOWLEDGE_CONNECTIVITY=PASS`: private .env contains the administrator-updated URL;
+the running API and resolved Compose agree, no shell/release URL override or drift.
+The endpoint differs from the previous HAProxy503 endpoint. URL identity remains
+private. No config edit or container recreate was needed. Modelknowledge,
+Chat Completions path, timeout60s, SDK retries0/attempts1 and no proxy env verified.
+At10:48:28 Asia/Saigon, DNS/TCP/certificate/hostname/SNI verification PASS, TLS1.3;
+GETmodels returned200 application/json in119.96ms with knowledge listed, no503 body.
+No undocumented readiness endpoint was guessed.
+
+`KNOWLEDGE_FUNCTIONAL=PARTIAL/FAIL`: a separately approved fresh window allowed
+at most10 total generation stages (including two probes),4 query embeddings,
+0 document embeddings, no retry/fallback; stop at a blocker. Production gateway:
+
+| Check | Actual result |
+| --- | --- |
+| One synthetic text probe | PASS:17+25=42;483.22ms; HTTP200; modelknowledge; finishstop |
+| One small Pydantic structured probe | PASS:statusok/total42;682.60ms; HTTP200; json_schema/stricttrue, validation PASS |
+| Q1 SQL via actual8080 UI, dataset15 | FAIL: routedSQL, PlanDecision.plan=None; safe refusal before compilation/execution |
+| Q2 RAG, Q3 Hybrid, Q4 follow-up | NOT_RUN: stopped on Q1; no paid repair/diagnostic |
+
+Q1: "Cho tôi tổng số phiên sạc và tổng phí của toàn bộ dữ liệu xe điện."
+Correlation `48ebf69816524379924a2c34b25b6696`,10:54:22–10:54:44 Asia/Saigon.
+Metadata/approved edges3tables/2edges loaded; routing5810.085ms succeeded;
+generator_unsupported14926.382ms failed with sql_validation/compilation.
+`QueryPlanner.generate` checks `decision.plan is None` immediately after its one
+structured call; no compiler/executor stage was reached, no fallback occurred.
+This is a semantic unsupported decision, not evidence of a transport503 or malformed
+JSON. The specific unsupported_reason/raw plan and wire status/token usage are not
+persisted for this UI call, so the model's reason cannot be established further
+without newly authorized evidence capture. No prompt/SQL/guard changes were made.
+
+Independent read-only PostgreSQL oracle:360 sessions,33066538.03 total fees;
+12 stations each30 sessions; document chunk23 defines all-status threshold2800000
+byma_tram, yieldingTS01–TS06 below andTS07–TS12 qualified. These fixture expectations
+are verified, but are NOT Knowledge SQL/Hybrid acceptance. No new citations were
+accepted because downstream questions were not sent.
+
+`FALLBACK_REGRESSION=NOT_READY`:43 existing provider tests PASS;76 focused
+Router/Plan provider/coverage/verified-context tests PASS. One persistence test's
+old FakeChatService does not accept current_question (test-double defect).
+Seven additional offline reproductions expose two current activation blockers:
+
+- Structured invalid_json/wire_validation/contract_conversion are currently
+  fallback-eligible, but success and secondary failure both label the reason
+  primary_provider_unavailable, losing the specific primary schema category.
+- Whole-turn fallback rebuilds the RAG embedder, repeating an identical successful
+  query embedding. Two separate turns with a late primary generation failure made
+  four mock embedding calls instead of two; no scope sharing is acceptable.
+
+A narrow candidate preserves schema failure taxonomy through success/error API
+metadata, shares only one turn-local lazy embedding cache across attempts, and
+updates the stale mock interface.107 focused tests PASS on that candidate;7 new
+regressions fail before it. Candidate is preserved privately as
+`knowledge-recovery-20261026/reviewed-fallback-candidate.patch`, NOT applied to main
+or runtime, NOT deployed, and NOT claimed as production PASS. Activation is blocked
+already by Q1, so no speculative source rollout or image build was performed.
+
+Existing eligibility remains408/429/500/502/503/504, timeout/connection failure,
+and the adapter's structured-output categories;400/401/403/404, SQL/security/grain,
+owner/configuration, evidence/citation/policy refusal do not trigger fallback.
+Existing whole-turn maximum is Knowledge→Gemini once; secondary failure stops,
+directGemini never switches back. No eligibility was expanded or hidden retries added.
+Future enablement must also address the proven taxonomy/embedding issues; whole-turn
+fallback repeats Router/Planner/retrieval and is not free. No live fallback was run.
+
+`DEFAULT_SWITCH=NOT_PERFORMED`: authenticated /api/models confirms Gemini default,
+fallbackfalse, AIenabled, both providersconfigured. New blank chat showsGemini;
+the failed Knowledge conversation retains its selected model and error history.
+Conditional configuration-only cutover approval was not exercised because Q1 failed.
+
+Usage:4 logical generation stages total (text1, structured1, UIrouter1/planner1),
+0query embeddings,0document embeddings,0Gemini generation, no retry/fallback.
+Probe token metadata:151prompt+98completion=249total. UI token usage and monetary
+cost are not independently exposed, so no full dollar/token-cost claim is made.
+Unused window capacity is not authorization for more probes after this blocker.
+
+`EMBEDDING_UNCHANGED=PASS`:gemini-embedding-2/768, existing chunks/vectors/indexes,
+vector-only/noBGE and Gemini key retained. `RUNTIME_VERIFICATION=PASS`: strict86
+modules, source/image/config match, Web/API8080 HTTP200, Google session/history
+reload verified. Private before/after fingerprints show unchanged schema, uploaded
+business data, documents/vectors/relationships and old messages; only the one new
+chat pair/conversation and rate-limit bookkeeping changed. API/Web/DB container
+identities unchanged; API remainsb48cfc2/626a8704…453a17, Web881bfe1/5f4ab329…92955.
+Provider gateON, GuestOFF, no migrations, cleanup or database writes outside chat.
+Private evidence:knowledge-recovery-20261026 (sanitized configuration/connectivity,
+probe wire metadata/usage, diagnostics, oracle, fingerprints, patch and screenshot).
+
 ## PDF upload NUL correction — deployed and live accepted (26/10/2026)
 
 The real failed PDF yielded four NUL codepoints on page3; API logs show psycopg

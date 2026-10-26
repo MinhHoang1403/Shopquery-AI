@@ -34,6 +34,15 @@ Gemini/provider gateON retained, no BGE/migration. Immediate API rollback source
 `df8dff610cd912e048964ba8350fa1dfc240c2fe948cec013184b97750465741` retained with
 private pre-cutover config snapshot. See current acceptance for budget/evidence.
 
+26/10 Knowledge endpoint recheck: running API already has the administrator-updated
+URL from private .env; resolved Compose/runtime match, so no recreate was needed.
+Connectivity and two bounded text/strict-schema probes PASS. First live SQL UI
+question returned PlanDecision.plan=None before execution; acceptance stopped.
+Knowledge default/fallback switch was NOT performed. Gemini/default, fallbackOFF,
+gateON, GuestOFF, current images/containers and data remain unchanged. A tested
+fallback candidate is held privately, not applied or deployed; see current acceptance
+for the specific activation blockers and actual4-stage/0-embedding usage.
+
 ### Vận hành hiện tại — Gemini mặc định, 25/10/2026
 
 Operator yêu cầu dùng Gemini cho tài khoản đăng nhập. Private `.env.release`, nạp
