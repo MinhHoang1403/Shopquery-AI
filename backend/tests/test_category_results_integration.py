@@ -92,20 +92,21 @@ def test_three_table_categories_merge_entities_and_keep_exact_fact_totals(monkey
             group_by=[field(compiler, hotel, "area"), field(compiler, room, "room_class")],
             relationships=list(compiler.references.relationships),
         )
-        gateway, calls = gateway_harness(
-            monkeypatch,
-            provider,
-            [
-                response(provider, '{"route":"SQL","reason":"Categories"}'),
-                response(provider, PlanDecision(plan=plan).model_dump_json()),
-            ],
-        )
-        try:
-            result = _build_dataset_chat_service(settings, context, gateway).chat(
-                "Count bookings and sum amount by area and room class"
+        with monkeypatch.context() as adapter_patch:
+            gateway, calls = gateway_harness(
+                adapter_patch,
+                provider,
+                [
+                    response(provider, '{"route":"SQL","reason":"Categories"}'),
+                    response(provider, PlanDecision(plan=plan).model_dump_json()),
+                ],
             )
-        finally:
-            gateway.close()
+            try:
+                result = _build_dataset_chat_service(settings, context, gateway).chat(
+                    "Count bookings and sum amount by area and room class"
+                )
+            finally:
+                gateway.close()
         assert len(result.rows) == len(oracle) == 12
         assert {
             (r["area"], r["room_class"]): (r["bookings"], Decimal(r["total"])) for r in result.rows
