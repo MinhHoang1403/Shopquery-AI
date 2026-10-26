@@ -180,9 +180,9 @@ def test_domain_golden_results_and_metamorphic_uploads(
     assert (
         result.route == RouteLabel.SQL and result.used_model == model and not result.fallback_used
     )
-    assert result.rows == expected and json.loads(result.answer) == expected
+    assert result.rows == expected and result.answer
     assert result.sql.count("JOIN") == tables_count - 1
-    assert calls == ["RouteDecision", "PlanDecision", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision"]
     assert trace.events[-1]["sql_validated"] and trace.events[-1]["execution_reached"]
     assert trace.events[-1]["result_rows"] == len(expected)
     if domain.name == "logistics":

@@ -57,30 +57,16 @@ def test_numbered_logistics_upload_sql_owner_csrf_and_history(
         result = a.client.post(path + "/tables/import", files={"file": (name, content)})
         assert result.status_code == 201, result.text
     relations = a.client.get(path + "/relationships").json()["relationships"]
-    assert len(relations) == 1
+    assert len(relations) == 2
     assert all(
         r["valid"] and r["origin"] == "automatic" and not r["confirmed"] and r["orphan_rows"] == 0
         for r in relations
     )
     assert b.client.get(path + "/relationships").status_code == 404
-    imported = {t.display_name: t for t in a.datasets.get(dataset.dataset_id).tables}
-    request = {
-        "source_table_id": str(imported["02_tai_xe"].dataset_table_id),
-        "source_column": "kho_id",
-        "target_table_id": str(imported["01_kho_dieu_phoi"].dataset_table_id),
-        "target_column": "kho_id",
+    assert {(r["source_column"], r["target_column"]) for r in relations} == {
+        ("kho_id", "kho_id"),
+        ("tai_xe_id", "tai_xe_id"),
     }
-    preview = a.client.post(path + "/relationships/preview", json=request).json()
-    assert preview["valid"]
-    confirmed = a.client.post(
-        path + "/relationships",
-        json={
-            **request,
-            "revision": preview["revision"],
-            "confirmed": True,
-        },
-    )
-    assert confirmed.status_code == 200 and confirmed.json()["origin"] == "manual"
     assert len(a.client.get(path + "/relationships").json()["relationships"]) == 2
     tables = {
         t.display_name: t.physical_table_name for t in a.datasets.get(dataset.dataset_id).tables
@@ -100,11 +86,18 @@ def test_numbered_logistics_upload_sql_owner_csrf_and_history(
             if three_tables
             else ("CASE tai_xe_id WHEN 'D1' THEN 'An' WHEN 'D2' THEN 'Binh' ELSE 'Chi' END")
         )
+        key_group = (
+            "CASE WHEN tai_xe_id IN ('D1','D2') THEN 'K1' ELSE 'K2' END"
+            if three_tables
+            else "tai_xe_id"
+        )
+        key_alias = "kho_id" if three_tables else "tai_xe_id"
         oracle = (
             connection.execute(
                 text(
-                    f"SELECT {group} AS name, SUM(phi_giao_vnd)::text AS total, "
-                    f"COUNT(*) AS fact_row_count FROM uploaded_data.{f} GROUP BY 1 ORDER BY 1"
+                    f"SELECT {group} AS name, {key_group} AS {key_alias}, "
+                    "SUM(phi_giao_vnd)::text AS total, "
+                    f"COUNT(*) AS fact_row_count FROM uploaded_data.{f} GROUP BY 1,2 ORDER BY 1"
                 )
             )
             .mappings()
@@ -145,6 +138,6 @@ def test_numbered_logistics_upload_sql_owner_csrf_and_history(
     assert response["used_model"] == model and not response["fallback_used"]
     assert response["sql"].count("JOIN") == (2 if three_tables else 1)
     assert response["rows"] == [dict(r) for r in oracle]
-    assert calls == ["RouteDecision", "PlanDecision", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision"]
     assert a.client.get(chat_path).json()["messages"][-1]["response"] == response
     assert b.client.get(chat_path).status_code == 404

@@ -77,7 +77,7 @@ def test_selected_count_sort_matches_independent_oracle(
     response = service.chat(question)
     assert response.route == RouteLabel.SQL
     assert response.rows == expected
-    assert json.loads(response.answer) == expected
+    assert response.rows == expected and response.answer
     assert response.used_model == model and response.fallback_used is False
-    assert calls == ["RouteDecision", "PlanDecision", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision"]
     assert f"ORDER BY {alias}" in response.sql

@@ -72,6 +72,12 @@ def test_original_prose_exact_kh_acceptance_and_history(
                                 "relationships": [],
                                 "fields": plan.fields[1:],
                                 "group_by": [ref for ref in plan.group_by if ref != identity],
+                                "sort": [
+                                    item.model_copy(update={"field": identity})
+                                    if item.field == plan.fields[0].alias
+                                    else item
+                                    for item in plan.sort
+                                ],
                             }
                         )
                     )

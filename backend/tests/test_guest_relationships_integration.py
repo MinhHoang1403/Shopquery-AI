@@ -135,7 +135,7 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
         relationships=(record,),
     )
     assert result.route == route and result.used_model == model and selected == [model]
-    assert len(calls) == {RouteLabel.SQL: 3, RouteLabel.RAG: 2, RouteLabel.HYBRID: 3}[route]
+    assert len(calls) == {RouteLabel.SQL: 2, RouteLabel.RAG: 2, RouteLabel.HYBRID: 3}[route]
     if route != RouteLabel.RAG:
         assert result.rows == [{"total": "50"}]
     if route != RouteLabel.SQL:
@@ -219,5 +219,5 @@ def test_guest_upload_detects_then_chats_without_manual_confirmation(
         {"name": "An", "total": "20.00", "fact_row_count": 2},
         {"name": "Binh", "total": "0.00", "fact_row_count": 1},
     ]
-    assert calls == ["RouteDecision", "PlanDecision", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision"]
     assert legacy_fingerprints(get_setup_engine()) == before

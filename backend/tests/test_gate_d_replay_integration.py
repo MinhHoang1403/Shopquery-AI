@@ -220,7 +220,7 @@ def test_gate_d_questions_oracle_and_authenticated_history(
         assert "Unverified: KHO01, KHO02, KHO03, KHO04, KHO05." in response["answer"]
         assert "Qualified:" not in response["answer"]
     else:
-        assert json.loads(response["answer"]) == expected
+        assert response["rows"] == expected and response["answer"]
     assert trace.facts["execution_reached"] and trace.facts["sql_validated"]
     if level == "H":
         assert response["sources"][0]["source_file"] == "live_gate_d_kpi.md"

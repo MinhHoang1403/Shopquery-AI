@@ -88,6 +88,7 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
         QueryPlan,
     )
     from app.text_to_sql.schema_context import default_sql_context
+    from tests.test_plan_providers import response
     from tests.test_providers import completion, harness
     from tests.test_query_compiler import field, source
 
@@ -105,11 +106,12 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
                         field(compiler, "order_items", "quantity"),
                         field(compiler, "order_items", "unit_price"),
                     ],
-                )
+                ),
+                PlanExpression(operation="sum", arguments=["e0"]),
             ],
             fields=[
                 PlanField(reference=category, alias="category"),
-                PlanField(reference="e0", alias="revenue", aggregate="sum"),
+                PlanField(reference="e1", alias="revenue"),
             ],
             filters=[
                 PlanFilter(
@@ -126,8 +128,7 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
         monkeypatch,
         [
             completion('{"route":"SQL","reason":"Revenue"}'),
-            completion(decision.model_dump_json()),
-            completion("Controlled revenue evidence"),
+            response("knowledge", decision.model_dump_json()),
         ],
     )
     try:
@@ -146,7 +147,7 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
         ).all()
     assert [(r["category"], Decimal(r["revenue"])) for r in result.rows] == oracle
     assert sum(Decimal(r["revenue"]) for r in result.rows) == 151_687_001_000
-    assert len(calls) == 3
+    assert len(calls) == 2
 
 
 @pytest.mark.integration

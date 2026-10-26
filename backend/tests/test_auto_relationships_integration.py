@@ -197,8 +197,11 @@ def test_upload_chat_and_history_with_automatic_relation(
         {"student_id": "S1", "student_name": "An", "total": "20.00", "fact_row_count": 2},
         {"student_id": "S2", "student_name": "Binh", "total": None, "fact_row_count": 1},
     ]
-    assert "| S1 | An | 20.00 | 2 |" in response["answer"]
-    assert "| S2 | Binh | NULL | 1 |" in response["answer"]
+    assert "2 kết quả" in response["answer"]
+    assert {c["key"] for c in response["result_columns"] if c["numeric"]} == {
+        "total",
+        "fact_row_count",
+    }
     with get_setup_engine().connect() as connection:
         oracle = connection.execute(
             text(

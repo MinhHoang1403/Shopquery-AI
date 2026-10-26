@@ -149,7 +149,7 @@ def test_three_table_pipeline_keeps_exact_root_fact_oracle(workspace, monkeypatc
         context,
     ).chat("Tổng thanh toán và số lần theo khóa học")
     assert response.route == RouteLabel.SQL and response.used_model == model
-    assert not response.fallback_used and calls == ["RouteDecision", "PlanDecision", "answer"]
+    assert not response.fallback_used and calls == ["RouteDecision", "PlanDecision"]
     assert response.sql.count("JOIN") == 2
     for row, expected in zip(response.rows, oracle, strict=True):
         assert row["course_id"] == expected.course
@@ -308,7 +308,7 @@ def test_authenticated_upload_three_tables_pipeline_and_owner_history(
     response = result.json()["assistant_message"]["response"]
     assert response["route"] == route and response["error"] is None
     assert response["used_model"] == model and response["fallback_used"] is False
-    assert len(calls) == {"SQL": 3, "RAG": 2, "HYBRID": 3}[route]
+    assert len(calls) == {"SQL": 2, "RAG": 2, "HYBRID": 3}[route]
     if route != "RAG":
         assert response["sql"].count("JOIN") == 2
         assert [r["fact_row_count"] for r in response["rows"]] == [3, 2, 2]

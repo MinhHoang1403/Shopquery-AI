@@ -138,7 +138,7 @@ def test_reverse_draft_matches_postgres_oracle_through_authenticated_context(
     response = build_dataset_chat_service(
         settings.model_copy(update={"ai_default_model": model}), context
     ).chat("Tổng và trung bình thanh toán theo học viên")
-    assert calls == ["RouteDecision", "PlanDecision", "answer"]
+    assert calls == ["RouteDecision", "PlanDecision"]
     assert response.route == RouteLabel.SQL and response.used_model == model
     assert not response.fallback_used
     assert response.sql.startswith("SELECT")
@@ -704,7 +704,7 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
         result = build_dataset_chat_service(settings, context).chat("Synthetic tuition JOIN")
         assert result.route == RouteLabel.SQL and result.used_model == model
         assert result.fallback_used is False
-        assert calls == ["RouteDecision", "PlanDecision", "answer"]
+        assert calls == ["RouteDecision", "PlanDecision"]
         with get_setup_engine().connect() as connection:
             totals = connection.execute(
                 text(
