@@ -29,6 +29,8 @@ class StructuredOutputError(ProviderError):
 
 
 class InetCloudGateway:
+    model_id = "inetcloud-knowledge"
+
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         if not settings.inetcloud_base_url:

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.diagnostics import record_facts
-from app.core.errors import SqlUnsupportedError
+from app.core.errors import ErrorContext, SqlUnsupportedError
 from app.rag.pipeline import RagPipeline, Source
 from app.routing.hybrid import HybridPipeline
 from app.routing.hybrid_evidence import VerificationStatus
@@ -30,6 +30,7 @@ class ChatResult:
     used_model: str | None = None
     fallback_used: bool = False
     fallback_reason: str | None = None
+    fallback_error_context: ErrorContext | None = None
     verification_status: VerificationStatus | None = None
 
 

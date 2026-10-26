@@ -53,7 +53,7 @@ class TextToSqlPipeline:
         ground_answer: bool = True,
         coverage: EvidenceCoverageRequirement | None = None,
     ) -> SqlResult:
-        with diagnostic_stage("plan_construction" if coverage else "generator_unsupported"):
+        with diagnostic_stage("plan_construction" if coverage else "sql_plan_generation"):
             plan = (
                 self._planner.generate(
                     question, evidence_context=evidence_context, coverage=coverage

@@ -106,7 +106,7 @@ class FakeConversationRepository:
 
 
 class FakeChatService:
-    def chat(self, question: str) -> ChatResult:
+    def chat(self, question: str, *, current_question: str | None = None) -> ChatResult:
         return ChatResult(
             answer=f"Đã phân tích: {question}",
             route=RouteLabel.SQL,

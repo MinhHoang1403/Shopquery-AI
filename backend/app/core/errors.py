@@ -88,7 +88,13 @@ class ErrorContext(BaseModel):
     validation_location: list[str | int] = Field(default_factory=list, max_length=12)
     validation_type: str | None = None
     attempted_route: Literal["SQL", "RAG", "HYBRID", "UNSUPPORTED"] | None = None
-    reason_code: VerificationReason | None = None
+    reason_code: VerificationReason | Literal["model_unsupported", "catalog_missing"] | None = None
+    model_id: Literal["inetcloud-knowledge", "gemini"] | None = None
+    response_outcome: Literal["query", "unsupported"] | None = None
+    catalog_table_count: int | None = Field(default=None, ge=0, le=100000)
+    catalog_column_count: int | None = Field(default=None, ge=0, le=100000)
+    approved_relationship_count: int | None = Field(default=None, ge=0, le=100000)
+    model_reason_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     candidate_count: int | None = Field(default=None, ge=0, le=1000000)
     verified_policy_count: int | None = Field(default=None, ge=0, le=1000000)
     retrieved_chunk_count: int | None = Field(default=None, ge=0, le=1000000)
@@ -272,11 +278,21 @@ class ChatTurnError(ShopQueryError):
     """Preserve attribution when no final model answer could be produced."""
 
     def __init__(
-        self, cause: ShopQueryError, requested_model: str, *, fallback_used: bool = False
+        self,
+        cause: ShopQueryError,
+        requested_model: str,
+        *,
+        fallback_used: bool = False,
+        fallback_reason: str | None = None,
+        fallback_error_context: ErrorContext | None = None,
     ) -> None:
         super().__init__(str(cause), error_context=cause.error_context)
         self.requested_model = requested_model
         self.fallback_used = fallback_used
+        self.fallback_reason = fallback_reason or (
+            "primary_provider_unavailable" if fallback_used else None
+        )
+        self.fallback_error_context = fallback_error_context
 
 
 class SqlValidationError(ShopQueryError):
@@ -306,6 +322,7 @@ class SqlUnsupportedError(SqlValidationError):
         ]
         | None = None,
         aggregate_reason: JoinAggregateReason | None = None,
+        error_context: ErrorContext | None = None,
         grain_reason: Literal[
             "fact_source",
             "dimension_measure",
@@ -315,7 +332,7 @@ class SqlUnsupportedError(SqlValidationError):
         ]
         | None = None,
     ) -> None:
-        super().__init__(message)
+        super().__init__(message, error_context=error_context)
         self.grain_reason = grain_reason
         self.reason = reason
         self.code = code

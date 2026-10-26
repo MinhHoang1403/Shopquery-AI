@@ -81,6 +81,8 @@ class EmbeddingGateway(Protocol):
 class GeminiGateway:
     """Synchronous Gemini gateway used by the request-oriented backend."""
 
+    model_id = "gemini"
+
     def close(self) -> None:
         self._client.close()
 

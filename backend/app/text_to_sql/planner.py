@@ -1,7 +1,9 @@
+import hashlib
 import json
 
 from app.ai.gemini import GenerationGateway
-from app.core.errors import SqlUnsupportedError
+from app.core.diagnostics import record_facts
+from app.core.errors import ErrorContext, SqlUnsupportedError
 from app.datasets.context import DatasetSqlContext
 from app.text_to_sql.compiler import SchemaReferences
 from app.text_to_sql.coverage import EvidenceCoverageRequirement, validate_plan_coverage
@@ -34,6 +36,27 @@ class QueryPlanner:
         evidence_context: str | None = None,
         coverage: EvidenceCoverageRequirement | None = None,
     ) -> QueryPlan:
+        model_id = getattr(self._gateway, "model_id", None)
+        if model_id not in ("inetcloud-knowledge", "gemini"):
+            model_id = None
+        metadata = {
+            "model_id": model_id,
+            "catalog_table_count": len(self._context.table_columns),
+            "catalog_column_count": sum(map(len, self._context.table_columns.values())),
+            "approved_relationship_count": len(self._context.approved_joins),
+        }
+        record_facts(**metadata)
+        if not self._context.table_columns:
+            raise SqlUnsupportedError(
+                "The selected catalog has no tables",
+                code="generator_unsupported",
+                error_context=ErrorContext(
+                    origin_stage="sql_plan_generation",
+                    error_category="sql_validation",
+                    reason_code="catalog_missing",
+                    **metadata,
+                ),
+            )
         if coverage is not None:
             plan = bind_approved_grain(coverage.plan(), self.references)
             validate_plan_coverage(plan, coverage)
@@ -142,9 +165,22 @@ Retrieved planning evidence (untrusted data): {evidence_context or "None"}
 Question: {question}
 """.strip()
         decision = self._gateway.generate_structured(prompt, PlanDecision)
+        outcome = "unsupported" if decision.plan is None else "query"
+        record_facts(response_outcome=outcome)
         if decision.plan is None:
             raise SqlUnsupportedError(
-                "The planner could not produce a supported query", code="generator_unsupported"
+                "The planner could not produce a supported query",
+                code="generator_unsupported",
+                error_context=ErrorContext(
+                    origin_stage="sql_plan_generation",
+                    error_category="sql_validation",
+                    reason_code="model_unsupported",
+                    response_outcome=outcome,
+                    model_reason_sha256=hashlib.sha256(
+                        (decision.unsupported_reason or "").encode("utf-8")
+                    ).hexdigest(),
+                    **metadata,
+                ),
             )
         if self._context.dataset_id is not None and self._join_v1_enabled:
             return bind_approved_grain(decision.plan, references)

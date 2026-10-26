@@ -1,5 +1,8 @@
 """Fixed model registry and independent lazy embedding construction."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Literal
 
 from app.ai.gemini import EmbeddingGateway, GeminiGateway, GenerationGateway
@@ -9,6 +12,20 @@ from app.core.errors import ConfigurationError
 
 ModelId = Literal["inetcloud-knowledge", "gemini"]
 MODEL_LABELS = {"inetcloud-knowledge": "iNetCloud Knowledge", "gemini": "Gemini"}
+
+_query_embedding_memo: ContextVar[dict[tuple[str, int, str, str], tuple[float, ...]] | None] = (
+    ContextVar("query_embedding_memo", default=None)
+)
+
+
+@contextmanager
+def query_embedding_scope() -> Iterator[None]:
+    """Reuse at most one successful query vector within one scoped chat turn."""
+    token = _query_embedding_memo.set({})
+    try:
+        yield
+    finally:
+        _query_embedding_memo.reset(token)
 
 
 def build_generation_gateway(settings: Settings, model_id: ModelId) -> GenerationGateway:
@@ -29,9 +46,22 @@ class LazyGeminiEmbedder:
         return GeminiGateway(self._settings)
 
     def embed_query(self, content: str) -> list[float]:
+        cache = _query_embedding_memo.get()
+        key = (
+            self._settings.gemini_embedding_model,
+            self._settings.embedding_dimensions,
+            "query",
+            content,
+        )
+        if cache is not None and key in cache:
+            return list(cache[key])
         gateway = self._gateway()
         try:
-            return gateway.embed_query(content)
+            vector = gateway.embed_query(content)
+            if cache is not None:
+                cache.clear()
+                cache[key] = tuple(vector)
+            return list(vector)
         finally:
             gateway.close()
 

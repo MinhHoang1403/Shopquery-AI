@@ -54,6 +54,7 @@ class ChatResponse(BaseModel):
     used_model: ModelId | None = None
     fallback_used: bool = False
     fallback_reason: str | None = None
+    fallback_error_context: ErrorContext | None = None
     error_context: ErrorContext | None = None
     verification_status: VerificationStatus | None = None
 

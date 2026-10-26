@@ -33,6 +33,62 @@ def test_api_preserves_selection_and_restores_attribution(monkeypatch, contract_
     assert len(client.get(path).json()["messages"]) == 2
 
 
+def test_fallback_taxonomy_survives_single_pair_persistence_and_reload(
+    monkeypatch, contract_session
+):
+    from types import SimpleNamespace
+
+    from app.ai.chat import ModelChatService
+    from app.core.config import Settings
+    from app.core.errors import ErrorContext, ProviderError
+    from app.routing.router import RouteLabel
+    from app.routing.service import ChatResult
+
+    repository = FakeConversationRepository()
+    configuration = Settings(
+        _env_file=None,
+        inetcloud_base_url="https://fixture.example/v1",
+        ai_default_model="inetcloud-knowledge",
+        gemini_api_key="fixture",
+        ai_gemini_fallback_enabled=True,
+    )
+    monkeypatch.setattr("app.api.routes.get_settings", lambda: configuration)
+    monkeypatch.setattr("app.api.routes.build_conversation_repository", lambda owner: repository)
+    monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda cfg, model: model)
+    attempts = []
+
+    def pipeline(model):
+        def chat(question, **kwargs):
+            attempts.append(model)
+            if model == "inetcloud-knowledge":
+                raise ProviderError(
+                    "PRIVATE raw output",
+                    fallback_allowed=True,
+                    error_context=ErrorContext(
+                        provider="knowledge", error_category="wire_validation"
+                    ),
+                )
+            return ChatResult("Verified fixture answer", RouteLabel.SQL)
+
+        return SimpleNamespace(chat=chat)
+
+    monkeypatch.setattr(
+        "app.api.routes.build_chat_service", lambda cfg: ModelChatService(cfg, pipeline)
+    )
+    client = TestClient(app)
+    conversation = client.post("/api/conversations", json={}).json()
+    path = f"/api/conversations/{conversation['conversation_id']}"
+    assert client.post(path + "/messages", json={"message": "Q"}).status_code == 200
+    messages = client.get(path).json()["messages"]
+    assert len(messages) == 2 and attempts == ["inetcloud-knowledge", "gemini"]
+    metadata = messages[-1]["response"]
+    assert metadata["requested_model"] == "inetcloud-knowledge"
+    assert metadata["used_model"] == "gemini" and metadata["fallback_used"]
+    assert metadata["fallback_reason"] == "primary_provider_wire_validation"
+    assert metadata["fallback_error_context"]["error_category"] == "wire_validation"
+    assert "PRIVATE" not in str(messages)
+
+
 @pytest.mark.integration
 def test_nullable_model_migration_is_idempotent_and_history_is_preserved():
     engine = get_setup_engine()

@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from app.ai.gemini import GenerationGateway
-from app.ai.providers import build_generation_gateway
+from app.ai.providers import build_generation_gateway, query_embedding_scope
 from app.core.config import Settings
 from app.core.diagnostics import attach_error_context, diagnosed, record_facts
 from app.core.errors import ChatTurnError, ProviderError, ShopQueryError
@@ -28,6 +28,7 @@ class ModelChatService:
         question: str,
         current_question: str | None = None,
     ) -> ChatResult:
+        record_facts(model_id=model_id)
         gateway = build_generation_gateway(self._settings, model_id)
         try:
             return self._build_pipeline(gateway).chat(
@@ -40,10 +41,13 @@ class ModelChatService:
                 close()
 
     @diagnosed
+    @query_embedding_scope()
     def chat(self, question: str, *, current_question: str | None = None) -> ChatResult:
         requested = self._settings.ai_default_model
         record_facts(model=requested)
         fallback = False
+        fallback_reason = None
+        fallback_context = None
         try:
             try:
                 result = self._attempt(requested, question, current_question)
@@ -56,12 +60,25 @@ class ModelChatService:
                 ):
                     raise
                 fallback = True
+                fallback_context = attach_error_context(exc)
+                category = fallback_context.error_category
+                fallback_reason = (
+                    f"primary_provider_{category}" if category else "primary_provider_unavailable"
+                )
+                record_facts(fallback_error_context=fallback_context)
                 result = self._attempt("gemini", question, current_question)
         except ShopQueryError as exc:
             attach_error_context(exc)
-            raise ChatTurnError(exc, requested, fallback_used=fallback) from exc
+            raise ChatTurnError(
+                exc,
+                requested,
+                fallback_used=fallback,
+                fallback_reason=fallback_reason,
+                fallback_error_context=fallback_context,
+            ) from exc
         result.requested_model = requested
         result.used_model = "gemini" if fallback else requested
         result.fallback_used = fallback
-        result.fallback_reason = "primary_provider_unavailable" if fallback else None
+        result.fallback_reason = fallback_reason
+        result.fallback_error_context = fallback_context
         return result

@@ -33,6 +33,7 @@ STAGES = frozenset(
         "router_unsupported",
         "routing",
         "generator_unsupported",
+        "sql_plan_generation",
         "structured_output_invalid",
         "sql_parse_error",
         "plan_compilation",
@@ -168,6 +169,12 @@ def attach_error_context(exc: ShopQueryError, stage: str = "request") -> ErrorCo
     if trace:
         details["correlation_id"] = trace.correlation_id
         details["attempted_route"] = context.attempted_route or trace.facts["route"]
+        for key in (
+            "model_id", "response_outcome", "catalog_table_count", "catalog_column_count",
+            "approved_relationship_count",
+        ):
+            if details.get(key) is None and trace.facts.get(key) is not None:
+                details[key] = trace.facts[key]
     context = ErrorContext.model_validate(details)
     exc.error_context = context
     if trace:
@@ -180,6 +187,19 @@ def record_facts(**facts: Any) -> None:
     if trace is None:
         return
     for key, value in facts.items():
+        if key in {"catalog_table_count", "catalog_column_count", "approved_relationship_count"}:
+            if type(value) is int:
+                trace.facts[key] = min(100000, max(0, value))
+            continue
+        if key == "response_outcome" and value in {"query", "unsupported"}:
+            trace.facts[key] = value
+            continue
+        if key == "model_id" and value in {"inetcloud-knowledge", "gemini"}:
+            trace.facts[key] = value
+            continue
+        if key == "fallback_error_context" and isinstance(value, ErrorContext):
+            trace.facts[key] = value.model_dump(exclude_none=True)
+            continue
         if key == "coverage_requirement" and value == "full_entity_classification":
             trace.facts[key] = value
             continue

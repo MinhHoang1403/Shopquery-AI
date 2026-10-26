@@ -8,11 +8,12 @@ import pytest
 from langchain_openai import ChatOpenAI
 
 from app.ai.chat import ModelChatService
-from app.ai.inetcloud import InetCloudGateway
+from app.ai.inetcloud import InetCloudGateway, StructuredOutputError
 from app.core.config import Settings
 from app.core.errors import (
     ChatTurnError,
     ConfigurationError,
+    ErrorContext,
     ModelResponseError,
     ProviderError,
     RetrievalError,
@@ -289,6 +290,188 @@ def test_both_providers_fail_without_loop_or_fabricated_answer(monkeypatch):
         ModelChatService(settings(), lambda gateway: SimpleNamespace(chat=fail)).chat("Q")
     assert calls == ["inetcloud-knowledge", "gemini"]
     assert error.value.fallback_used
+
+
+@pytest.mark.parametrize(
+    "category",
+    [
+        "transient_unavailable",
+        "timeout",
+        "connection_failure",
+        "invalid_json",
+        "wire_validation",
+        "contract_conversion",
+    ],
+)
+@pytest.mark.parametrize("secondary_fails", [False, True])
+def test_fallback_keeps_primary_failure_category(monkeypatch, category, secondary_fails):
+    from app.api.routes import _chat_error
+
+    monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda cfg, model: model)
+
+    def pipeline(model):
+        def chat(question):
+            if model == "inetcloud-knowledge":
+                error_type = (
+                    StructuredOutputError
+                    if category in {"invalid_json", "wire_validation", "contract_conversion"}
+                    else ProviderError
+                )
+                raise error_type(
+                    "Invalid structured output",
+                    fallback_allowed=True,
+                    error_context=ErrorContext(provider="knowledge", error_category=category),
+                )
+            if secondary_fails:
+                raise ProviderError("Gemini failed")
+            return ChatResult("OK", RouteLabel.SQL)
+
+        return SimpleNamespace(chat=chat)
+
+    service = ModelChatService(settings(), pipeline)
+    if secondary_fails:
+        with pytest.raises(ChatTurnError) as error:
+            service.chat("Q")
+        result = _chat_error(error.value)
+    else:
+        result = service.chat("Q")
+    assert result.fallback_used
+    assert result.fallback_reason == f"primary_provider_{category}"
+    assert result.fallback_error_context.error_category == category
+
+
+@pytest.mark.parametrize("reuse_service", [False, True])
+def test_whole_turn_fallback_reuses_embedding_only_within_same_turn(monkeypatch, reuse_service):
+    from app.dependencies import build_chat_service
+
+    queries = []
+    gateways = []
+
+    class Embedder:
+        def __init__(self, cfg):
+            pass
+
+        def embed_query(self, content):
+            queries.append(content)
+            return [1.0, 0.0]
+
+        def close(self):
+            pass
+
+    def build_pipeline(cfg, generation, embedder=None):
+        from app.ai.providers import build_embedding_gateway
+
+        selected = embedder or build_embedding_gateway(cfg)
+
+        def chat(question):
+            vector = selected.embed_query(question)
+            assert vector == [1.0, 0.0]
+            if generation == "inetcloud-knowledge":
+                # A late generation failure after successful query embedding.
+                raise ProviderError("Unavailable", fallback_allowed=True)
+            return ChatResult("OK", RouteLabel.RAG)
+
+        return SimpleNamespace(chat=chat)
+
+    monkeypatch.setattr("app.ai.providers.GeminiGateway", Embedder)
+    monkeypatch.setattr(
+        "app.ai.chat.build_generation_gateway",
+        lambda cfg, model: gateways.append(model) or model,
+    )
+    monkeypatch.setattr("app.dependencies._build_chat_service", build_pipeline)
+    service = build_chat_service(settings())
+    for _ in range(2):
+        selected = service if reuse_service else build_chat_service(settings())
+        result = selected.chat("Same scoped query")
+        assert result.used_model == "gemini"
+    assert gateways == ["inetcloud-knowledge", "gemini"] * 2
+    assert queries == ["Same scoped query"] * 2
+
+
+def test_query_embedding_memo_exact_input_success_only_and_defensive_copy(monkeypatch):
+    from app.ai.providers import build_embedding_gateway, query_embedding_scope
+
+    calls = []
+
+    class Gateway:
+        def __init__(self, config):
+            pass
+
+        def embed_query(self, content):
+            calls.append(("query", content))
+            if content == "failed":
+                raise ProviderError("Embedding failed")
+            return [1.0, 2.0]
+
+        def embed_document(self, title, content):
+            calls.append(("document", content))
+            return [3.0, 4.0]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("app.ai.providers.GeminiGateway", Gateway)
+    embedder = build_embedding_gateway(settings())
+    with query_embedding_scope():
+        first = embedder.embed_query("Q")
+        first[0] = 99
+        assert embedder.embed_query("Q") == [1.0, 2.0]
+        embedder.embed_query("Q ")
+        embedder.embed_document("T", "Q")
+        embedder.embed_document("T", "Q")
+        for _ in range(2):
+            with pytest.raises(ProviderError):
+                embedder.embed_query("failed")
+    with query_embedding_scope():
+        embedder.embed_query("Q")
+    assert calls == [
+        ("query", "Q"),
+        ("query", "Q "),
+        ("document", "Q"),
+        ("document", "Q"),
+        ("query", "failed"),
+        ("query", "failed"),
+        ("query", "Q"),
+    ]
+
+
+def test_query_embedding_scope_isolated_across_concurrent_owners_and_nested_calls(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from app.ai.providers import build_embedding_gateway, query_embedding_scope
+
+    barrier = Barrier(2)
+    calls = []
+
+    class Embedder:
+        def __init__(self, config):
+            self.owner_fixture = config.gemini_api_key
+
+        def embed_query(self, content):
+            calls.append((self.owner_fixture, content))
+            return [float(len(self.owner_fixture))]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("app.ai.providers.GeminiGateway", Embedder)
+
+    def scoped(owner):
+        gateway = build_embedding_gateway(settings(gemini_api_key=owner))
+        with query_embedding_scope():
+            first = gateway.embed_query("Same question")
+            barrier.wait(timeout=5)
+            assert gateway.embed_query("Same question") == first
+            with query_embedding_scope():
+                gateway.embed_query("Same question")
+            assert gateway.embed_query("Same question") == first
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(scoped, ["owner-a", "other-owner"]))
+    assert sorted(calls) == sorted(
+        [(owner, "Same question") for owner in ["owner-a", "other-owner"] for _ in range(2)]
+    )
 
 
 def test_models_discovery_is_fixed_and_does_not_call_upstream(monkeypatch, contract_session):

@@ -5,6 +5,69 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## Knowledge planning diagnostics and bounded fallback correction — source verification
+
+Investigation on main74f29f7 does NOT establish the nested wire schema as the cause
+of the old unsupported response. Old correlation48ebf698… still has UNKNOWN raw
+unsupported_reason. A newly approved single diagnostic at11:13:23 Asia/Saigon used
+the unchanged Knowledge PlanDecision/json_schema/stricttrue contract and identical
+question/catalog: HTTP200, finishstop, valid COUNTrows+SUMnumeric plan, no JOIN/filter,
+19588.52ms. No explicit output-token cap or truncation was observed. The diagnostic
+did not execute SQL. Usage3781prompt+1397completion=5178tokens;1 generation,
+0query/document embeddings, one HTTP attempt, no retry/fallback.
+
+Before model attribution, a backend-generated equivalent QueryPlan was compiled and
+executed through production QueryCompiler/SqlExecutor in a READ ONLY transaction,
+returning360 and33066538.03. Approved catalog3tables/2edges; no join/filter required.
+This proves backend support, not why the earlier model chose unsupported.
+
+Installed API versions:langchain-openai1.7.2, langchain-core1.6.12, openai3.35.1,
+pydantic2.14.1, google-genai1.75.0. Actual offline SDK serialization comparison:
+Knowledge rootplan/unsupported_reason,7anyOf/5refs/1defs/8maxItems; Gemini's existing
+flat GenerationDecision has12 required root fields and no anyOf/refs/array limits
+on the native wire. Both serialize/validate/compile correctly in mocks. The real
+Knowledge diagnostic also accepted the nested schema, so neither provider's wire
+contract or planning prompt was changed. Flat conversion for Knowledge is not
+introduced without differential evidence that it is needed.
+
+Confirmed source defects and narrow corrections:
+
+- Planning previously used generator_unsupported as the attempt stage and discarded
+  typed outcome/catalog metadata. Neutral sql_plan_generation now distinguishes
+  model_unsupported from catalog_missing, wire/conversion/transport errors and later
+  compiler refusal. ErrorContext retains model_id, response_outcome, table/column/
+  approved-edge counts, correlation and a SHA256 of the model reason. Free-form
+  reason/prompt/SQL/data are not logged; bounded redacted reason capture remains
+  private and explicitly authorized. No unsupported response becomes a default plan.
+- Whole-turn fallback now preserves the actual primary ErrorContext/category in
+  diagnostics, API success/error metadata and JSON history, including when Gemini
+  also fails. Existing eligibility is unchanged; SQL/security/owner/evidence/policy
+  errors and valid unsupported decisions do not become ProviderError or fallback.
+- A one-entry ContextVar memo surrounds each ModelChatService.chat invocation,
+  including both provider attempts. Key is exact query/model/dimensions/task; only
+  successful query vectors are retained, returned defensively and dropped at scope
+  exit. Separate turns, re-used services, concurrent owners and nested calls have
+  separate scopes; document embeddings bypass it. No vector/prompt is logged.
+
+The old private patch was reviewed, not blindly applied: taxonomy/error propagation
+and its seven reproductions were retained/expanded. Its service-lifetime cache was
+replaced by explicit per-invocation scope; dependencies/factory lifetimes unchanged.
+Before correction15 taxonomy/cache cases and6 planning diagnostic cases failed.
+After correction496 focused unit tests PASS; targeted follow-up checks cover later
+metadata propagation. CI PostgreSQL and deployment/live acceptance remain pending
+at this source checkpoint. No full historical/golden or BGE benchmark was run.
+Compiler/validator, relationship/grain/COUNT/type/read-only/coverage/Decimal/NULL,
+RAG retrieval and Hybrid policy algorithms are unchanged.
+
+Fresh budget approved for this task:1 diagnostic and up to5 UI questions after
+verified deployment, total12 generation stages/4query embeddings/0document embeddings,
+one attempt/stage, no retry/fallback. Remaining UI window has not started here;
+stop on a blocker. Current defaultGemini, fallbackOFF, provider gateON, GuestOFF,
+Gemini Embeddinggemini-embedding-2/768 and all data/runtime remain unchanged.
+Private evidence:knowledge-root-cause-20261026 (backend proof, wire comparison,
+single diagnostic, before/after regressions). No claim of FULL_PASS or of repairing
+the unknown reason of the old request.
+
 ## New Knowledge endpoint — connectivity restored, default switch blocked (26/10/2026)
 
 `KNOWLEDGE_CONNECTIVITY=PASS`: private .env contains the administrator-updated URL;
