@@ -140,7 +140,9 @@ def test_original_prose_exact_kh_acceptance_and_history(
     )
     answer = followup.json()["assistant_message"]["response"]
     assert answer["error"] is None and answer["route"] == "HYBRID"
-    assert "Chưa đạt: KHO01, KHO04." in answer["answer"]
+    assert set(re.search(r"Chưa đạt: ([^.]+)\.", answer["answer"])[1].split(", ")) == {
+        "KHO01", "KHO04"
+    }
     assert answer["sources"][0]["chunk_id"] == response["sources"][0]["chunk_id"]
     assert answer["verification_status"] == "verified_classification"
     assert calls == ["RouteDecision", "PlanDecision", "RouteDecision"]
