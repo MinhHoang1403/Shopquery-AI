@@ -4,7 +4,79 @@
 
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 
-## Conversion diagnostics và inline results — deployed 26/10/2026, acceptance PARTIAL
+## Architecture/reliability/security audit — deployed 26/10/2026 17:03, Gemini demo có giới hạn
+
+Báo cáo đầy đủ, capability/contract matrix, root causes, security evidence, scorecards và
+giới hạn nằm trong [architecture audit](architecture_audit.md). Các phần sau mục này là
+lịch sử nghiệm thu, không thay thế kết quả hiện hành dưới đây.
+
+### Các lỗi đã xác nhận và sửa
+
+- `routing/hybrid_coverage.py::classification_selection`: câu “Vậy còn những trạm/kho
+  chưa đạt KPI?” thiếu từ “nào” nên không được nhận thành yêu cầu coverage đầy đủ.
+  Thêm đúng một mẫu full-match; không nuốt bộ lọc thời gian, giới hạn hay ngoại lệ.
+  Ba test dương FAIL trước sửa, bốn test scope/injection âm vẫn PASS; sau sửa128
+  targeted checks và luồng PostgreSQL persistence/follow-up PASS.
+- `text_to_sql/query_plan.py`, `generation_contract.py`, `plan_binding.py`: captured
+  Knowledge plan chứa `where/having` sai nhưng trước đây chưa bị chặn tại boundary
+  phù hợp. Thêm predicate reference validation/bounded length và issued-reference
+  binding. Không bỏ predicate, sửa JSON hoặc đoán điều kiện thay model.
+- `compiler.py`, `expressions.py`, `core/errors.py`: giữ nguyên refusal/grain/type/
+  COUNT/JOIN/AST nhưng bảo toàn safe branch thay vì generic ValueError/KeyError.
+  Diagnostic MỚI chứng minh lỗi projection_grain: chọn tên trạm nhưng không GROUP BY
+  tên. Original plan của f93ddf2487a14353a848acfbba5bd457 không còn; exact original
+  branch vẫn UNKNOWN, không suy diễn rằng đã tái dựng được payload cũ.
+- CSV parser dừng đọc ở row cap thay vì materialize toàn bộ reader; embedding từ chối
+  NaN/Inf; diagnostics đo logical SDK calls/tokens có giới hạn. Khóa dependency vá
+  pypdf6.21.2/certifi2026.10.23 và dev undici8.12.3, không đổi model/provider/kiến trúc.
+
+### Kiểm chứng hiện hành
+
+Exact main/test `272cbf81a01ce774eb1805762fe2908b3c558aed`,
+[CI40303628357](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40303628357)
+3/3 PASS:1349 backend,833 isolated PostgreSQL,85 frontend,125 mock browser cases;
+Ruff/lint/typecheck/build PASS. Full suites này được master task cho phép; không BGE.
+Các sửa test cũ giữ independent oracle/isolation; không đổi guards để làm xanh CI.
+
+Live gồm12 câu qua production pipeline trong API container và4 câu Computer Use
+qua8080, không retry/fallback. Pipeline calls không được ghi nhận giả thành browser tests.
+
+| Nhánh | Kết quả được đối chiếu độc lập |
+| --- | --- |
+|Gemini SQL5/5|COUNT/SUM360/33066538.03;AVG91851.494527777778;filter>100 trả16IDs;JOIN12trạm;category3bảng12nhóm/2400/638885507.75|
+|RAG Knowledge3/3, Gemini3/3|MD/DOCX/PDF core answers đúng;9/9 citation uses nằm trong labeled expected chunks; không tuyên bố semantic entailment toàn bộ văn xuôi|
+|Hybrid/follow-up mỗi provider2/2|Thật trên UI, cùng hội thoại từng cặp;12totals Decimal đúng;TS07–TS12 đạt,TS01–TS06 chưa đạt;follow-up chỉ hiển thị6 nhưng SQL evidence đủ12;citation23, persisted verified_classification và reload PASS|
+|Knowledge SQL JOIN0/1|Chặn `sql_plan_generation/wire_validation/predicate_reference`, vị tríwhere, correlation5b518ea2ecb74b78b37f5913e5f6e938; không compile/execute; các mẫu Knowledge SQL còn lại NOT_RUN|
+
+Knowledge Hybrid PASS dùng đường plan/verdict backend cho policy đơn đã xác minh,
+không chứng minh model SQL planner Knowledge đã sửa. Giữ Gemini mặc định và fallback OFF;
+chưa đạt điều kiện chuyển Knowledge default. Không thêm paid repair call hoặc free SQL.
+
+### Runtime, an toàn và ngân sách
+
+- API application `f6f44ae55745e8451ff5b458b98e384ac139bc9f`, digest
+  `67a891b04fcd0f0a9d6e6e7eea6bf6bccc2b3f0e72bec23be5a8c57f871d9a5a`.
+- Web source `02d5cbb445901f7eb63f82bee87e2e8785d35663`, digest
+  `ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58`.
+- Strict87modules/Nginx/Web+API8080 PASS; DB511c4f5a/protected volume/image giữ nguyên.
+  Fingerprints40tables/schema và history prefix PASS; chỉ thêm2chats/8messages và
+  resource counters. Google session, uploads/docs/vectors/relationships giữ nguyên.
+- Ghi nhận DB từng interruption/recovery09:11UTC trước cutover10:03UTC. Nguyên nhân
+  chưa rõ, hiện healthy/data hash đúng; không tuyên bố uptime liên tục. Cutover không
+  recreate/restart DB. Không tự thay cấu hình Windows hoặc security policy.
+- Dependency scans0 known findings cho package tra được; API118distributions có
+ 2skip (application private và torch CUDA variant). Upstreamtorch2.14.1 tra riêng0.
+  Không tuyên bố OS/CUDA binary audit hoàn chỉnh.
+- Thực dùng29generation/10query/0document embeddings trong ngân sách mới200/100/30;
+  conservative debit65/16/0, không hoàn trả phần đặt trước để retry. Agent tests đã
+  kết thúc; normal provider gateON, GuestOFF, Gemini embedding2/768 giữ nguyên.
+- 12image cũ và1candidate thừa được xóa bằng exact tags đã review; current pair và
+  rollback API2be89452/Web03f83efc giữ local/private config. Không prune/đụng project khác.
+
+Kết luận: **DEMO_READY_WITH_LIMITATIONS với Gemini**. Knowledge SQL, BGE/GateC, policy
+phức tạp và khả năng tổng quát trên mọi dataset chưa đạt; không FULL_PASS/Stage2/tag.
+
+## Trước audit: conversion diagnostics và inline results — deployed 26/10/2026 15:22, PARTIAL
 
 ### A. Preflight và phạm vi
 

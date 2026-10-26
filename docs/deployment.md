@@ -20,11 +20,31 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-Current API/Web source `08d71b9020bafd76a131d48733a6ba8fb466e7bd`.
-API digest `2be8945280dbb710f287209ecead2731a9b81b96050c5ed65ef5a3b9ecbceb5d`.
-Web digest `03f83efc5f4b46452f20baa7a82a16c7289662cbdffa701b8396ac4733dd0fb3`.
+Current API source `f6f44ae55745e8451ff5b458b98e384ac139bc9f`.
+API digest `67a891b04fcd0f0a9d6e6e7eea6bf6bccc2b3f0e72bec23be5a8c57f871d9a5a`.
+Web source `02d5cbb445901f7eb63f82bee87e2e8785d35663`.
+Web digest `ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
+
+26/10/2026 17:03 cutover theo quyền triển khai có điều kiện trong master audit:
+exact-main/test `272cbf81`, CI40303628357 PASS1349backend/833PG/85frontend/125mockE2E.
+Application inputs khớp hai OCI revisions trên; chỉ tests khác API sourcef6f44ae.
+API8569f0b1/Webc6f1f591, strict87modules/health/Nginx PASS. Main DB511c4f5a/volume
+không recreate trong cutover. Final fingerprints40tables: chỉ thêm2conversations,
+8messages và resource counters; toàn bộ dữ liệu/docs/vectors/relationships/history
+cũ giữ nguyên. DB từng interruption/recovery09:11UTC trước cutover, nguyên nhân chưa
+rõ; không tuyên bố uptime liên tục. Xem [audit](architecture_audit.md).
+Gemini SQL5/5, RAG3/3; Knowledge RAG3/3; hai provider Hybrid/follow-up UI2/2 mỗi bên
+đúng Decimal oracle/citation23. Knowledge SQL JOIN vẫn chặn wire predicate_reference,
+không execute; các mẫu SQL Knowledge còn lại dừng. Gemini default, fallbackOFF,
+gateON/GuestOFF, embedding2/768/vector-only giữ nguyên; không BGE/migrate/paid retry.
+Audit thực dùng29generation/10query/0document embeddings; conservative debit65/16/0
+trong ngân sách mới200/100/30. Đã kết thúc agent tests, normal gate tiếp tục ON.
+Immediate rollback API2be89452/Web03f83efc và private `.env.release.before-audit-cutover`
+trong backups/shopquery-ai/architecture-audit-20261026. Không FULL_PASS/Stage2/tag.
+
+Các đoạn triển khai dưới đây là lịch sử; không dùng image refs lịch sử làm cấu hình hiện hành.
 
 26/10/2026 15:22–15:23 operator-approved API/Web cutover: bounded conversion
 diagnostics và typed inline result presentation. CI40291179613(main/testad087dcd)
@@ -154,18 +174,17 @@ Không seed/ingest/fake Google user trên main.
 
 ## Rollback đã giữ
 
-Web rollback hiện hành duy nhất sau UX cutover26/10:
-`shopquery-ai-web@sha256:fec296b45cff4119b908560e8e8aa9278f7a1f3bf51f0ac2469fc7748ec3334e`,
-source `df10688740f945b9b68f240673b74248b260081d`. Bản này có UX mới và endpoint
-preview tương thích API hiện hành; thiếu CSS containment cho bảng nhiều cột.
-Private `.env.release.before-layout` dưới backups/shopquery-ai/ux-20261026-e7ef020
-là cấu hình trước Web-only switch. Các Web refs trong phần triển khai lịch sử bên
-dưới không còn là rollback bắt buộc; không dùng file snapshot cũ để deploy mù.
+Rollback hiện hành là cặp đã chạy trước architecture audit:
 
-API rollback lịch sử trước reliability cutover vẫn giữ nguyên, không thuộc cleanup Web:
-`shopquery-ai-api@sha256:5db99157ab742e200a9ab5e24c757d7ac7fa16ddf05db12a8078451837c70bf6`,
-source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`. Private config/baseline và
-live trace dưới existing backup folder `ev-acceptance-20261024`, prefix reliability.
+- API `shopquery-ai-api@sha256:2be8945280dbb710f287209ecead2731a9b81b96050c5ed65ef5a3b9ecbceb5d`.
+- Web `shopquery-ai-web@sha256:03f83efc5f4b46452f20baa7a82a16c7289662cbdffa701b8396ac4733dd0fb3`.
+- Cả hai source `08d71b9020bafd76a131d48733a6ba8fb466e7bd`; đã kiểm image tồn tại local.
+- Private config `.env.release.before-audit-cutover` dưới
+  backups/shopquery-ai/architecture-audit-20261026; không in credentials.
+
+API6994abd7/Web127da3e8 còn giữ thêm. Các refs fec296b4/5db99157 trong lịch sử
+đã được cleanup sau inventory, không còn là rollback vận hành. Không dùng snapshot
+cũ để deploy mù hoặc nhầm source revision của image hiện hành với main test/docs HEAD.
 Rollback không xóa metadata liên kết/history. Không dùng tag latest hoặc xóa rollback duy nhất.
 
 Rollback phải kiểm active work, pin đúng digest/private config và kiểm source drift.
