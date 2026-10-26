@@ -175,7 +175,9 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
         "Vậy còn những kho chưa đạt KPI?",
     ]
     for question in questions:
-        sent = actors.a.client.post(path + "/messages", json={"message": question, "model_id": model})
+        sent = actors.a.client.post(
+            path + "/messages", json={"message": question, "model_id": model}
+        )
         assert sent.status_code == 200
         response = sent.json()["assistant_message"]["response"]
         assert response["error"] is None
