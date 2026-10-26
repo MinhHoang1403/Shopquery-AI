@@ -20,8 +20,8 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-API source `5d4c595965ad379b85627dac227034446e673ef7`, digest `26877f4176df1dc17924cee02491df349f8d0b548252d547e7294d9775df72df`.
-Web source `5d4c595965ad379b85627dac227034446e673ef7`, digest `bd7601be72e6d60aae704ff3f857a8f91162a89a9f0f54a534f7a15656210467`.
+Current API source `df10688740f945b9b68f240673b74248b260081d`, digest `df8dff610cd912e048964ba8350fa1dfc240c2fe948cec013184b97750465741`.
+Current Web source `881bfe165502be927346408a46c263efb09af0dd`, digest `5f4ab329c750f58c5514e7e2929a6ca8bb4ef3fa4375c9520cfc1ff130192955`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
 
@@ -261,12 +261,22 @@ Không đổi dependency extra, key, volume hoặc bật paid gates trong ví d�
 
 ### Upload-to-chat UX validation
 
+Approved26/10 cutovers deployed API/Webdf10688 then Web-only881bfe1. Strict86modules,
+image/source/config identities, health8080, Google session/history and3table previews
+against independent PostgreSQL cell hashes PASS. Final Web-only switch retained
+API/DB container/start identities. No paid calls, main migrations or data resets.
+Protected volume and all business/document/relationship/history fingerprints held.
+Rollback refs/config are retained privately under backups/shopquery-ai/ux-20261026-e7ef020.
+
 Workflow hiện có hỗ trợ `workflow_dispatch scope=ux, services=all`: preview/owner/
 resource/relationship unit checks, PostgreSQL integration trên service CI cô lập,
 frontend lint/typecheck/unit/build và mock browser routing. Không tạo local DB mới
 hoặc ghi fixture lên main để chạy các test này. Preview mới dùng registered table
 ID, reader READ ONLY, timeout5s và giới hạn1–50rows; UI tải25rows khi mở từng bảng.
 Không gọi provider để mở manager, đọc liên kết hoặc xem dữ liệu đã nhập.
+`scope=layout, services=frontend` chỉ chạy frontend quality và10 relationship/preview
+browser cases, gồm17cột và modal-scroll boundary. Dùng khi chỉ thay CSS/Web; không
+chạy lại backend/PostgreSQL/golden đã đạt nếu inputs không đổi.
 
 Nếu postdeploy FAIL, dùng rollback pin digest ở đầu runbook, cùng protected main
 volume và reviewed environment; kiểm image IDs, main identity, Google session/history

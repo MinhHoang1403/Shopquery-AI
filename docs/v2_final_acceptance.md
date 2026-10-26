@@ -5,7 +5,7 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
-## Upload-to-chat UX — deployed, wide-table layout correction pending
+## Upload-to-chat UX — deployed and accepted (bounded scope)
 
 Normal chat omits route_hint and uses existing semantic routing; actual route/error
 evidence remains visible. RelationshipPanel only lists valid existing links. Upload
@@ -48,11 +48,36 @@ chat history unchanged. Main PostgreSQL container/image/volume retained. During
 interrupted verification all three containers exited0; starting the same containers
 restored8080 without recreation/data changes. DB StartedAt naturally changed.
 
-Live mobile-width inspection exposed modal overflow only with wide table data,
+Live narrow-viewport inspection exposed modal overflow only with wide table data,
 which the original one-column mock did not exercise. A17-column browser fixture
 reproduced the failure. Setting the workspace grid track to minmax(0,1fr) confines
-overflow to ResultTable. This CSS-only correction requires Web-only deployment;
-API/backend regression results are reused because those inputs are unchanged.
+overflow to ResultTable. Web-only source881bfe165502be927346408a46c263efb09af0dd
+passed lint/typecheck/build,75 frontend unit tests and10 scoped browser checks on
+five desktop/tablet/mobile viewports, at
+[CI40259714836](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40259714836).
+API/backend regression results were reused because those inputs are unchanged.
+
+Operator approved the final Web-only cutover. Current Web immutable digest is
+sha256:5f4ab329c750f58c5514e7e2929a6ca8bb4ef3fa4375c9520cfc1ff130192955.
+API stays df10688/df8dff61 above; API/DB container IDs and start times were unchanged
+by Web promotion. Strict verifier PASS86 modules/no drift; health8080 PASS. Real UI
+reload preserves Google session and KPI/follow-up history. New chat keeps Xe dien,
+selects Gemini and has no source dropdown. Manager opens at current workspace,
+shows3 tables/3 documents/2 readonly automatic verified links; no fact/key forms.
+All three lazy previews matched the independent PostgreSQL oracle by cell hash:
+12x11 station cells,5x9 plan cells,25x17 charging-session cells. Final17-column UI
+preview still matches after CSS promotion. Modal client/scroll widths489/489px;
+inner table viewport444px scrolls1852px of content without widening the dialog.
+Screenshot and private baseline/oracle/strict evidence use existing backups path
+ux-20261026-e7ef020. No main re-ingestion/deletion/migration, AI generation or
+embedding call. Normal provider gate remainsON, Gemini default, Guest/fallbackOFF,
+vector-only; BGE acceptance remains open.
+
+Upload-to-chat transitions and failed document ingestion were tested offline and
+on the isolated CI database; real uploads were intentionally not repeated on main.
+Preview is a bounded sample of imported data, not the original CSV/XLSX file.
+Ambiguous/unverified keys, incompatible types, NULL/duplicate targets, orphan rows,
+alternate paths or incomplete detector scans still cannot auto-activate a link.
 
 ## SQL evidence coverage and verified conversation — FULL PASS (bounded scope)
 
