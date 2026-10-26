@@ -100,10 +100,17 @@ Không seed/ingest/fake Google user trên main.
 
 ## Rollback đã giữ
 
-Rollback ngay trước reliability cutover giữ local: API
-`shopquery-ai-api@sha256:5db99157ab742e200a9ab5e24c757d7ac7fa16ddf05db12a8078451837c70bf6`, Web
-`shopquery-ai-web@sha256:e888860e87a1baff7149fbe5d7b354dedba7b9e0888bca9c1c9f654e108ab744`,
-cùng source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`. Private config/baseline và
+Web rollback hiện hành duy nhất sau UX cutover26/10:
+`shopquery-ai-web@sha256:fec296b45cff4119b908560e8e8aa9278f7a1f3bf51f0ac2469fc7748ec3334e`,
+source `df10688740f945b9b68f240673b74248b260081d`. Bản này có UX mới và endpoint
+preview tương thích API hiện hành; thiếu CSS containment cho bảng nhiều cột.
+Private `.env.release.before-layout` dưới backups/shopquery-ai/ux-20261026-e7ef020
+là cấu hình trước Web-only switch. Các Web refs trong phần triển khai lịch sử bên
+dưới không còn là rollback bắt buộc; không dùng file snapshot cũ để deploy mù.
+
+API rollback lịch sử trước reliability cutover vẫn giữ nguyên, không thuộc cleanup Web:
+`shopquery-ai-api@sha256:5db99157ab742e200a9ab5e24c757d7ac7fa16ddf05db12a8078451837c70bf6`,
+source `a49d4ebb7dd8d132103a17f1b798ef40c102ac3b`. Private config/baseline và
 live trace dưới existing backup folder `ev-acceptance-20261024`, prefix reliability.
 Rollback không xóa metadata liên kết/history. Không dùng tag latest hoặc xóa rollback duy nhất.
 

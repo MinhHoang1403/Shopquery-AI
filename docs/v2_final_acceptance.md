@@ -5,6 +5,51 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## Web image cleanup and Knowledge recovery check — 26/10/2026
+
+WEB IMAGE CLEANUP PASS: current Web5f4ab329 and one immediate rollbackfec296b4
+retained. Docker removed these exact unused ShopQuery-only image IDs without force:
+
+- sha256:bd7601be72e6d60aae704ff3f857a8f91162a89a9f0f54a534f7a15656210467
+- sha256:e888860e87a1baff7149fbe5d7b354dedba7b9e0888bca9c1c9f654e108ab744
+- sha256:e4a8c96c742bfaf2e6ff834fb320f457dc443ad4df4fedcf797094461e99bfb1
+- sha256:5ca6e17125f12574cf8cdf4d030b6a0a209007e9469b264e94e6d98056090146
+
+Every container, including stopped/other-project containers, was checked against
+image IDs; active root env/Compose refs pin only current Web. Other Web digest
+mentions in historical backups are snapshots, not active deployment config. The
+runbook now designates one compatible immediate Web rollback (its known wide-table
+layout defect is documented). All container IDs/start times and all other image
+IDs retained. Image inventory47→43, ShopQuery Web6→2 unique images. Exact physical
+bytes reclaimed cannot be attributed because shared layers/BuildKit cache remain;
+do not multiply the displayed94.2MB per image or claim a disk-space saving from it.
+No prune, cache/container/volume cleanup, source build, deploy or config change.
+
+KNOWLEDGE CONNECTIVITY BLOCKED_PROVIDER at2026-10-26 09:42:59 Asia/Saigon.
+One non-generation GET models from the running API returned503,205.58ms,107bytes,
+text/html with the same HAProxy-default "No server is available" fingerprint as
+25/10 (SHA256839488ebc08446a096a893996ed23eac321ac166724cd8c5d9092057834d2d79).
+DNS/TCP/TLS certificate+hostname verification PASS; TLS1.2, certificate expires
+09/12/2026. Configured base URL/modelknowledge/path/timeout60s match the SDK and
+effective config; SDK retries0 (one attempt), no proxy env. No Retry-After or
+upstream request ID. No provider-published readiness path is available, so none
+was guessed. Internal endpoint identity remains private. This does not establish
+which upstream backend is DOWN or why; server admin access/logs remain unavailable.
+
+KNOWLEDGE FUNCTIONAL PARTIAL/BLOCKED: text, strict structured and SQL Auto Routing
+probes NOT_RUN because connectivity still503. No generation/embedding request,
+paid diagnostics, retry or fallback. KNOWLEDGE DEFAULT NOT_CHANGED: Gemini remains
+default; Gemini Embedding gemini-embedding-2/768, vector retrieval, provider gateON,
+Guest/fallbackOFF and vector-only retained. No re-embedding/history/model rewrite.
+Provider admin must restore the Knowledge route/backend and provide readiness/log
+evidence before a newly approved bounded functional window can be used.
+
+Strict verifier86modules/no image/source/config drift and HTTP200 Web/API8080 PASS;
+authenticated Google session/history and real table preview verified through UI.
+Main PostgreSQL container/image/volume retained; final read-only fingerprints and
+private metadata/cleanup evidence are stored under web-cleanup-knowledge-20261026-98f1adc.
+No unrelated tests were rerun for this runtime-only operation.
+
 ## Upload-to-chat UX — deployed and accepted (bounded scope)
 
 Normal chat omits route_hint and uses existing semantic routing; actual route/error
