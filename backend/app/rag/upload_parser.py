@@ -97,7 +97,8 @@ def _parse_pdf(content: bytes, fallback_title: str) -> tuple[str, str]:
         sections: list[str] = []
         extracted_size = 0
         for number, page in enumerate(reader.pages, start=1):
-            page_text = (page.extract_text() or "").strip()
+            # Font extraction may emit NUL; preserve word boundaries before embedding/storage.
+            page_text = (page.extract_text() or "").replace("\x00", " ").strip()
             if page_text:
                 sections.append(f"## Trang {number}\n\n{page_text}")
                 extracted_size += len(page_text)

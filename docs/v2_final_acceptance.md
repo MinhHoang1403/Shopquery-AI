@@ -5,6 +5,26 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## PDF upload NUL correction — source verified, deployment pending
+
+The real failed PDF yielded four NUL codepoints on page3; API logs show psycopg
+DataError at the document_chunks INSERT after embedding, not a provider failure.
+PostgreSQL [character types](https://www.postgresql.org/docs/current/datatype-character.html)
+cannot store codepoint zero. _parse_pdf previously passed the extracted controls
+through chunk_document into embedding and persistence. It now replaces only NUL
+with a space immediately after page extraction, preserving word boundaries and
+all other text, Unicode, tabs, newlines and numeric strings. Source bytes/hash,
+PDF page/size/extraction limits, encrypted/scan rejection and TXT/MD NUL rejection
+are unchanged. No database/schema/provider/gate/frontend changes.
+
+Three new regressions failed before the one-line fix and pass after it;23 targeted
+parser/API tests PASS. Exact original41,666byte PDF:4 NUL→0,3 readable chunks,
+every original text line preserved except control-to-space; no provider requests.
+An isolated CI API→mock embedding→PostgreSQL test covers persistence/reload,
+cross-owner denial, duplicate409 without re-embedding, unreadable422 before provider.
+Live re-upload needs one new explicitly bounded3-document-embedding approval;
+no automatic retry, generation, query embedding or other document upload.
+
 ## Web image cleanup and Knowledge recovery check — 26/10/2026
 
 WEB IMAGE CLEANUP PASS: current Web5f4ab329 and one immediate rollbackfec296b4

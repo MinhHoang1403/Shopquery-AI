@@ -76,6 +76,49 @@ def test_parses_text_pdf_and_rejects_scanned_or_encrypted_pdf() -> None:
         parse_document_file("secret.pdf", _pdf_bytes(encrypted=True))
 
 
+def test_pdf_replaces_extracted_nul_before_chunking_without_joining_words():
+    import hashlib
+
+    from app.rag.chunking import chunk_document
+
+    content = _pdf_bytes("Service\x00handbook: fee 0.00 and 125000.50")
+    parsed = parse_document_file("handbook.pdf", content)
+    assert "\x00" not in parsed.document.content
+    assert "Service handbook: fee 0.00 and 125000.50" in parsed.document.content
+    assert parsed.content_hash == hashlib.sha256(content).hexdigest()
+    chunks = chunk_document(parsed.document)
+    assert chunks and all("\x00" not in chunk.content for chunk in chunks)
+
+
+def test_pdf_preserves_unicode_newlines_tabs_and_numeric_text(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "app.rag.upload_parser.PdfReader",
+        lambda *args, **kwargs: SimpleNamespace(
+            is_encrypted=False,
+            pages=[
+                SimpleNamespace(
+                    extract_text=lambda: "Phòng Gia đình\x00 Đủ chỗ\nPhí\t0.00 và 125000.50"
+                )
+            ],
+        ),
+    )
+    parsed = parse_document_file("hướng-dẫn.pdf", b"%PDF-test")
+    assert "Phòng Gia đình  Đủ chỗ\nPhí\t0.00 và 125000.50" in parsed.document.content
+
+
+def test_pdf_with_only_nul_remains_unreadable():
+    with pytest.raises(UploadValidationError, match="OCR"):
+        parse_document_file("empty.pdf", _pdf_bytes("\x00\x00"))
+
+
+@pytest.mark.parametrize("extension", ["md", "txt"])
+def test_nul_in_source_text_remains_rejected(extension):
+    with pytest.raises(UploadValidationError, match="null"):
+        parse_document_file("invalid." + extension, b"text\x00text")
+
+
 @pytest.mark.parametrize(
     ("filename", "content", "message"),
     [
