@@ -25,14 +25,12 @@ pytestmark = pytest.mark.integration
 @pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
 @pytest.mark.parametrize("business_alias", [False, True])
 @pytest.mark.parametrize("unsafe", [None, "exception", "unit_conflict"])
-@pytest.mark.parametrize("verified_request", [False, True])
 def test_original_prose_exact_kh_acceptance_and_history(
     gate_d_workspace,  # noqa: F811
     monkeypatch,
     model,
     business_alias,  # noqa: F811
     unsafe,
-    verified_request,
 ):
     actors, dataset, facts, embedder = gate_d_workspace
     policy = ORIGINAL
@@ -54,9 +52,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 if "Vậy còn" in prompt:
-                    assert ("Previous successful turns" in prompt) is verified_request
-                    if verified_request:
-                        assert "KHO02, KHO03, KHO05" in prompt
+                    assert "Previous successful turns" not in prompt
                     assert "Account 1" not in prompt
                 return RouteDecision(route=RouteLabel.HYBRID, reason="Offline original prose")
             if schema is PlanDecision:
@@ -106,14 +102,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
     path = "/api/conversations/" + created.json()["conversation_id"]
     sent = actors.a.client.post(
         path + "/messages",
-        json={
-            "message": (
-                "Theo chính sách KPI, những kho nào đạt và kho nào chưa đạt?"
-                if verified_request
-                else QUESTIONS["H"]
-            ),
-            "model_id": model,
-        },
+        json={"message": QUESTIONS["H"], "model_id": model},
     )
     assert sent.status_code == 200
     response = sent.json()["assistant_message"]["response"]
@@ -126,9 +115,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
         return
     assert response["error"] is None, response["error"]
     assert response["route"] == "HYBRID"
-    assert response["verification_status"] == (
-        "verified_classification" if verified_request else "unverified"
-    )
+    assert response["verification_status"] == "unverified"
     # The omitted dimension key is a backend-issued output; never guessed from a label.
     assert response["rows"] == expected
     assert response["used_model"] == model and not response["fallback_used"]
@@ -154,4 +141,48 @@ def test_original_prose_exact_kh_acceptance_and_history(
     assert answer["error"] is None and answer["route"] == "HYBRID"
     assert "Chưa đạt: KHO01, KHO04." in answer["answer"]
     assert answer["sources"][0]["chunk_id"] == response["sources"][0]["chunk_id"]
-    assert calls == ["RouteDecision", "PlanDecision"] * 2
+    assert answer["verification_status"] == "verified_classification"
+    assert calls == ["RouteDecision", "PlanDecision", "RouteDecision"]
+
+
+@pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
+def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evidence(
+    gate_d_workspace, monkeypatch, model  # noqa: F811
+):
+    actors, dataset, facts, embedder = gate_d_workspace
+    dataset = add_policy(actors, dataset, embedder, ORIGINAL)
+    expected = {row["kho_id"]: row["total"] for row in independent_oracle(facts, "H")}
+    calls = []
+
+    class Gateway:
+        def generate_structured(self, prompt, schema):
+            calls.append(schema.__name__)
+            assert schema is RouteDecision
+            if "Vậy còn" in prompt:
+                assert "Previous successful turns" in prompt
+                assert "KHO02, KHO03, KHO05" in prompt
+                assert "Account 1" not in prompt
+            return RouteDecision(route=RouteLabel.HYBRID, reason="Verified premise")
+
+        def generate_text(self, prompt):
+            raise AssertionError("Verified policy uses backend arithmetic, not model verdicts")
+
+    monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
+    created = actors.a.client.post("/api/conversations", json={"dataset_id": dataset.dataset_id})
+    path = "/api/conversations/" + created.json()["conversation_id"]
+    questions = [
+        "Theo chính sách KPI, những kho nào đạt và kho nào chưa đạt?",
+        "Vậy còn những kho chưa đạt KPI?",
+    ]
+    for question in questions:
+        sent = actors.a.client.post(path + "/messages", json={"message": question, "model_id": model})
+        assert sent.status_code == 200
+        response = sent.json()["assistant_message"]["response"]
+        assert response["error"] is None
+        assert response["verification_status"] == "verified_classification"
+        assert {row["entity_id"]: row["metric"] for row in response["rows"]} == expected
+        assert "Chưa đạt: KHO01, KHO04." in response["answer"]
+        assert response["sources"][0]["content"] == ORIGINAL.split("\n\n", 1)[1].strip()
+        assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
+        assert actors.b.client.get(path).status_code == 404
+    assert calls == ["RouteDecision", "RouteDecision"]
