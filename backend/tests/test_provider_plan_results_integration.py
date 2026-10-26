@@ -65,7 +65,7 @@ def test_provider_count_sum_group_and_approved_joins_match_oracle(
             expressions=expressions,
             relationships=relationships,
             group_by=group_by,
-            sort=[PlanSort(reference="entity_id", direction="asc")] if grouped else [],
+            sort=[PlanSort(field="entity_id", direction="asc")] if grouped else [],
         )
     )
     if grouped:
