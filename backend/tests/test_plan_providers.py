@@ -19,8 +19,6 @@ from tests.test_workspace_prompts import tuition_context
 
 
 def response(provider, text):
-    if provider == "knowledge":
-        return completion(text)
     try:
         payload = json.loads(text)
     except (ValueError, TypeError):
@@ -44,6 +42,7 @@ def response(provider, text):
             "outcome": "query" if payload.get("plan") else "unsupported",
             "reason": payload.get("unsupported_reason") or "",
             "source": plan.get("source", ""),
+            "grouping": plan.get("grouping", "entity"),
             "fields": plan.get("fields", []),
             "expressions": [
                 {
@@ -63,6 +62,8 @@ def response(provider, text):
             "having": plan.get("having") or "",
         }
         text = json.dumps(payload)
+    if provider == "knowledge":
+        return completion(text)
     return httpx.Response(
         200,
         json={
@@ -107,12 +108,8 @@ def test_actual_adapter_serializes_plan_and_compiles(monkeypatch, provider):
         assert len(calls) == 1
         body = json.loads(calls[0].content)
         serialized = json.dumps(body)
-        assert ("PlanDecision" if provider == "knowledge" else "GenerationDecision") in serialized
+        assert "GenerationDecision" in serialized
         assert "expressions" in serialized
-        if provider == "knowledge":
-            assert "Aggregation belongs to expression nodes" in serialized
-        else:
-            assert "GenerationDecision" in serialized
         assert "Fields only select values" in serialized
         assert 'sql"' not in json.dumps(PlanDecision.model_json_schema())
         if provider == "gemini":
@@ -158,7 +155,7 @@ def test_aggregate_expression_is_not_aggregated_again(monkeypatch, provider, fie
         monkeypatch, provider, [response(provider, json.dumps(payload))]
     )
     try:
-        if field_aggregate == "row_count" or provider == "gemini" and field_aggregate is not None:
+        if field_aggregate is not None:
             with pytest.raises((ProviderError, ModelResponseError)):
                 QueryPlanner(gateway, "2026-10-01", context).generate("Số dòng đã đóng?")
             assert len(calls) == 1

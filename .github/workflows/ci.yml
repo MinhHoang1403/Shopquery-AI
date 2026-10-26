@@ -10,7 +10,7 @@ on:
       scope:
         description: Checks to run (reliability avoids unrelated golden/model suites)
         type: choice
-        options: [all, reliability, ux, layout, upload, planning]
+        options: [all, reliability, ux, layout, upload, planning, repair]
         default: reliability
       services:
         description: Services whose source changed
@@ -50,7 +50,9 @@ jobs:
         env:
           CHECK_SCOPE: ${{ inputs.scope }}
         run: |
-          if [ "$CHECK_SCOPE" = planning ]; then
+          if [ "$CHECK_SCOPE" = repair ]; then
+            uv run pytest -m "not integration and not live" tests/test_category_grouping.py tests/test_planning_outcomes.py tests/test_plan_providers.py tests/test_providers.py tests/test_plan_binding.py tests/test_planning_diagnostics.py tests/test_sql_answer.py tests/test_count_conformance.py tests/test_error_contract.py tests/test_evidence_coverage.py tests/test_verified_conversation_contract.py tests/test_conversation_context.py tests/test_join_policy.py tests/test_three_table_join.py tests/test_sql_executor.py tests/test_gemini.py tests/test_api.py tests/test_management_api.py tests/test_model_persistence.py tests/test_query_compiler.py tests/test_plan_security.py tests/test_hybrid_sequence.py tests/test_hybrid_answer_consistency.py -q
+          elif [ "$CHECK_SCOPE" = planning ]; then
             uv run pytest -m "not integration and not live" tests/test_providers.py tests/test_planning_diagnostics.py tests/test_model_persistence.py tests/test_management_api.py tests/test_api.py tests/test_error_contract.py tests/test_plan_providers.py tests/test_plan_security.py tests/test_evidence_coverage.py tests/test_verified_conversation_contract.py tests/test_conversation_context.py tests/test_diagnostics.py tests/test_hybrid_sequence.py tests/test_hybrid_answer_consistency.py tests/test_routing_and_hybrid.py tests/test_plan_binding.py tests/test_count_conformance.py tests/test_join_policy.py tests/test_three_table_join.py -q
           elif [ "$CHECK_SCOPE" = upload ]; then
             uv run pytest -m "not integration and not live" tests/test_document_upload_parser.py tests/test_api.py -q
@@ -136,7 +138,9 @@ jobs:
         env:
           CHECK_SCOPE: ${{ inputs.scope }}
         run: |
-          if [ "$CHECK_SCOPE" = planning ]; then
+          if [ "$CHECK_SCOPE" = repair ]; then
+            uv run pytest -m "integration and not live" tests/test_category_results_integration.py tests/test_provider_plan_results_integration.py tests/test_plan_factory_integration.py tests/test_plan_expressions_integration.py tests/test_hybrid_evidence_integration.py tests/test_model_persistence.py -q
+          elif [ "$CHECK_SCOPE" = planning ]; then
             uv run pytest -m "integration and not live" tests/test_provider_plan_results_integration.py tests/test_plan_factory_integration.py tests/test_plan_expressions_integration.py tests/test_hybrid_evidence_integration.py tests/test_model_persistence.py -q
           elif [ "$CHECK_SCOPE" = upload ]; then
             uv run pytest -m "integration and not live" tests/test_document_upload_integration.py -q

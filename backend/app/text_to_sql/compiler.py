@@ -329,10 +329,13 @@ class QueryCompiler:
         compiled = query.compile(dialect=dialect, compile_kwargs={"render_postcompile": True})
         # Validate a safely rendered preview so current COUNT/grain analysis sees actual AST values.
         preview = str(query.compile(dialect=dialect, compile_kwargs={"literal_binds": True}))
-        checked = self._validator.validate(preview)
-        if checked.statement != self._validator.validate(checked.statement).statement:
+        checked = self._validator.validate(preview, grouping=plan.grouping)
+        if (
+            checked.statement
+            != self._validator.validate(checked.statement, grouping=plan.grouping).statement
+        ):
             raise SqlValidationError("Final SQL validation is not stable")
-        parameterized = self._validator.validate(str(compiled))
+        parameterized = self._validator.validate(str(compiled), grouping=plan.grouping)
         if self._default_schema and edges:
 
             def provenance(validated: ValidatedSql) -> ValidatedSql:

@@ -34,6 +34,7 @@ STAGES = frozenset(
         "routing",
         "generator_unsupported",
         "sql_plan_generation",
+        "plan_binding",
         "structured_output_invalid",
         "sql_parse_error",
         "plan_compilation",
@@ -170,7 +171,10 @@ def attach_error_context(exc: ShopQueryError, stage: str = "request") -> ErrorCo
         details["correlation_id"] = trace.correlation_id
         details["attempted_route"] = context.attempted_route or trace.facts["route"]
         for key in (
-            "model_id", "response_outcome", "catalog_table_count", "catalog_column_count",
+            "model_id",
+            "response_outcome",
+            "catalog_table_count",
+            "catalog_column_count",
             "approved_relationship_count",
         ):
             if details.get(key) is None and trace.facts.get(key) is not None:

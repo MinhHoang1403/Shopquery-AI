@@ -59,6 +59,9 @@ export interface ChatResponse {
     error_category?: string | null;
     attempted_route?: RouteLabel | null;
     correlation_id?: string | null;
+    origin_stage?: string | null;
+    reason_code?: string | null;
+    validation_branch?: string | null;
   } | null;
 }
 

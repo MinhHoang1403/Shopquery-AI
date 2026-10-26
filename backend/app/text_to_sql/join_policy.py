@@ -1,6 +1,7 @@
 """Backend-owned INNER JOIN authorization with one preserved root fact grain."""
 
 from dataclasses import dataclass
+from typing import Literal
 
 from sqlglot import exp
 
@@ -33,6 +34,7 @@ def validate_uploaded_join(
     table_columns: dict[str, set[str]],
     *,
     normalize_counts: bool = True,
+    grouping: Literal["entity", "category"] = "entity",
 ) -> tuple[ApprovedJoin, tuple[CountMetric, ...]]:
     joins, _ = _validate_binding_shape(root, aliases, 2)
     relationship = _approved_equality(joins[0], aliases, relationships)
@@ -45,7 +47,7 @@ def validate_uploaded_join(
             reason="calculation",
             code="join_direction",
         )
-    _validate_entity_groups(root, aliases, (relationship,))
+    _validate_entity_groups(root, aliases, (relationship,), grouping=grouping)
     counts = _validate_join_aggregates(
         root,
         aliases,
@@ -108,6 +110,7 @@ def validate_uploaded_join_tree(
     table_columns: dict[str, set[str]],
     *,
     normalize_counts: bool = True,
+    grouping: Literal["entity", "category"] = "entity",
 ) -> JoinTree:
     joins, bindings = _validate_binding_shape(root, aliases, 3)
     names = set(aliases.values())
@@ -136,7 +139,7 @@ def validate_uploaded_join_tree(
         normalized.append(join)
     root.set("joins", normalized)
     _validate_binding_shape(root, aliases, 3)
-    _validate_entity_groups(root, aliases, plan.relationships)
+    _validate_entity_groups(root, aliases, plan.relationships, grouping=grouping)
     counts = _validate_join_aggregates(
         root,
         aliases,
@@ -353,7 +356,11 @@ def _validate_join_aggregates(
 
 
 def _validate_entity_groups(
-    root: exp.Select, aliases: dict[str, str], relationships: tuple[ApprovedJoin, ...]
+    root: exp.Select,
+    aliases: dict[str, str],
+    relationships: tuple[ApprovedJoin, ...],
+    *,
+    grouping: Literal["entity", "category"] = "entity",
 ) -> None:
     if root.find(exp.AggFunc) is None:
         return
@@ -395,6 +402,28 @@ def _validate_entity_groups(
             table = aliases.get(column.table.lower())
             if table in keys:
                 dimensions.add(table)
+    if grouping == "category":
+        selected: set[tuple[str | None, str]] = set()
+        for projection in root.expressions:
+            expression = projection.this if isinstance(projection, exp.Alias) else projection
+            if expression.find(exp.AggFunc) is not None:
+                continue
+            if not isinstance(expression, exp.Column) or not expression.table:
+                raise SqlUnsupportedError(
+                    "Category grouping requires direct grouped columns", code="join_grain"
+                )
+            selected.add((aliases.get(expression.table.lower()), expression.name.lower()))
+        if (
+            not grouped
+            or grouped != selected
+            or any((table, key) in grouped for table, key in keys.items())
+        ):
+            raise SqlUnsupportedError(
+                "Category grouping must project exactly its non-identity grouping columns",
+                code="join_grain",
+                grain_reason="dimension_group_key",
+            )
+        return
     if any((table, keys[table]) not in grouped for table in dimensions):
         raise SqlUnsupportedError(
             "Dimension aggregates require the verified entity key in GROUP BY",

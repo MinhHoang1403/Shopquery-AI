@@ -18,6 +18,8 @@ from app.core.errors import (
     provider_category,
     validation_context,
 )
+from app.text_to_sql.generation_contract import GENERATION_INSTRUCTIONS, GenerationDecision
+from app.text_to_sql.query_plan import PlanDecision
 
 TRANSIENT_STATUS_CODES = frozenset(TRANSIENT_PROVIDER_STATUSES)
 
@@ -56,13 +58,16 @@ class InetCloudGateway:
     def generate_structured(
         self, prompt: str, response_model: type[StructuredModel]
     ) -> StructuredModel:
+        wire_model = GenerationDecision if response_model is PlanDecision else response_model
         try:
             client = self._client.with_structured_output(
-                response_model, method="json_schema", strict=True, include_raw=True
+                wire_model, method="json_schema", strict=True, include_raw=True
             )
         except (ValueError, TypeError) as exc:
             raise self._failure("schema_preparation", "sdk_preparation") from exc
-        response = self._invoke(client, prompt)
+        response = self._invoke(
+            client, prompt + (GENERATION_INSTRUCTIONS if wire_model is GenerationDecision else "")
+        )
         raw = response.get("raw")
         if getattr(raw, "additional_kwargs", {}).get("refusal"):
             raise self._failure("response", "model_refusal")
@@ -76,9 +81,19 @@ class InetCloudGateway:
                 raise self._failure("json_decode", "invalid_json") from exc
             raise self._failure("wire_validation", "wire_validation")
         try:
-            return response_model.model_validate(response["parsed"])
+            parsed = wire_model.model_validate(response["parsed"])
         except ValidationError as exc:
             raise self._failure("wire_validation", "wire_validation", exc) from exc
+        try:
+            return response_model.model_validate(
+                parsed.decision() if isinstance(parsed, GenerationDecision) else parsed
+            )
+        except (ValidationError, ValueError, TypeError) as exc:
+            raise self._failure(
+                "domain_conversion",
+                "contract_conversion",
+                exc if isinstance(exc, ValidationError) else None,
+            ) from exc
 
     def _failure(
         self,

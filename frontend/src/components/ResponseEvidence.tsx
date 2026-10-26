@@ -1,13 +1,14 @@
 import { Check, ChevronDown, ChevronUp, Copy, Database, FileText, Table2 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { ChatResponse, ResultRow, SourceReference } from "../types";
+import { displayNumber } from "../numberFormat";
 
 type EvidencePanel = "rows" | "sql" | "sources";
 
-function displayValue(value: unknown): string {
+function displayValue(value: unknown, formatNumbers = true): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+  return formatNumbers ? displayNumber(value) : String(value);
 }
 
 function DetailsChevron({ size = 17 }: { size?: number }) {
@@ -63,7 +64,7 @@ function SqlPanel({ sql }: { sql: string }) {
   );
 }
 
-export function ResultTable({ rows, columns: registeredColumns }: { rows: ResultRow[]; columns?: string[] }) {
+export function ResultTable({ rows, columns: registeredColumns, formatNumbers = true }: { rows: ResultRow[]; columns?: string[]; formatNumbers?: boolean }) {
   const columns = registeredColumns ?? Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
   return (
     <div className="table-shell" aria-label="Kết quả truy vấn" role="region" tabIndex={0}>
@@ -72,7 +73,7 @@ export function ResultTable({ rows, columns: registeredColumns }: { rows: Result
         <tbody>
           {rows.map((row, rowIndex) => (
             <tr key={rowIndex}>
-              {columns.map((column) => <td key={column}>{displayValue(row[column])}</td>)}
+                {columns.map((column) => <td key={column}>{displayValue(row[column], formatNumbers)}</td>)}
             </tr>
           ))}
         </tbody>

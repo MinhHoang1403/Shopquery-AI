@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from app.core.errors import SqlExecutionError
 from app.text_to_sql.executor import SqlExecutor
@@ -31,6 +31,22 @@ def test_executor_applies_vietnamese_timezone_only_within_readonly_transaction()
     assert calls[2].args[1] == {"timezone": "Asia/Ho_Chi_Minh"}
     assert str(calls[3].args[0]) == validated.statement
     connection.begin.return_value.rollback.assert_called_once()
+
+
+def test_driver_sqlstate_is_preserved_without_sensitive_query_or_driver_message():
+    from types import SimpleNamespace
+
+    executor, connection = executor_connection()
+    connection.execute.side_effect = DBAPIError(
+        "PRIVATE SQL",
+        {"secret": "PRIVATE"},
+        SimpleNamespace(sqlstate="42703", message="PRIVATE driver"),
+    )
+    with pytest.raises(SqlExecutionError) as caught:
+        executor.execute(ValidatedSql("SELECT n FROM orders", frozenset({"orders"})))
+    assert caught.value.error_context.sqlstate == "42703"
+    assert caught.value.error_context.validation_branch == "database_error"
+    assert "PRIVATE" not in str(caught.value) + caught.value.error_context.model_dump_json()
 
 
 @pytest.mark.parametrize("failure", ["query", "row_limit", "timezone"])

@@ -14,10 +14,10 @@ const components: Components = {
   ),
 };
 
-export function AssistantContent({ text }: { text: string }) {
+export function AssistantContent({ text, hideTables = false }: { text: string; hideTables?: boolean }) {
   return (
     <div className="message-text assistant-content">
-      <Markdown components={components} remarkPlugins={[remarkGfm]} skipHtml urlTransform={defaultUrlTransform}>
+      <Markdown components={hideTables ? { ...components, table: () => null } : components} remarkPlugins={[remarkGfm]} skipHtml urlTransform={defaultUrlTransform}>
         {text}
       </Markdown>
     </div>

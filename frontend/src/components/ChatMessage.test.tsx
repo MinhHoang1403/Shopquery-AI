@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatMessage } from "./ChatMessage";
 import { ModelSelector } from "./ModelSelector";
+import userEvent from "@testing-library/user-event";
 
 afterEach(cleanup);
 
@@ -10,14 +11,18 @@ function renderAnswer(text: string) {
 }
 
 describe("Assistant content", () => {
-  it("shows attempted route and support ID without attributing a successful model", () => {
+  it("shows attempted route and support ID only inside error details", async () => {
     const id = "a".repeat(32);
     render(<ChatMessage entry={{ id: "error", role: "error", text: "Nhà cung cấp tạm thời không khả dụng.",
       response: { answer: "Nhà cung cấp tạm thời không khả dụng.", error: "Provider unavailable",
         route: null, sql: null, rows: [], sources: [], requested_model: "gemini", used_model: null,
         error_context: { attempted_route: "HYBRID", correlation_id: id } } }} />);
-    expect(screen.getByText("Tuyến đã thử: SQL + Tài liệu")).toBeVisible();
-    expect(screen.getByText(`Mã hỗ trợ: ${id}`)).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("Chưa thể hoàn tất truy vấn này.");
+    expect(screen.queryByText(id)).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Chi tiết lỗi" }));
+    expect(screen.getByText("HYBRID")).toBeVisible();
+    expect(screen.getByText(id)).toBeVisible();
     expect(screen.queryByText("Gemini")).not.toBeInTheDocument();
   });
   it("renders the old generic refusal kindly without rewriting restored history", () => {
@@ -82,6 +87,15 @@ describe("Assistant content", () => {
     expect(screen.getAllByRole("row")).toHaveLength(6);
   });
 
+  it("keeps one authoritative rows table when restored Markdown also contains a table", async () => {
+    const text="Có một kết quả.\n\n| total |\n| --- |\n| 100.00 |";
+    render(<ChatMessage entry={{id:"one",role:"assistant",text,response:{answer:text,route:"SQL",error:null,sql:"SELECT 100",rows:[{total:"100.00"}],sources:[]}}} />);
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button",{name:/Bảng dữ liệu/}));
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.getByRole("cell",{name:"100,00"})).toBeVisible();
+  });
+
   it("ignores raw HTML and does not load Markdown images or execute embedded code", () => {
     const { container } = renderAnswer('<script>alert("xss")</script>\n\n<img src="x" onerror="alert(1)">\n\n![Mô tả ảnh](https://example.com/tracker.png)\n\n`<script>not executable</script>`');
     expect(container.querySelector("script, img, iframe")).toBeNull();
@@ -101,14 +115,15 @@ describe("Assistant content", () => {
     expect(screen.getByText("Không an toàn")).toBeVisible();
   });
 
-  it("does not parse user messages or error messages as Markdown", () => {
+  it("does not parse user messages or error messages as Markdown", async () => {
     const text = "**Nguyên văn** <img src=x>\n- Không phải danh sách";
     const { container } = render(<>
       <ChatMessage entry={{ id: "user", role: "user", text }} />
       <ChatMessage entry={{ id: "error", role: "error", text }} />
     </>);
     expect(container.querySelector(".message--user .message-text")?.textContent).toBe(text);
-    expect(container.querySelector(".message--error .message-text")?.textContent).toBe(text);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Chi tiết lỗi" }));
+    expect(container.querySelector(".error-detail-panel")?.textContent).toContain(text);
     expect(container.querySelector(".assistant-content, img, ul")).toBeNull();
   });
 });

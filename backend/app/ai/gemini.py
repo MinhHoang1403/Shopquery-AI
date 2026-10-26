@@ -21,7 +21,7 @@ from app.core.errors import (
     provider_category,
     validation_context,
 )
-from app.text_to_sql.generation_contract import GenerationDecision
+from app.text_to_sql.generation_contract import GENERATION_INSTRUCTIONS, GenerationDecision
 from app.text_to_sql.query_plan import PlanDecision
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
@@ -105,14 +105,7 @@ class GeminiGateway:
         self, prompt: str, response_model: type[StructuredModel]
     ) -> StructuredModel:
         wire_model = GenerationDecision if response_model is PlanDecision else response_model
-        prompt_suffix = (
-            "\nReturn the flat GenerationDecision schema: outcome=query with an empty reason; "
-            "zero limit and empty where/having mean absent. Every expression has value='' and "
-            "value_type=none unless it is a literal. For unsupported, give reason and make "
-            "source/where/having empty, limit=0, and all arrays empty. No enclosing plan object."
-            if wire_model is GenerationDecision
-            else ""
-        )
+        prompt_suffix = GENERATION_INSTRUCTIONS if wire_model is GenerationDecision else ""
         try:
             config = types.GenerateContentConfig(
                 temperature=0,

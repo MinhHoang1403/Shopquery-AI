@@ -2,6 +2,7 @@ import { AlertCircle, Database } from "lucide-react";
 import type { ConversationEntry, RouteLabel } from "../types";
 import { AssistantContent } from "./AssistantContent";
 import { ResponseEvidence } from "./ResponseEvidence";
+import { ErrorDetails } from "./ErrorDetails";
 
 const ROUTE_LABELS: Record<RouteLabel, string> = {
   SQL: "SQL",
@@ -30,7 +31,7 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
       <div className="message-content">
         {!isUser ? (
           <div className="message-heading">
-            <strong>{isError ? "Không thể xử lý" : "ShopQuery AI"}</strong>
+            <strong>ShopQuery AI</strong>
             {entry.response?.used_model ? (
               <span className="model-attribution">{MODEL_LABELS[entry.response.used_model]}</span>
             ) : null}
@@ -39,17 +40,9 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
             ) : null}
           </div>
         ) : null}
-        {isUser || isError ? <p className="message-text">{text}</p> : <AssistantContent text={text} />}
-        {isError && entry.response?.error ? (
-          <p className="fallback-notice" role="alert">{entry.response.error}</p>
-        ) : null}
-        {isError && entry.response?.error_context?.attempted_route ? (
-          <p className="fallback-notice">Tuyến đã thử: {ROUTE_LABELS[entry.response.error_context.attempted_route]}</p>
-        ) : null}
-        {isError && entry.response?.error_context?.correlation_id
-          && /^[a-f0-9]{32}$/.test(entry.response.error_context.correlation_id) ? (
-          <p className="fallback-notice">Mã hỗ trợ: {entry.response.error_context.correlation_id}</p>
-        ) : null}
+        {isError ? <ErrorDetails response={entry.response} text={text} />
+          : isUser ? <p className="message-text">{text}</p>
+          : <AssistantContent text={text} hideTables={Boolean(entry.response?.rows.length)} />}
         {entry.response?.fallback_used ? (
           <p className="fallback-notice">{entry.response.used_model
             ? "Đã chuyển từ Knowledge sang Gemini do mô hình chính không khả dụng."

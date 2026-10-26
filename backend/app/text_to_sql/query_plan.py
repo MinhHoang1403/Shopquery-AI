@@ -1,6 +1,7 @@
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 ExpressionOperation = Literal[
     "literal",
@@ -107,6 +108,7 @@ class QueryPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     source: str
+    grouping: Literal["entity", "category"] = "entity"
     fields: list[PlanField] = Field(min_length=1, max_length=30)
     filters: list[PlanFilter] = Field(default_factory=list, max_length=30)
     group_by: list[str] = Field(default_factory=list, max_length=30)
@@ -149,8 +151,9 @@ class PlanDecision(BaseModel):
 
     @model_validator(mode="after")
     def one_outcome(self) -> "PlanDecision":
-        if (self.plan is None) == (
-            not bool(self.unsupported_reason and self.unsupported_reason.strip())
-        ):
-            raise ValueError("Return either a plan or a nonempty unsupported reason")
+        reason = bool(self.unsupported_reason and self.unsupported_reason.strip())
+        if self.plan is not None and reason:
+            raise PydanticCustomError("outcome_conflict", "Return only one planning outcome")
+        if self.plan is None and not reason:
+            raise PydanticCustomError("outcome_missing", "A planning outcome is required")
         return self

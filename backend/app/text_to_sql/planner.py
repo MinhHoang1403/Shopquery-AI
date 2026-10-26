@@ -138,13 +138,18 @@ Use separate row count alongside scalar SUM/AVG when needed to distinguish empty
 Arithmetic is numeric only; preserve exact decimals and NULL. Division returns NULL for a
 dynamic zero denominator and rejects literal zero. SUM(x)/COUNT(x) means AVG(x), not row count.
 No aggregate nesting. Uploaded JOIN metrics allow only direct root-fact SUM/AVG and direct
-counts; no aggregate arithmetic, MIN/MAX, dimension measures or COUNT HAVING. Include each
-dimension entity key in group_by when selecting/grouping its attributes. Use identifiers
+counts; no aggregate arithmetic, MIN/MAX, dimension measures or COUNT HAVING. For grouping=entity,
+include each dimension entity key in group_by when selecting/grouping its attributes.
+Use identifiers
 from authorized headers, never infer entity keys or units from examples.
-The catalog's grouping_keys are backend-approved dimension IDs. When grouping a dimension,
+The catalog's grouping_keys are backend-approved dimension IDs. When grouping dimension entities,
 include its listed keys in group_by and project them alongside its requested name/attributes.
 At most three tables are allowed for uploaded queries. Never sum identifiers or infer NOT NULL
-from a column name. The default demo catalog alone permits its declared four-table fact tree
+from a column name.
+For grouping per entity, set grouping=entity and retain its approved identity keys.
+For categories shared by many entities, set grouping=category and project/group exactly the
+requested direct category columns; do not add entity IDs or entity labels to category groups.
+The default demo catalog alone permits its declared four-table fact tree
 and root-fact numeric aggregate expressions, including its explicit revenue formula.
 Date operations day/month/year group in {BUSINESS_TIME_ZONE}; month_label/date_label format
 as YYYY-MM/YYYY-MM-DD. Keep temporal columns unchanged for half-open >= start AND < end

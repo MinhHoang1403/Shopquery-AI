@@ -1,31 +1,32 @@
 """Present verified rows without inventing units, formulas or business conclusions."""
 
-import json
 from typing import Any
 
 from app.text_to_sql.count_contract import CountMetric
+from app.text_to_sql.number_format import format_number
 
 
 def compose_sql_answer(rows: list[dict[str, Any]], counts: tuple[CountMetric, ...]) -> str:
     if not rows:
-        return "Truy vấn không trả về dòng dữ liệu nào."
-
-    def cell(value: Any) -> str:
-        text = "NULL" if value is None else str(value)
-        return text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ").replace("\r", " ")
-
-    columns = list(dict.fromkeys(key for row in rows for key in row))
-    table = [
-        "| " + " | ".join(cell(key) for key in columns) + " |",
-        "| " + " | ".join("---" for _ in columns) + " |",
-        *["| " + " | ".join(cell(row.get(key)) for key in columns) + " |" for row in rows],
-    ]
-    notes = ["Kết quả truy vấn đã xác minh. NULL là giá trị thiếu, khác số 0."]
-    if counts and not any(metric.kind == "row_count" for metric in counts):
-        notes.append("Truy vấn chỉ đếm giá trị khác NULL; chưa có bằng chứng số dòng nguồn.")
-    for metric in counts:
-        kind = (
-            "số dòng nguồn khớp truy vấn" if metric.kind == "row_count" else "số giá trị khác NULL"
-        )
-        notes.append(f"{json.dumps(metric.output_alias, ensure_ascii=False)}: {kind}.")
-    return "\n\n".join([*notes, "\n".join(table)])
+        return "Không tìm thấy kết quả thỏa điều kiện trong bộ dữ liệu hiện tại."
+    if len(rows) == 1:
+        row = rows[0]
+        if len(row) == 1:
+            alias, value = next(iter(row.items()))
+            if value is None:
+                return "Kết quả chưa có giá trị được ghi nhận."
+            metric = next((item for item in counts if item.output_alias == alias), None)
+            if metric is not None:
+                label = "bản ghi" if metric.kind == "row_count" else "giá trị có dữ liệu"
+                return f"Truy vấn ghi nhận {format_number(value)} {label}."
+            if (
+                isinstance(value, (int, float))
+                or isinstance(value, str)
+                and value.replace(".", "", 1).lstrip("-").isdigit()
+            ):
+                return f"Kết quả là {format_number(value)}."
+        return "Tôi đã tìm thấy một kết quả phù hợp. Chi tiết nằm trong bảng dữ liệu."
+    return (
+        f"Tôi đã tìm thấy {format_number(len(rows))} kết quả phù hợp. "
+        "Bạn có thể xem chi tiết trong bảng dữ liệu."
+    )

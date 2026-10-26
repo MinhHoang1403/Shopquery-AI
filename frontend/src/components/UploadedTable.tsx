@@ -46,7 +46,7 @@ export function UploadedTable({ datasetId, table, deletionDisabled, onDelete }: 
     {open ? <section id={panelId} className="uploaded-table-preview" aria-label={`Dữ liệu ${table.display_name}`}>
       {loading ? <p role="status">Đang đọc dữ liệu…</p> : error ? <p role="alert" className="form-error">{error}</p> : preview ? <>
         <p className="empty-source">Dữ liệu đã nhập · Hiển thị {preview.rows.length} / {preview.row_count.toLocaleString("vi-VN")} dòng</p>
-        <ResultTable rows={preview.rows} columns={preview.columns.map((column) => column.source_name)} />
+        <ResultTable rows={preview.rows} columns={preview.columns.map((column) => column.source_name)} formatNumbers={false} />
         {!preview.rows.length ? <p>Chưa có dòng dữ liệu.</p> : null}
       </> : null}
     </section> : null}

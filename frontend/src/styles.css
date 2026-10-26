@@ -480,3 +480,11 @@ button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-v
   width: max-content;
   text-align: center;
 }
+.error-details { margin-top: 8px; }
+.error-details > .evidence-trigger { margin-top: 10px; }
+.error-detail-panel { margin-top: 10px; padding: 12px; border: 1px solid #eed4d0; border-radius: 10px; overflow-wrap: anywhere; }
+.error-detail-panel p { margin: 0 0 10px; }
+.error-detail-panel dl { margin: 0 0 10px; }
+.error-detail-panel dl > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.error-detail-panel dt { color: #666; }
+.error-detail-panel dd { margin: 0; }

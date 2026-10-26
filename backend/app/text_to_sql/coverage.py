@@ -55,7 +55,8 @@ def validate_plan_coverage(plan: QueryPlan, requirement: EvidenceCoverageRequire
     with diagnostic_stage("plan_coverage_validation"):
         record_facts(coverage_requirement="full_entity_classification")
         if (
-            plan.where
+            plan.grouping != "entity"
+            or plan.where
             or plan.having
             or plan.filters
             or plan.limit is not None

@@ -1,5 +1,6 @@
 """Read-only SQL execution with transaction timeout and bounded results."""
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -7,7 +8,7 @@ from typing import Any
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.core.errors import SqlExecutionError
+from app.core.errors import ErrorContext, SqlExecutionError
 from app.text_to_sql.schema_context import BUSINESS_TIME_ZONE
 from app.text_to_sql.validator import ValidatedSql
 
@@ -38,18 +39,27 @@ class SqlExecutor:
                     raw_rows = result.mappings().fetchmany(self._max_rows + 1)
                     if len(raw_rows) > self._max_rows:
                         raise SqlExecutionError(
-                            f"Query exceeded the {self._max_rows}-row response limit"
+                            f"Query exceeded the {self._max_rows}-row response limit",
+                            error_context=ErrorContext(validation_branch="row_limit"),
                         )
                     return [
-                        {key: _json_safe(value) for key, value in row.items()}
-                        for row in raw_rows
+                        {key: _json_safe(value) for key, value in row.items()} for row in raw_rows
                     ]
                 finally:
                     transaction.rollback()
         except SqlExecutionError:
             raise
         except SQLAlchemyError as exc:
-            raise SqlExecutionError("The validated query could not be executed") from exc
+            state = getattr(getattr(exc, "orig", None), "sqlstate", None)
+            raise SqlExecutionError(
+                "The validated query could not be executed",
+                error_context=ErrorContext(
+                    validation_branch="database_error",
+                    sqlstate=state
+                    if isinstance(state, str) and re.fullmatch(r"[0-9A-Z]{5}", state)
+                    else None,
+                ),
+            ) from exc
 
 
 def _json_safe(value: Any) -> Any:

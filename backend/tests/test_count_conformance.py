@@ -140,8 +140,8 @@ def test_grounding_uses_count_provenance_not_a_misleading_business_label():
         Mock(generate=Mock(return_value=sql)), validator(), executor, gateway
     ).run("How many rows?")
     gateway.generate_text.assert_not_called()
-    assert '"total_orders": số giá trị khác NULL' in result.answer
-    assert "chưa có bằng chứng số dòng nguồn" in result.answer
+    assert "0 giá trị có dữ liệu" in result.answer
+    assert "bản ghi" not in result.answer
 
 
 @pytest.mark.parametrize(

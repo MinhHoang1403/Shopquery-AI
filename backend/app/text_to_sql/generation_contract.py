@@ -3,6 +3,7 @@
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 from app.text_to_sql.query_plan import (
     ExpressionOperation,
@@ -12,6 +13,13 @@ from app.text_to_sql.query_plan import (
     PlanFilter,
     PlanSort,
     QueryPlan,
+)
+
+GENERATION_INSTRUCTIONS = (
+    "\nReturn the flat GenerationDecision schema: outcome=query with an empty reason; "
+    "zero limit and empty where/having mean absent. Every expression has value='' and "
+    "value_type=none unless it is a literal. For unsupported, give reason and make "
+    "source/where/having empty, limit=0, and all arrays empty. No enclosing plan object."
 )
 
 
@@ -53,6 +61,7 @@ class GenerationDecision(BaseModel):
     outcome: Literal["query", "unsupported"]
     reason: str = Field(max_length=300)
     source: str
+    grouping: Literal["entity", "category"] = "entity"
     fields: list[GenerationField] = Field(max_length=30)
     expressions: list[GenerationExpression] = Field(max_length=80)
     filters: list[PlanFilter] = Field(max_length=30)
@@ -66,10 +75,12 @@ class GenerationDecision(BaseModel):
     @model_validator(mode="after")
     def validate_outcome(self) -> "GenerationDecision":
         if self.outcome == "query" and self.reason:
-            raise ValueError("A query cannot include an unsupported reason")
+            raise PydanticCustomError(
+                "outcome_conflict", "A query cannot include an unsupported reason"
+            )
         if self.outcome == "unsupported":
             if not self.reason.strip():
-                raise ValueError("Unsupported needs a reason")
+                raise PydanticCustomError("outcome_missing", "Unsupported needs a reason")
             if any(
                 (
                     self.source,
@@ -84,7 +95,7 @@ class GenerationDecision(BaseModel):
                     self.having,
                 )
             ):
-                raise ValueError("Unsupported outcome cannot contain a query")
+                raise PydanticCustomError("outcome_conflict", "Unsupported cannot contain a query")
         return self
 
     def decision(self) -> PlanDecision:
@@ -110,6 +121,7 @@ class GenerationDecision(BaseModel):
         return PlanDecision(
             plan=QueryPlan(
                 source=self.source,
+                grouping=self.grouping,
                 fields=[PlanField(**field.model_dump()) for field in self.fields],
                 expressions=[node.expression() for node in self.expressions],
                 filters=self.filters,

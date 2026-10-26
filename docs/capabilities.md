@@ -7,7 +7,11 @@ sorting/top-N, thời gian và NULL/zero/Decimal. Uploaded workspace mặc đị
 bảng; JOIN opt-in giữ tên `SQL_JOIN_V1_ENABLED`.
 
 JOIN hai/ba bảng cần một/hai approved relations và revision/key proof hợp lệ.
-Backend kiểm exact ON, fact → dimension, uniqueness/no fanout, GROUP BY entity key.
+Backend kiểm exact ON, fact → dimension, uniqueness/no fanout. Mặc định GROUP BY
+entity key; typed grouping=category giữ đúng các category được yêu cầu. Category
+JOIN chỉ nhận direct non-identity columns, projection và GROUP BY khớp chính xác;
+không thêm entity IDs làm thay đổi mức tổng hợp. KPI classification vẫn dùng entity
+coverage, không chuyển sang category. Không mở many-to-many hoặc dimension measures.
 Chain/star ba bảng chỉ aggregate fact gốc. Shared-dimension two-fact, many-to-many,
 composite/outer/self joins, chu trình và đường mơ hồ bị từ chối.
 

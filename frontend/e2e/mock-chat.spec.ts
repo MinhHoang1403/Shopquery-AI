@@ -594,6 +594,24 @@ test("selects models, preserves attribution and restores a fallback conversation
   await page.screenshot({ path: testInfo.outputPath("model-selector-fallback.png"), fullPage: true });
 });
 
+test("compact error details preserve diagnostics and keyboard access", async ({ page }) => {
+  const code = "a".repeat(32);
+  await installApi(page, { response: { answer: "Truy vấn không hợp lệ.", error: "Truy vấn không hợp lệ.", route: null,
+    rows: [], sql: null, error_context: { error_category: "sql_validation", attempted_route: "SQL", correlation_id: code } } });
+  await openApp(page);
+  const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
+  await input.fill("Kiểm tra lỗi"); await input.press("Enter");
+  const details = page.getByRole("button", {name: "Chi tiết lỗi"});
+  await expect(details).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText(code, {exact:true})).toHaveCount(0);
+  await details.focus(); await page.keyboard.press("Enter");
+  await expect(details).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText(code, {exact:true})).toBeVisible();
+  await expect(page.getByText("Truy vấn không hợp lệ.", {exact:true})).toHaveCount(1);
+  await expectNoPageOverflow(page);
+  await details.click(); await expect(page.getByText(code, {exact:true})).toHaveCount(0);
+});
+
 test("renders long Markdown answers without unsafe markup or horizontal page overflow", async ({ page }, testInfo) => {
   const url = `https://example.com/policy/${"chi-tiet-".repeat(24)}`;
   const answer = [
@@ -606,7 +624,7 @@ test("renders long Markdown answers without unsafe markup or horizontal page ove
     "| Sản phẩm | Số lượng | Danh mục | Chính sách |\n| --- | --- | --- | --- |\n| Áo linen mẫu | 42 | Thời trang | Đối chiếu điều kiện đổi trả |",
     '[Liên kết bị chặn](javascript:alert%281%29)\n\n<script>window.markdownExecuted = true</script>\n\n![Mô tả ảnh](https://example.com/tracker.png)',
   ].join("\n\n");
-  await installApi(page, { response: { answer } });
+  await installApi(page, { response: { answer, rows: [] } });
   await openApp(page);
   const input = page.getByLabel("Nhập câu hỏi cho ShopQuery AI");
   await input.fill("**Câu hỏi nguyên văn** <script>không thực thi</script>");

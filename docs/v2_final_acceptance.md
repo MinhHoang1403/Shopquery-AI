@@ -5,6 +5,59 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## SQL category repair and explicit Knowledge contract — source checkpoint, live pending
+
+Read root AGENTS.md (no nested files), deployment/current acceptance/capabilities;
+kept one main/8080 and protected database. Original hotel errors258/272 reached
+sql_execution;274/278/280 were Knowledge query-outcome failures in binding.
+Their original model plans/compiled SQL/driver exceptions were not persisted:
+ORIGINAL_PAYLOAD_UNAVAILABLE, no fabricated reconstruction presented as original.
+
+A reconstructed typed category query on actual dataset16 proves a backend defect:
+bind_approved_grain silently adds hotel and room IDs to category GROUP BY. It compiles
+but SqlExecutor exceeds current200row response cap (not a proven PostgreSQL driver
+error; SQLSTATE absent). Independent READ ONLY oracle groups by area/room class:
+12pairs,200bookings per pair,2400total,638885507.75exact total. A separate typed
+category mode now preserves requested groups; AST proof requires direct projected
+non-identity group columns exactly matching GROUP BY, while approved N:1 joins,
+root fact measures and count/grain/coverage checks remain. Defaultentity still adds
+and requires stable identity. KPI coverage rejects category mode. No row cap increase.
+Category unit reproduction failed before; core contracts after correction PASS.
+
+Binding now reports bounded branch codes for unknown source/relationship/reference,
+duplicates, missing/ambiguous paths, multiple facts, alias collision and bound contract.
+No fuzzy reference mapping. Executor distinguishes row_limit from database_error and
+retains only a validated SQLSTATE, never raw driver messages/parameters. Hotel room
+filter failures were Knowledge binding errors; a valid >100 typed filter is tested
+without unnecessary joins. Old model reference errors remain unrecoverable; no
+unsupported claim that a backend numeric filter was inherently broken.
+
+Knowledge planning uses the existing GenerationDecision with explicit query/unsupported
+outcome, strict schema and deterministic conversion to the same internal PlanDecision/
+QueryPlan. Router/RAG schemas unchanged. The post-parse XOR invariant was not encoded
+by the old nested wire schema: HTTP200/stop can still violate it. Both conflict/missing
+internal outcomes now have distinct typed error branches. The shared flat contract
+removes the implicit outcome representation; contradictory/missing/unknown outcomes
+still reject without repair/fallback. This is not a live reliability claim or proof
+that nested refs/anyOf were unsupported by the server. No paid schema-variant search.
+
+SQL answers now use deterministic neutral Vietnamese summaries with lossless numeric
+display; one rows table in evidence, no extra generation. No currency/unit inferred
+from aliases alone; unverified business labels use generic wording. Decimal/zero/NULL
+and raw JSON rows retained. Error UI shows one compact summary and accessible details
+with safe metadata/copy code. Old Markdown still renders when no structured rows exist;
+when rows exist their canonical table is shown once. Preview cells retain original form.
+
+Local targeted source checks:388 backend tests and79 frontend tests PASS; lint/typecheck/
+production build PASS. Exact-head CI PostgreSQL/provider/category and responsive mock
+E2E pending at this checkpoint. No full historical golden/BGE tests or paid calls.
+New approved live window:6 questions (Gemini hotel category/filter; Knowledge energy
+count+sum/JOIN/RAG/Hybrid),12generation/4query/0document embeddings,1attempt/no retry/
+fallback, stop on blocker. No paid diagnostic or extra follow-up. Runtime unchanged
+until reviewed images and cutover approval. Gemini default/fallbackOFF/gateON/GuestOFF.
+Private evidence:sql-repair-20261026 (original metadata, reconstructed oracle, before/
+after regressions). Paused demo/untracked maintenance fixture remains untouched.
+
 ## Current result — PARTIAL_KNOWLEDGE_SQL_FAILED / ROOT_CAUSE_UNRESOLVED
 
 Application source `e49f838e71ce902ae8532dd1034694d08aaa7aa6` is deployed API-only,

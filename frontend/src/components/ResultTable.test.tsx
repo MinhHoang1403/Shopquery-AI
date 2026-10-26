@@ -10,7 +10,7 @@ describe("lossless SQL result cells", () => {
     const wireRows = JSON.parse(JSON.stringify(values.map((value) => ({ amount: value }))));
     render(<ResultTable rows={wireRows} />);
     const cells = screen.getAllByRole("row").slice(1).map((row) => within(row).getByRole("cell").textContent);
-    expect(cells).toEqual(["12345678901234567890.12", "0.000000000000000000000002", "0.00", "—", "0", "4", "9007199254740993"]);
+    expect(cells).toEqual(["12.345.678.901.234.567.890,12", "0,000000000000000000000002", "0,00", "—", "0", "4", "9007199254740993"]);
   });
 
   it("preserves business COUNT labels and row/value counts after a history wire roundtrip", () => {
@@ -21,7 +21,8 @@ describe("lossless SQL result cells", () => {
     rerender(<ResultTable rows={JSON.parse(JSON.stringify(rows))} />);
     expect(labels()).toEqual(["entity_id", "delivery_count", "present_values", "Đếm", "total"]);
     const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-    expect(cells.map((cell) => cell.textContent)).toEqual(["A", "7", "4", "0", "0.00"]);
+    expect(cells.map((cell) => cell.textContent)).toEqual(["A", "7", "4", "0", "0,00"]);
+    expect(rows[0].total).toBe("0.00");
     expect(rows[0].delivery_count).toBe(7);
     expect(rows[0].present_values).toBe(4);
   });

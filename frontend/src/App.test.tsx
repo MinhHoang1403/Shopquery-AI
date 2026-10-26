@@ -307,7 +307,9 @@ describe("ShopQuery workspace", () => {
     const input = await screen.findByLabelText("Nhập câu hỏi cho ShopQuery AI");
     await waitFor(() => expect(input).not.toBeDisabled());
     await user.type(input, "Top sản phẩm{Enter}");
-    expect(await screen.findByRole("alert")).toHaveTextContent("Knowledge tạm thời không khả dụng.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Chưa thể hoàn tất truy vấn này.");
+    await user.click(screen.getByRole("button", {name:"Chi tiết lỗi"}));
+    expect(screen.getByText("Knowledge tạm thời không khả dụng.")).toBeVisible();
     expect(document.querySelector(".model-attribution")).not.toBeInTheDocument();
     expect(screen.queryByText(/Đã chuyển từ Knowledge sang Gemini/)).not.toBeInTheDocument();
   });

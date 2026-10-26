@@ -4,7 +4,7 @@ from itertools import combinations
 
 from pydantic import ValidationError
 
-from app.core.errors import SqlUnsupportedError, SqlValidationError
+from app.core.errors import ErrorContext, SqlUnsupportedError, SqlValidationError
 from app.text_to_sql.compiler import SchemaReferences
 from app.text_to_sql.join_policy import resolve_join_tree
 from app.text_to_sql.query_plan import PlanField, QueryPlan
@@ -13,18 +13,41 @@ AGGREGATES = {"sum", "avg", "min", "max", "row_count", "value_count"}
 
 
 def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryPlan:
-    try:
-        selected = [references.relationships[key] for key in plan.relationships]
-        requested_source = references.tables[plan.source]
-    except KeyError as exc:
-        raise SqlValidationError("Unknown source or relationship reference") from exc
+    def context(branch: str) -> ErrorContext:
+        return ErrorContext(
+            origin_stage="plan_binding",
+            phase="compilation",
+            error_category="sql_validation",
+            response_outcome="query",
+            validation_branch=branch,
+        )
+
+    if plan.source not in references.tables:
+        raise SqlValidationError(
+            "Unknown source or relationship reference", error_context=context("unknown_source")
+        )
+    if any(key not in references.relationships for key in plan.relationships):
+        raise SqlValidationError(
+            "Unknown source or relationship reference",
+            error_context=context("unknown_relationship"),
+        )
+    selected = [references.relationships[key] for key in plan.relationships]
+    requested_source = references.tables[plan.source]
     if len(set(plan.relationships)) != len(plan.relationships):
-        raise SqlValidationError("Duplicate relationship requirements")
+        raise SqlValidationError(
+            "Duplicate relationship requirements", error_context=context("duplicate_relationship")
+        )
     refs = set(plan.group_by)
     refs.update(field.reference for field in plan.fields if field.reference)
     refs.update(item.reference for item in plan.filters)
-    refs.update(item.field for item in plan.sort)
     refs.update(arg for node in plan.expressions for arg in node.arguments)
+    issued = set(references.columns) | {f"e{i}" for i in range(len(plan.expressions))}
+    aliases = {field.alias for field in plan.fields}
+    if refs - issued or any(item.field not in issued | aliases for item in plan.sort):
+        raise SqlValidationError(
+            "Unknown column or expression reference", error_context=context("unknown_reference")
+        )
+    refs.update(item.field for item in plan.sort)
     tables = {references.columns[ref][0] for ref in refs if ref in references.columns}
     tables.add(requested_source)
     tables.update(table for edge in selected for table in (edge.source_table, edge.target_table))
@@ -46,6 +69,7 @@ def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryP
             "Measures require different fact grains",
             code="join_grain",
             grain_reason="multiple_fact_measures",
+            error_context=context("multiple_fact_measures"),
         )
     fact = next(iter(measures)) if measures else requested_source
     tables.add(fact)
@@ -76,13 +100,17 @@ def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryP
             if root == fact and tables <= names:
                 candidates.append(path)
     if len(candidates) != 1:
-        raise SqlUnsupportedError("No unique approved fact path", code="join_graph")
+        raise SqlUnsupportedError(
+            "No unique approved fact path",
+            code="join_graph",
+            error_context=context("missing_path" if not candidates else "ambiguous_path"),
+        )
     path = candidates[0]
     fields, groups = list(plan.fields), list(plan.group_by)
     aggregated = any(node.operation in AGGREGATES for node in plan.expressions) or any(
         field.aggregate for field in fields
     )
-    if aggregated:
+    if aggregated and plan.grouping == "entity":
         dimension_refs = set(groups) | {field.reference for field in fields if not field.aggregate}
         dimension_tables = {
             references.columns[ref][0] for ref in dimension_refs if ref in references.columns
@@ -100,7 +128,10 @@ def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryP
             if not any(field.reference == key for field in fields):
                 alias = edge.target_column
                 if any(field.alias == alias for field in fields):
-                    raise SqlValidationError("Identity output alias collision")
+                    raise SqlValidationError(
+                        "Identity output alias collision",
+                        error_context=context("identity_alias_collision"),
+                    )
                 fields.append(PlanField(reference=key, alias=alias))
     try:
         return QueryPlan.model_validate(
@@ -115,4 +146,6 @@ def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryP
             }
         )
     except ValidationError as exc:
-        raise SqlValidationError("Bound plan exceeds the query contract") from exc
+        raise SqlValidationError(
+            "Bound plan exceeds the query contract", error_context=context("bound_contract")
+        ) from exc

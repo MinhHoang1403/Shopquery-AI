@@ -41,7 +41,7 @@ def test_real_provider_plan_through_authenticated_factory(monkeypatch, provider,
         assert isinstance(service._sql_pipeline._planner, QueryPlanner)
         assert isinstance(service._sql_pipeline._compiler, QueryCompiler)
         assert len(calls) == 2
-        assert ("PlanDecision" if provider == "knowledge" else "GenerationDecision") in json.dumps(
+        assert "GenerationDecision" in json.dumps(
             json.loads(calls[1].content)
         )
     finally:

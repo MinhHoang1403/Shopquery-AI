@@ -1,6 +1,7 @@
 """AST-based validator for the supported read-only PostgreSQL subset."""
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from sqlglot import exp, parse
 from sqlglot.errors import ParseError
@@ -91,7 +92,9 @@ class SqlValidator:
         self._column_types = column_types or {}
         self._join_v1_enabled = join_v1_enabled
 
-    def validate(self, sql: str) -> ValidatedSql:
+    def validate(
+        self, sql: str, *, grouping: Literal["entity", "category"] = "entity"
+    ) -> ValidatedSql:
         with diagnostic_stage("sql_parse_error"):
             if not sql.strip():
                 raise SqlValidationError("SQL is empty")
@@ -130,10 +133,13 @@ class SqlValidator:
                             self._column_types,
                             self._table_columns,
                             normalize_counts=normalize,
+                            grouping=grouping,
                         )
                         metrics = tree.count_metrics
                     else:
-                        relation, metrics = self._validate_two_table_join(root, aliases, normalize)
+                        relation, metrics = self._validate_two_table_join(
+                            root, aliases, normalize, grouping=grouping
+                        )
                     if normalize:
                         counts = metrics
                     elif metrics != counts:
@@ -168,6 +174,8 @@ class SqlValidator:
         root: exp.Select,
         aliases: dict[str, str],
         normalize: bool = True,
+        *,
+        grouping: Literal["entity", "category"] = "entity",
     ) -> tuple[ApprovedJoin, tuple[CountMetric, ...]]:
         try:
             relation, counts = validate_uploaded_join(
@@ -177,6 +185,7 @@ class SqlValidator:
                 self._column_types,
                 self._table_columns,
                 normalize_counts=normalize,
+                grouping=grouping,
             )
         except SqlUnsupportedError as exc:
             if exc.code != "join_direction":
@@ -196,6 +205,7 @@ class SqlValidator:
                 self._column_types,
                 self._table_columns,
                 normalize_counts=normalize,
+                grouping=grouping,
             )
         return relation, counts
 

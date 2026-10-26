@@ -95,6 +95,25 @@ class ErrorContext(BaseModel):
     catalog_column_count: int | None = Field(default=None, ge=0, le=100000)
     approved_relationship_count: int | None = Field(default=None, ge=0, le=100000)
     model_reason_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    validation_branch: (
+        Literal[
+            "unknown_source",
+            "unknown_relationship",
+            "duplicate_relationship",
+            "unknown_reference",
+            "multiple_fact_measures",
+            "missing_path",
+            "ambiguous_path",
+            "identity_alias_collision",
+            "bound_contract",
+            "outcome_conflict",
+            "outcome_missing",
+            "row_limit",
+            "database_error",
+        ]
+        | None
+    ) = None
+    sqlstate: str | None = Field(default=None, pattern=r"^[0-9A-Z]{5}$")
     candidate_count: int | None = Field(default=None, ge=0, le=1000000)
     verified_policy_count: int | None = Field(default=None, ge=0, le=1000000)
     retrieved_chunk_count: int | None = Field(default=None, ge=0, le=1000000)
@@ -148,6 +167,8 @@ class ErrorContext(BaseModel):
             "extra_forbidden",
             "literal_error",
             "value_error",
+            "outcome_conflict",
+            "outcome_missing",
             "json_invalid",
             "string_type",
             "int_type",
@@ -173,7 +194,10 @@ def validation_context(exc: ValidationError) -> dict:
     clean = ErrorContext(
         validation_location=list(details["loc"])[:12], validation_type=details["type"]
     )
-    return clean.model_dump(include={"validation_location", "validation_type"})
+    result = clean.model_dump(include={"validation_location", "validation_type"})
+    if details["type"] in {"outcome_conflict", "outcome_missing"}:
+        result["validation_branch"] = details["type"]
+    return result
 
 
 def provider_category(status: int) -> ErrorCategory:
