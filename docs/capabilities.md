@@ -36,6 +36,13 @@ INNER fact key có thể row-equivalent. SUM/AVG NULL không đổi thành zero.
 executor là `Asia/Ho_Chi_Minh`; boundaries giữ offset và khoảng `>= start AND < end`.
 Không writes, CTE/subquery/window/locks hoặc hàm ngoài allowlist.
 
+Deployed26/10 inline results dùng structured rows; scalar/count+sum được diễn đạt
+deterministic, không thêm generation call hoặc suy đơn vị từ alias. Numeric display
+chỉ opt-in theo compiled type/aggregate metadata; identifiers/unknown legacy strings
+giữ nguyên. Detail/SQL/sources vẫn mở được; kết quả lớn phân trang20, SQL cap200 giữ.
+Conversion diagnostics phân biệt literal/non-literal, QueryPlan bounds và final
+contract validation bằng bounded safe codes; original provider payload không log.
+
 Production dùng typed QueryPlan: +/−/×/÷ numeric, SUM/AVG/MIN/MAX một bảng,
 AND/OR, IN/NULL, GROUP BY, SUM HAVING, sort/limit và typed temporal ranges.
 Day/month/year grouping và YYYY-MM/YYYY-MM-DD formatting dùng business timezone.

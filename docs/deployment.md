@@ -20,10 +20,25 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-Current API source `0656765c86f98de7f315a6e11bb43e7aa7a9c0ac`, digest `6994abd7145482c2e83a95ea09e8cb2dd872ecc550a534f5109ad10b204c1b3e`.
-Current Web source `fd1f5109202daa15cb8368e1f248f1c974248e3b`, digest `127da3e8b7b1d1885bd3a8457dbf78ae1935d3add141510a2037362ff5fb30d0`.
+Current API/Web source `08d71b9020bafd76a131d48733a6ba8fb466e7bd`.
+API digest `2be8945280dbb710f287209ecead2731a9b81b96050c5ed65ef5a3b9ecbceb5d`.
+Web digest `03f83efc5f4b46452f20baa7a82a16c7289662cbdffa701b8396ac4733dd0fb3`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
+
+26/10/2026 15:22–15:23 operator-approved API/Web cutover: bounded conversion
+diagnostics và typed inline result presentation. CI40291179613(main/testad087dcd)
+PASS561backend/119PG/85frontend/125mockE2E, application bytes khớp08d71b9.
+Strict87modules/health/Nginx syntax+graceful reload PASS. APIdbea3568/Web7a028386;
+DB511c4f5a/protected volume/image/start time không đổi. Google session/history giữ.
+Live Gemini hotel filter16rows và category12groups/2400/638885507.75 PASS oracle;
+Knowledge COUNT+SUM360/33066538.03 PASS. Knowledge JOIN blocked trước execution tại
+plan_compilation/sql_validation f93ddf2487a14353a848acfbba5bd457; RAG/Hybrid/follow-up
+NOT_RUN, acceptance window đóng theo điều kiện. Không đổi Gemini default,
+fallbackOFF/gateON/GuestOFF/embedding2/768/noBGE. Budget agent9generation, conservative
+13/18 gồm2lượt song song trước cutover;0query/document embeddings, không retry.
+Immediate rollback: API6994abd7/source0656765 và Web127da3e8/sourcefd1f510, private
+contract-repair-20261026/.env.release.before giữ nguyên. Không FULL_PASS/tag.
 
 26/10/2026 14:29 operator-approved API/Web cutover: category grouping repair,
 explicit Knowledge planning wire contract, natural neutral SQL summaries and compact

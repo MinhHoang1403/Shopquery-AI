@@ -3,6 +3,155 @@
 **MAIN CONSOLIDATED — 8080 ACTIVE — GEMINI DEFAULT — ACCEPTANCE PARTIAL — PROVIDER GATE ON**
 
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
+
+## Conversion diagnostics và inline results — deployed 26/10/2026, acceptance PARTIAL
+
+### A. Preflight và phạm vi
+
+Đã đọc root `AGENTS.md` (không có AGENTS.md con), deployment/capabilities và private
+evidence hiện hành. Fresh origin/main lúc bắt đầu là `74b367b6`; không có tracked
+source conflict. Fixture bảo trì untracked được giữ nguyên, không ingest/commit.
+Strict baseline PASS87 modules. Operator đã duyệt cutover mới; hai image08d71b9
+deployed15:22–15:23 Asia/Saigon, strict87modules PASS trên8080. Không đổi DB,
+auth, uploads, relationships, model, provider URL, retry, embedding hoặc gates.
+
+### B. Gemini Q2: điều gì đã và chưa chứng minh
+
+Request gốc `b223559314bf4b86b8eed5804795fc38`, response288: wire validation PASS,
+`contract_conversion/domain_conversion` trước Binder/Compiler/Executor. Original
+JSON và plain ValueError/TypeError branch không được lưu; exact root cause vẫn
+`ROOT_CAUSE_UNRESOLVED`. Không khẳng định model sinh literal/sentinel nào sai.
+
+Một diagnostic Gemini MỚI được duyệt đã chạy đúng một lần cho “Khách sạn nào có
+hơn 100 phòng?”. Wire và `GenerationDecision.decision()` đều PASS; literal BIGINT100
+hợp lệ. Diagnostic chỉ lập plan, không chạy SQL, không binding/SQL PASS assertion.
+Private payload có giới hạn được giữ ngoài Git. Dùng1generation,0embeddings.
+Kết quả này không tái hiện lỗi cũ và không chứng minh lỗi cũ đã biến mất.
+
+UI mới sau cutover trả đúng16IDs/names theo PostgreSQL READ ONLY oracle; correlation
+`ac4ff99003b242e6ac2f91ec924ffed6`, response294. SQL chỉ một bảng, so_phong>100
+nghiêm ngặt, không JOIN; main chat hiển thị đủ16rows. Đây là live success của request
+mới, không phải bằng chứng xác định nhánh exception của request gốc.
+
+Bug đã tái hiện được là mất structural diagnostics:8 test cases FAIL trước sửa
+ở cả Knowledge/Gemini (3 expression branches và fields rỗng). Sau sửa:
+
+- `GenerationExpression.expression()` giữ refusal nhưng phân biệt
+  `literal_type_missing`, `nonliteral_value`, `nonliteral_type`, kèm index/location.
+- `GenerationDecision.decision()` giữ QueryPlan construction loc/type và nhánh
+  `query_plan_contract`; final PlanDecision và adapter validation được phân biệt.
+- `QueryPlan.bounded_expressions()` giữ nguyên limits/logic nhưng dùng safe typed
+  codes `expression_forward_reference`, `expression_depth`, `expression_expansion`.
+- `ErrorContext` chỉ thêm allowlisted bounded metadata; không raw message/input/ctx,
+  prompt, SQL params, documents, physical IDs hoặc provider JSON trong logs/API.
+- Hai adapters dùng cùng wire schema và internal PlanDecision/QueryPlan, không sửa
+  schema/request format, coerce JSON, repair call, SQL fallback hoặc paid retry.
+
+Thiếu source là wire error nếu sai type, unknown/empty source vẫn do Binder từ chối;
+unknown column/relationship và operation arity vẫn do guards hiện có xử lý. Không
+di chuyển semantic authorization sang presentation. Sentinel0/empty, valid numeric
+filter, no JOIN, unsupported/conflict và nested/bounded expression regressions giữ.
+
+### C. Category SQL và hướng dẫn gửi model
+
+Không sửa category binder/compiler/validator rules: exact requested grouping,
+approved N:1, root fact/COUNT provenance, no fanout, owner scope, READ ONLY và cap200
+giữ nguyên. PostgreSQL regression qua hai actual SDK serializers kiểm12category
+pairs/2400facts/từng Decimal sum và filter một bảng độc lập. Live category cũ PASS
+12groups×200/638885507.75. Live mới response296/correlation
+`3cbb7701ca5a4a6392c0d86c8f94aa31` cũng PASS từng dòng oracle hiện hành,12groups,
+2400rows/638885507.75,2JOIN và2GROUP BY columns, không entity IDs thêm sai.
+
+`datasets/context.py` vẫn có legacy SQL-only text cấm category grouping. Truy vết
+cho thấy uploaded Planner dùng typed catalog + generic uploaded business context,
+Router dùng `routing_context`, không gửi đoạn legacy này. Vì không nằm trong request
+path, không sửa prompt và không quy nó thành nguyên nhân. Planner instructions hiện
+có explicit entity/category và guards/capabilities đồng nhất.
+
+### D. Knowledge
+
+Shared GenerationDecision strict schema, typed conversion và invalid-outcome/reference
+regressions được giữ. Live COUNT+SUM response298/correlation
+`2a350b82655e42a1a6764dfad260d2c4` PASS360/33066538.03 theo oracle, không filter
+hoặc unit tự suy. UI hiển thị hai scalar và metadata được persist.
+
+Live JOIN “Cho tôi số phiên và tổng phí theo từng trạm sạc.” FAIL response300,
+correlation `f93ddf2487a14353a848acfbba5bd457`. RouterSQL, Knowledge outcomequery,
+sql_plan_generation (gồm conversion/binding) PASS; `QueryCompiler.compile/_compile`
+thất bại tại `plan_compilation/sql_validation`, trước sql_parse_error/AST validator
+và execution_guard/SqlExecutor. execution_reached=false,0rows, không HTTP503 hoặc
+contract_conversion. Exact compiler sub-branch/plan vẫn UNKNOWN vì metadata hiện
+không lưu plan hay safe compiler exception branch. Không tuyên bố compiler bug hoặc
+model plan sai ở một invariant cụ thể khi chưa có bằng chứng; không vá đoán.
+
+Cửa sổ đóng ngay tại blocker này. RAG/Hybrid/follow-up NOT_RUN, không gửi tiếp dù
+còn ngân sách. Gemini default/fallbackOFF giữ nguyên; Knowledge chưa đủ điều kiện
+promotion. Một COUNT+SUM PASS không chứng minh JOIN/RAG/Hybrid PASS.
+
+### E–F. Trình bày kết quả
+
+`answer.py` dùng đúng structured rows để viết scalar/count+sum và neutral multirow
+intro; không gọi AI cho diễn đạt và không cộng totals/đoán units từ alias. Compiler
+thêm `result_columns` từ binding type, aggregate và registered headers. Approved
+join keys và bare BIGINT có thể là code nên không tự format; unknown legacy metadata
+giữ nguyên string. Numeric Decimal/large integer được format bằng string, NULL khác0.
+Safe generic prettification chỉ là nhãn hiển thị, không chứng minh metric/unit.
+
+Metadata đi qua SqlResult → ChatResult → ChatResponse → JSON history; không migration.
+Hybrid giữ đủ SQL evidence/coverage/classification và thêm `answer_row_indices` chỉ
+sau verification, để main follow-up chỉ hiển thị selected rows, detail vẫn đầy đủ.
+Không dùng indices như bằng chứng policy hoặc thay verified conversation context.
+
+Frontend hiển thị table trực tiếp,12/16rows đầy đủ;200rows phân trang20 ở cả inline
+và detail. Bảng dữ liệu vẫn default đóng; khi mở thay inline, không tạo hai tables.
+Xem SQL/copy, sources/citation, Markdown không có rows và compact ErrorDetails giữ.
+React text escaping, scoped horizontal scroll, numeric right alignment và history
+roundtrip được kiểm. Legacy responses thiếu metadata không đổi nội dung lưu trong DB.
+
+### G. Kiểm chứng
+
+Application source `08d71b9020bafd76a131d48733a6ba8fb466e7bd`; commit `ad087dcd`
+sau đó chỉ cô lập SDK mock transport giữa hai integration scenarios (không đổi
+application build inputs). CI đầu40290883057 có118PG PASS/1FAIL do test harness
+nested-patch dùng lại queue đã hết; không phải provider network hoặc SQL production.
+Đã sửa test, không vá application theo lỗi mock đó.
+
+Local:561backend PASS trước cập nhật assertions persistence cuối;22affected tests
+PASS sau đó. Frontend85unit/lint/typecheck PASS, production build PASS;125mockE2E
+PASS trên1440/1280/768/390/320. Final exact-test-head
+[CI40291179613](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40291179613)
+3/3PASS:561backend/2deselected,119PostgreSQL/2deselected,85frontend unit và125mockE2E;
+lint/typecheck/build PASS. Docs-only commits sau đó không đổi application/test inputs.
+Không chạy full golden/regression/BGE hoặc gửi thêm paid diagnostics.
+
+### H–I. Runtime, budget và trạng thái
+
+Runtime đã triển khai sau operator approval:
+
+- API `sha256:2be8945280dbb710f287209ecead2731a9b81b96050c5ed65ef5a3b9ecbceb5d`.
+- Web `sha256:03f83efc5f4b46452f20baa7a82a16c7289662cbdffa701b8396ac4733dd0fb3`.
+- OCI source revision08d71b9; application inputs khớp mainad087dcd. Private candidate
+  chỉ đổi hai immutable refs; active config đã pin đúng hai refs, rollback giữ.
+- Strict verifier87modules PASS, API/Web8080HTTP200, Nginx syntax/graceful reload PASS.
+  APIdbea3568/Web7a028386; DB511c4f5a/image/start time/volume không recreate. Google
+  session, history reload và ErrorDetails/correlation UI đã kiểm trên8080.
+- Before/after schema/business/docs/vectors/relationships/old history hashes giữ;
+  chỉ chat/history/resource-limit tables được phép phát sinh thay đổi. Hai lượt
+  message290/292 lúc15:19 trước cutover không do agent gửi, compiler refusals trên
+  API cũ; lưu riêng, không ghi chúng thành nghiệm thu image mới.
+- Cửa sổ được duyệt14generation/4query embeddings/0document embeddings, sau đó
+  operator duyệt tăng trần CÙNG cửa sổ lên18generation để tính cả hai lượt song song.
+  Agent dùng1diagnostic+8UIgeneration=9stages/4UI questions; tính bảo thủ thêm4stages
+  cho hai lượt trước cutover là13/18. Query/document embeddings0/0. Mỗi stage1attempt,
+  không retry/fallback; monetary cost/token usage toàn UI chưa được đo. Cửa sổ đóng
+  do blocker, không reuse phần dư. Normal gateON/GuestOFF giữ theo yêu cầu vận hành.
+- `SQL_CONVERSION=ROOT_CAUSE_UNRESOLVED` cho request gốc; diagnostics fix OFFLINE_PASS.
+  `CATEGORY_SQL_REGRESSION=LIVE_PASS`;
+  `KNOWLEDGE_SQL=PARTIAL_COUNT_SUM_PASS_JOIN_BLOCKED`;
+  `KNOWLEDGE_RAG_HYBRID=NOT_RUN_AFTER_BLOCKER`;
+  `NATURAL_ANSWER_UX=LIVE_PASS_SQL,HYBRID_OFFLINE_PASS_LIVE_PENDING`;
+  `RUNTIME_DEPLOYMENT=PASS_8080_ACTIVE`. Không FULL_PASS/release tag.
+
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
 ## SQL category repair / Knowledge contract / UX — PARTIAL, deployed26/10/2026
