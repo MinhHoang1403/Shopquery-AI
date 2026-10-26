@@ -4,10 +4,11 @@ import type { RelationshipRecord } from "../src/types";
 
 for (const mode of ["authenticated", "guest"] as const) {
   test(`${mode}: automatic read-only relationships and bounded table preview`, async ({ page }, info) => {
-    const columns = [{ source_name: "Student ID", name: "student_id", data_type: "TEXT" }];
+    const columns = [{ source_name: "Student ID", name: "student_id", data_type: "TEXT" },
+      ...Array.from({ length: 16 }, (_, index) => ({ source_name: `Cột dữ liệu ${index}`, name: `value_${index}`, data_type: "TEXT" }))];
     const tables = ["payments", "students"].map((name, index) => ({ dataset_table_id: index + 1,
       display_name: name, original_filename: `${name}.csv`, file_type: "csv", sheet_name: null,
-      row_count: index ? 2 : 3, column_count: 1, columns }));
+      row_count: index ? 2 : 3, column_count: columns.length, columns }));
     const dataset = { dataset_id: 7, kind: "uploaded", name: "Synthetic JOIN", tables,
       table_count: 2, document_count: 0, columns: [], created_at: "2026-10-19T00:00:00Z" };
     const status = { ...guestStatus(), default_model: "gemini", sql_join_v1_enabled: true,
@@ -35,7 +36,8 @@ for (const mode of ["authenticated", "guest"] as const) {
       if (path === "/api/datasets/7/documents" || path === "/api/conversations") return route.fulfill({ json: [] });
       if (path === "/api/datasets/7/tables/1/preview") {
         previewReads++; expect(request.method()).toBe("GET");
-        return route.fulfill({ json: { ...tables[0], rows: [{ "Student ID": "Học viên 01" }] } });
+        return route.fulfill({ json: { ...tables[0], rows: [{ "Student ID": "Học viên 01",
+          ...Object.fromEntries(columns.slice(1).map((column) => [column.source_name, "Nội dung dữ liệu dài để kiểm tra cuộn ngang"])) }] } });
       }
       throw new Error(`Unexpected endpoint ${path}`);
     });
@@ -59,6 +61,9 @@ for (const mode of ["authenticated", "guest"] as const) {
       await expect(preview).toHaveAttribute("aria-expanded", "true");
       await expect(page.getByRole("cell", { name: "Học viên 01", exact: true })).toBeVisible();
       expect(previewReads).toBe(1);
+      expect(await page.getByRole("dialog").evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+      const scroll = page.getByRole("region", { name: "Dữ liệu payments", exact: true }).getByRole("region", { name: "Kết quả truy vấn", exact: true });
+      expect(await scroll.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
       await preview.click(); await expect(preview).toHaveAttribute("aria-expanded", "false");
       await preview.click(); expect(previewReads).toBe(1);
     }

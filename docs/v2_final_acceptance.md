@@ -5,7 +5,7 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
-## Upload-to-chat UX — source changes, deployment pending
+## Upload-to-chat UX — deployed, wide-table layout correction pending
 
 Normal chat omits route_hint and uses existing semantic routing; actual route/error
 evidence remains visible. RelationshipPanel only lists valid existing links. Upload
@@ -28,13 +28,31 @@ does not update ready sources. File names supply table names. No auto AI message
 
 Local targeted backend113 tests and Ruff PASS. Frontend75 unit tests, lint,
 typecheck and production build PASS. The six browser cases affected by ambiguous
-file-input labelling passed after an explicit accessible label; exact-head CI and
-isolated PostgreSQL validation are pending. The first PostgreSQL CI run passed the
+file-input labelling passed after an explicit accessible label. Exact-head CI at
+df10688740f945b9b68f240673b74248b260081d passed113 backend,47 PostgreSQL,75 frontend
+and105 mock browser tests; lint/typecheck/build PASS at
+[CI40257811728](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40257811728).
+The first PostgreSQL CI run passed the
 new scoped preview and detector checks but exposed eight stale SQL integration
 expectations for a third provider answer call. Current SQL presentation is already
 deterministic; tests now prohibit text calls and assert exact answer cells instead.
-Production SQL code is unchanged. API/Web runtime8080 is still the previously
-accepted images; this section does not claim deployment or real UI acceptance yet.
+Production SQL code is unchanged. Approved API/Web cutover deployed df10688:
+API sha256:df8dff610cd912e048964ba8350fa1dfc240c2fe948cec013184b97750465741;
+Web sha256:fec296b45cff4119b908560e8e8aa9278f7a1f3bf51f0ac2469fc7748ec3334e.
+Strict verifier86 modules/no source/config drift, health and Google session/history
+reload PASS. Existing Xe dien has3 tables/3 documents/2 automatic verified links.
+UI cell hashes for12 stations,5 plans and25 charging sessions exactly match an
+independent read-only PostgreSQL oracle. No fixture uploads, chat/provider calls.
+All37 table/schema fingerprints preserved except expected auth/rate counters;
+chat history unchanged. Main PostgreSQL container/image/volume retained. During
+interrupted verification all three containers exited0; starting the same containers
+restored8080 without recreation/data changes. DB StartedAt naturally changed.
+
+Live mobile-width inspection exposed modal overflow only with wide table data,
+which the original one-column mock did not exercise. A17-column browser fixture
+reproduced the failure. Setting the workspace grid track to minmax(0,1fr) confines
+overflow to ResultTable. This CSS-only correction requires Web-only deployment;
+API/backend regression results are reused because those inputs are unchanged.
 
 ## SQL evidence coverage and verified conversation — FULL PASS (bounded scope)
 

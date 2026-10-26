@@ -10,12 +10,12 @@ on:
       scope:
         description: Checks to run (reliability avoids unrelated golden/model suites)
         type: choice
-        options: [all, reliability, ux]
+        options: [all, reliability, ux, layout]
         default: reliability
       services:
         description: Services whose source changed
         type: choice
-        options: [all, backend]
+        options: [all, backend, frontend]
         default: all
 
 permissions:
@@ -24,6 +24,7 @@ permissions:
 jobs:
   backend:
     name: Backend quality
+    if: ${{ inputs.services != 'frontend' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,6 +60,7 @@ jobs:
 
   postgres-integration:
     name: PostgreSQL integration
+    if: ${{ inputs.services != 'frontend' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -170,7 +172,13 @@ jobs:
         env:
           SHOPQUERY_E2E_START_SERVER: "1"
           SHOPQUERY_E2E_BASE_URL: http://127.0.0.1:5173
-        run: npm run test:e2e
+          CHECK_SCOPE: ${{ inputs.scope }}
+        run: |
+          if [ "$CHECK_SCOPE" = layout ]; then
+            npx playwright test e2e/relationships-mock.spec.ts
+          else
+            npm run test:e2e
+          fi
       - name: Preserve offline browser diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v7
