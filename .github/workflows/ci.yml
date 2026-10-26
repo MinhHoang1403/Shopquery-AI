@@ -186,7 +186,9 @@ jobs:
           SHOPQUERY_E2E_BASE_URL: http://127.0.0.1:5173
           CHECK_SCOPE: ${{ inputs.scope }}
         run: |
-          if [ "$CHECK_SCOPE" = layout ]; then
+          if [ "$CHECK_SCOPE" = repair ]; then
+            npx playwright test e2e/mock-chat.spec.ts e2e/auth-mock.spec.ts e2e/guest-mock.spec.ts e2e/relationships-mock.spec.ts --timeout=30000 --max-failures=3
+          elif [ "$CHECK_SCOPE" = layout ]; then
             npx playwright test e2e/relationships-mock.spec.ts
           else
             npm run test:e2e

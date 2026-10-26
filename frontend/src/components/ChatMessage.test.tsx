@@ -96,6 +96,11 @@ describe("Assistant content", () => {
     expect(screen.getByRole("cell",{name:"100,00"})).toBeVisible();
   });
 
+  it("does not call a schema mismatch a connectivity outage in fallback notice", () => {
+    render(<ChatMessage entry={{id:"fallback",role:"assistant",text:"Đã hoàn tất.",response:{answer:"Đã hoàn tất.",route:"SQL",sql:"SELECT 1",rows:[],sources:[],error:null,fallback_used:true,requested_model:"inetcloud-knowledge",used_model:"gemini",fallback_reason:"primary_provider_wire_validation"}}} />);
+    expect(screen.getByText(/Đã chuyển từ Knowledge sang Gemini/)).not.toHaveTextContent("không khả dụng");
+  });
+
   it("ignores raw HTML and does not load Markdown images or execute embedded code", () => {
     const { container } = renderAnswer('<script>alert("xss")</script>\n\n<img src="x" onerror="alert(1)">\n\n![Mô tả ảnh](https://example.com/tracker.png)\n\n`<script>not executable</script>`');
     expect(container.querySelector("script, img, iframe")).toBeNull();

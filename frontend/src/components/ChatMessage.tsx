@@ -45,7 +45,7 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
           : <AssistantContent text={text} hideTables={Boolean(entry.response?.rows.length)} />}
         {entry.response?.fallback_used ? (
           <p className="fallback-notice">{entry.response.used_model
-            ? "Đã chuyển từ Knowledge sang Gemini do mô hình chính không khả dụng."
+            ? "Đã chuyển từ Knowledge sang Gemini để hoàn tất yêu cầu."
             : "Đã thử chuyển sang Gemini nhưng chưa thể hoàn tất câu trả lời."}</p>
         ) : null}
         {entry.response ? <ResponseEvidence response={entry.response} /> : null}
