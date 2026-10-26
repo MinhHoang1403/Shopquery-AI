@@ -119,6 +119,27 @@ class ErrorContext(BaseModel):
             "expression_forward_reference",
             "expression_depth",
             "expression_expansion",
+            "projection_grain",
+            "expression_arity",
+            "expression_type",
+            "nested_aggregate",
+            "literal_value",
+            "literal_contract",
+            "column_scope",
+            "output_alias",
+            "count_alias",
+            "where_predicate",
+            "filter_arity",
+            "grouping_expression",
+            "having_predicate",
+            "having_grain",
+            "sort_grain",
+            "sql_rendering",
+            "ast_stability",
+            "provenance_mismatch",
+            "ast_normalization",
+            "compiler_contract",
+            "predicate_reference",
         ]
         | None
     ) = None
@@ -182,6 +203,7 @@ class ErrorContext(BaseModel):
             "expression_forward_reference",
             "expression_depth",
             "expression_expansion",
+            "predicate_reference",
             "json_invalid",
             "string_type",
             "int_type",
@@ -214,6 +236,7 @@ def validation_context(exc: ValidationError) -> dict:
         "expression_forward_reference",
         "expression_depth",
         "expression_expansion",
+        "predicate_reference",
     }:
         result["validation_branch"] = details["type"]
     return result
@@ -356,6 +379,22 @@ class ChatTurnError(ShopQueryError):
 
 class SqlValidationError(ShopQueryError):
     """Raised when generated SQL is outside the supported safe subset."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_context: ErrorContext | None = None,
+        branch: str | None = None,
+    ) -> None:
+        if branch is not None:
+            error_context = ErrorContext(
+                origin_stage="plan_compilation",
+                phase="compilation",
+                error_category="sql_validation",
+                validation_branch=branch,
+            )
+        super().__init__(message, error_context=error_context)
 
 
 class SqlExecutionError(ShopQueryError):

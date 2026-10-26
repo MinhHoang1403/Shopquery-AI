@@ -1,6 +1,7 @@
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 ExpressionOperation = Literal[
@@ -116,8 +117,15 @@ class QueryPlan(BaseModel):
     limit: int | None = Field(default=None, strict=True, ge=1, le=1000)
     relationships: list[str] = Field(default_factory=list, max_length=3)
     expressions: list[PlanExpression] = Field(default_factory=list, max_length=80)
-    where: str | None = None
-    having: str | None = None
+    where: str | None = Field(default=None, max_length=32)
+    having: str | None = Field(default=None, max_length=32)
+
+    @field_validator("where", "having")
+    @classmethod
+    def predicate_reference(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"(?:e\d+|t\d+\.c\d+)", value):
+            raise PydanticCustomError("predicate_reference", "Expected a predicate reference")
+        return value
 
     @model_validator(mode="after")
     def bounded_expressions(self) -> "QueryPlan":

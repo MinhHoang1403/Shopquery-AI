@@ -49,7 +49,7 @@ class GroundingGateway:
         [{"category": "A", "total": 10}, {"category": "B", "total": 5}],
     ],
 )
-def test_grounding_prompt_preserves_empty_null_zero_and_rows(
+def test_deterministic_grounding_preserves_empty_null_zero_and_rows_without_ai(
     rows: list[dict[str, Any]],
 ) -> None:
     gateway = GroundingGateway()
@@ -63,7 +63,12 @@ def test_grounding_prompt_preserves_empty_null_zero_and_rows(
     result = pipeline.run("Tính kết quả")
 
     assert result.rows == rows
-    assert "Treat numeric zero as a real result" in gateway.prompt
-    assert "a null value is not zero" in gateway.prompt
-    assert "If matched_row_count is zero" in gateway.prompt
-    assert "If no count is present, do not invent" in gateway.prompt
+    assert gateway.prompt == ""
+    if not rows:
+        assert "Không tìm thấy" in result.answer
+    elif len(rows) == 1 and rows[0].get("total", 1) is None:
+        assert "Chưa có dữ liệu" in result.answer
+    elif len(rows) > 1:
+        assert "2 kết quả" in result.answer
+    else:
+        assert result.answer

@@ -150,6 +150,33 @@ def current_correlation_id() -> str | None:
     return trace.correlation_id if trace else None
 
 
+def record_provider_call(kind: str) -> None:
+    """Count logical SDK operations, including failures; retries are SDK configuration."""
+    trace = _trace.get()
+    if trace is not None and kind in {
+        "generation_calls",
+        "query_embedding_calls",
+        "document_embedding_calls",
+    }:
+        trace.facts[kind] = min(10000, trace.facts.get(kind, 0) + 1)
+
+
+def record_provider_tokens(usage: object) -> None:
+    trace = _trace.get()
+    if trace is None or usage is None:
+        return
+    for key, google_name, chat_name in (
+        ("input_tokens", "prompt_token_count", "input_tokens"),
+        ("output_tokens", "candidates_token_count", "output_tokens"),
+        ("total_tokens", "total_token_count", "total_tokens"),
+    ):
+        value = (
+            usage.get(chat_name) if isinstance(usage, dict) else getattr(usage, google_name, None)
+        )
+        if type(value) is int and 0 <= value <= 10000000:
+            trace.facts[key] = min(100000000, trace.facts.get(key, 0) + value)
+
+
 def attach_error_context(exc: ShopQueryError, stage: str = "request") -> ErrorContext:
     trace = _trace.get()
     context = exc.error_context

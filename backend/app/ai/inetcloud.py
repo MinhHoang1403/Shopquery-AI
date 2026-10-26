@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app.ai.gemini import StructuredModel
 from app.core.config import Settings
+from app.core.diagnostics import record_provider_call, record_provider_tokens
 from app.core.errors import (
     TRANSIENT_PROVIDER_STATUSES,
     ConfigurationError,
@@ -133,8 +134,9 @@ class InetCloudGateway:
         )
 
     def _invoke(self, client: Runnable, prompt: str, *, operation: str = "generation") -> Any:
+        record_provider_call("generation_calls")
         try:
-            return client.invoke(
+            response = client.invoke(
                 [
                     (
                         "system",
@@ -146,6 +148,9 @@ class InetCloudGateway:
                     ("human", prompt),
                 ]
             )
+            raw = response.get("raw") if isinstance(response, dict) else response
+            record_provider_tokens(getattr(raw, "usage_metadata", None))
+            return response
         except APITimeoutError as exc:
             raise self._failure("request", "timeout", operation=operation) from exc
         except APIConnectionError as exc:

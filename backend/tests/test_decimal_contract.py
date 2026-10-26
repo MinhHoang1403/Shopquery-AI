@@ -1,6 +1,5 @@
 """Lossless NUMERIC values across execution, preview, API and grounding."""
 
-import json
 from decimal import Decimal
 from typing import Any
 
@@ -92,9 +91,10 @@ def test_executor_to_http_and_grounding_preserve_decimal_strings(
         StaticGenerator(), PassthroughValidator(), StaticExecutor(rows), gateway
     )
     result = pipeline.run("Tổng chính xác?")
-    assert json.dumps([expected], ensure_ascii=False) in gateway.prompt
-    assert "decimal strings" in gateway.prompt
-    assert "without rounding" in gateway.prompt
+    assert result.rows == [expected]
+    assert "12345678901234567890.12" in result.answer
+    assert "0.00" in result.answer and "Chưa có dữ liệu" in result.answer
+    assert gateway.prompt == ""  # SQL presentation no longer makes a paid generation.
 
     class Service:
         def chat(self, question: str) -> ChatResult:

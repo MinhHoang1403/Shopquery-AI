@@ -24,6 +24,7 @@ permissions:
 jobs:
   backend:
     name: Backend quality
+    timeout-minutes: 10
     if: ${{ inputs.services != 'frontend' }}
     runs-on: ubuntu-latest
     defaults:
@@ -154,6 +155,7 @@ jobs:
 
   frontend:
     name: Frontend quality
+    timeout-minutes: 15
     if: ${{ inputs.services != 'backend' }}
     runs-on: ubuntu-latest
     defaults:

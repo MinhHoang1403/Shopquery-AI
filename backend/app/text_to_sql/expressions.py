@@ -51,7 +51,9 @@ class ExpressionCompiler:
         op = node.operation
         if op == "literal":
             if node.arguments or node.value is None or node.value_type is None:
-                raise SqlValidationError("Literal requires one typed value")
+                raise SqlValidationError(
+                    "Literal requires one typed value", branch="literal_contract"
+                )
             value = self._parse_value(node.value, node.value_type)
             return ExpressionBinding(
                 bindparam(f"literal_{index}", value, type_=SQL_TYPES[node.value_type]()),
@@ -59,7 +61,7 @@ class ExpressionCompiler:
                 constant=value,
             )
         if node.value is not None or node.value_type is not None:
-            raise SqlValidationError("Only literals take values")
+            raise SqlValidationError("Only literals take values", branch="literal_contract")
         args = [self.resolve(ref) for ref in node.arguments]
         unary = {
             "sum",
@@ -77,7 +79,7 @@ class ExpressionCompiler:
         }
         if op == "row_count":
             if args:
-                raise SqlValidationError("Row count takes no arguments")
+                raise SqlValidationError("Row count takes no arguments", branch="expression_arity")
             return ExpressionBinding(func.count(), "BIGINT", True)
         if (
             op in unary
@@ -87,17 +89,23 @@ class ExpressionCompiler:
             or op in {"and", "or", "in"}
             and len(args) < 2
         ):
-            raise SqlValidationError("Expression arity is invalid")
+            raise SqlValidationError("Expression arity is invalid", branch="expression_arity")
         aggregate = any(arg.aggregate for arg in args)
         ungrouped = frozenset().union(*(arg.ungrouped for arg in args))
         if op in {"sum", "avg", "min", "max", "value_count"}:
             arg = args[0]
             if aggregate or arg.kind == "BOOLEAN" and op != "value_count":
-                raise SqlValidationError("Invalid aggregate argument or nested aggregate")
+                raise SqlValidationError(
+                    "Invalid aggregate argument or nested aggregate", branch="nested_aggregate"
+                )
             if op in {"sum", "avg"} and arg.kind not in NUMERIC:
-                raise SqlValidationError("Numeric aggregate requires numeric values")
+                raise SqlValidationError(
+                    "Numeric aggregate requires numeric values", branch="expression_type"
+                )
             if op == "value_count" and node.arguments[0].startswith("e"):
-                raise SqlValidationError("Value count requires a direct source column")
+                raise SqlValidationError(
+                    "Value count requires a direct source column", branch="expression_type"
+                )
             function = {
                 "sum": func.sum,
                 "avg": func.avg,
@@ -111,11 +119,13 @@ class ExpressionCompiler:
             return ExpressionBinding(function(arg.sql), kind, True)
         if op in {"add", "subtract", "multiply", "divide"}:
             if any(arg.kind not in NUMERIC for arg in args):
-                raise SqlValidationError("Arithmetic requires numeric arguments")
+                raise SqlValidationError(
+                    "Arithmetic requires numeric arguments", branch="expression_type"
+                )
             left, right = (arg.sql for arg in args)
             if op == "divide":
                 if args[1].constant == 0:
-                    raise SqlValidationError("Literal division by zero")
+                    raise SqlValidationError("Literal division by zero", branch="literal_value")
                 # SUM(x)/COUNT(x) is AVG(x), including empty/all-NULL groups. No derived
                 # COUNT is exposed as a row metric; the existing COUNT contract stays intact.
                 numerator, denominator = (
@@ -141,18 +151,22 @@ class ExpressionCompiler:
             return ExpressionBinding(result, "NUMERIC", aggregate, ungrouped)
         if op in {"and", "or"}:
             if any(arg.kind != "BOOLEAN" for arg in args):
-                raise SqlValidationError("Boolean combination requires predicates")
+                raise SqlValidationError(
+                    "Boolean combination requires predicates", branch="expression_type"
+                )
             sql = (and_ if op == "and" else or_)(*(arg.sql for arg in args))
         elif op in {"is_null", "is_not_null"}:
             sql = args[0].sql.is_(None) if op == "is_null" else args[0].sql.is_not(None)
         elif op in {"eq", "ne", "gt", "gte", "lt", "lte", "in"}:
             kinds = {arg.kind for arg in args}
             if len(kinds) != 1 and not kinds <= NUMERIC:
-                raise SqlValidationError("Comparison types do not match")
+                raise SqlValidationError("Comparison types do not match", branch="expression_type")
             left = args[0].sql
             if op == "in":
                 if any(arg.constant is None for arg in args[1:]):
-                    raise SqlValidationError("IN requires bounded literal values")
+                    raise SqlValidationError(
+                        "IN requires bounded literal values", branch="literal_contract"
+                    )
                 sql = left.in_([arg.sql for arg in args[1:]])
             else:
                 right = args[1].sql
@@ -167,7 +181,9 @@ class ExpressionCompiler:
         else:
             arg = args[0]
             if arg.kind not in TEMPORAL or aggregate:
-                raise SqlValidationError("Date grouping requires a source temporal expression")
+                raise SqlValidationError(
+                    "Date grouping requires a source temporal expression", branch="expression_type"
+                )
             value = (
                 arg.sql.op("AT TIME ZONE")(BUSINESS_TIME_ZONE)
                 if arg.kind == "TIMESTAMPTZ"

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
 
@@ -11,6 +12,7 @@ from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import Settings
+from app.core.diagnostics import record_provider_call, record_provider_tokens
 from app.core.errors import (
     TRANSIENT_PROVIDER_STATUSES,
     ConfigurationError,
@@ -181,8 +183,12 @@ class GeminiGateway:
         )
 
     def _request(self, operation: str, action: Callable[[], Any]) -> Any:
+        if operation in {"generation", "answer generation"}:
+            record_provider_call("generation_calls")
         try:
-            return action()
+            response = action()
+            record_provider_tokens(getattr(response, "usage_metadata", None))
+            return response
         except errors.APIError as exc:
             self._raise_api_error(operation, exc)
         except httpx.TimeoutException as exc:
@@ -240,11 +246,12 @@ class GeminiGateway:
 
     def embed_document(self, title: str, content: str) -> list[float]:
         prepared = f"title: {title or 'none'} | text: {content}"
-        return self._embed_one(prepared)
+        return self._embed_one(prepared, document=True)
 
-    def _embed_one(self, content: str) -> list[float]:
+    def _embed_one(self, content: str, *, document: bool = False) -> list[float]:
         """Embed one logical input; Embedding 2 aggregates multi-part inputs."""
 
+        record_provider_call("document_embedding_calls" if document else "query_embedding_calls")
         response = self._request(
             "embedding",
             lambda: self._client.models.embed_content(
@@ -261,6 +268,8 @@ class GeminiGateway:
             vector = list(response.embeddings[0].values)
             if len(vector) != self._settings.embedding_dimensions:
                 raise ValueError("unexpected embedding dimensionality")
+            if not all(math.isfinite(value) for value in vector):
+                raise ValueError("non-finite embedding")
             return vector
         except Exception as exc:
             raise ModelResponseError(

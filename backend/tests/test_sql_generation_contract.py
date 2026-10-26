@@ -97,7 +97,7 @@ def test_sql_generation_explicitly_defers_unretrieved_document_conditions(
     assert "retrieve required metrics, grouping identifiers" in prompt
     assert "Do not apply document thresholds as SQL filters" in prompt
     assert "infer absent policies" in prompt
-    assert "nonempty unsupported_reason" in prompt
+    assert "nonempty unsupported reason as defined by that schema" in prompt
     assert "never silently drop a required table" in prompt
 
 

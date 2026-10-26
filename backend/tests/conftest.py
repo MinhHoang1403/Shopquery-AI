@@ -60,6 +60,31 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    golden_files = {
+        "test_providers.py",
+        "test_error_contract.py",
+        "test_generation_contract.py",
+        "test_contract_conversion.py",
+        "test_plan_binding.py",
+        "test_compiler_diagnostics.py",
+        "test_category_grouping.py",
+        "test_category_results_integration.py",
+        "test_count_conformance.py",
+        "test_evidence_coverage.py",
+        "test_verified_conversation_contract.py",
+        "test_conversation_context.py",
+        "test_document_upload_integration.py",
+        "test_hybrid_evidence_integration.py",
+        "test_decimal_contract.py",
+        "test_result_presentation.py",
+        "test_reliability_properties.py",
+        "test_reliability_properties_integration.py",
+        "test_plan_security.py",
+        "test_provider_usage.py",
+    }
+    for item in items:
+        if item.path.name in golden_files:
+            item.add_marker(pytest.mark.reliability_golden)
     if os.getenv("RUN_DATABASE_TESTS") == "1":
         return
     skip = pytest.mark.skip(reason="set RUN_DATABASE_TESTS=1 with PostgreSQL running")

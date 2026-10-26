@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from operator import eq, ge, gt, le, lt, ne
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import Column, MetaData, Table, and_, bindparam, func, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import BindTyping
@@ -12,7 +13,12 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.functions import FunctionElement
 from sqlglot import exp, parse_one
 
-from app.core.errors import SqlUnsupportedError, SqlValidationError
+from app.core.errors import (
+    ErrorContext,
+    SqlUnsupportedError,
+    SqlValidationError,
+    validation_context,
+)
 from app.datasets.context import DatasetSqlContext
 from app.datasets.repository import SQL_TYPES
 from app.text_to_sql.answer import ResultColumn, column_label
@@ -96,8 +102,24 @@ class QueryCompiler:
     def compile(self, plan: QueryPlan) -> CompiledQuery:
         try:
             return self._compile(plan)
-        except (KeyError, ValueError, TypeError, InvalidOperation) as exc:
-            raise SqlValidationError("Query plan references or values are invalid") from exc
+        except ValidationError as exc:
+            raise SqlValidationError(
+                "Invalid query plan contract",
+                error_context=ErrorContext(
+                    origin_stage="plan_compilation",
+                    phase="compilation",
+                    error_category="sql_validation",
+                    **{"validation_branch": "compiler_contract", **validation_context(exc)},
+                ),
+            ) from exc
+        except KeyError as exc:
+            raise SqlValidationError(
+                "Unknown authorized reference", branch="unknown_reference"
+            ) from exc
+        except (ValueError, TypeError, InvalidOperation) as exc:
+            raise SqlValidationError(
+                "Query plan references or values are invalid", branch="compiler_contract"
+            ) from exc
 
     def _compile(self, plan: QueryPlan) -> CompiledQuery:
         plan = QueryPlan.model_validate(plan.model_dump())
@@ -109,7 +131,9 @@ class QueryCompiler:
                 code="join_relationship",
             )
         if len(set(plan.relationships)) != len(plan.relationships):
-            raise SqlValidationError("Duplicate relationship requirements")
+            raise SqlValidationError(
+                "Duplicate relationship requirements", branch="duplicate_relationship"
+            )
         edges = tuple(self.references.relationships[key] for key in plan.relationships)
         if not self._default_schema and len(edges) > 2:
             raise SqlUnsupportedError(
@@ -168,7 +192,9 @@ class QueryCompiler:
         def column(reference: str) -> ColumnElement:
             table, name = self.references.columns[reference]
             if table not in tables:
-                raise SqlValidationError("Column is outside the selected JOIN path")
+                raise SqlValidationError(
+                    "Column is outside the selected JOIN path", branch="column_scope"
+                )
             return tables[table].c[name]
 
         def column_kind(reference: str) -> str:
@@ -181,19 +207,23 @@ class QueryCompiler:
         if len(set(aliases)) != len(aliases) or any(
             len(name.encode("utf-8")) > 63 for name in aliases
         ):
-            raise SqlValidationError("Plan output aliases must be unique")
+            raise SqlValidationError("Plan output aliases must be unique", branch="output_alias")
         outputs = {}
         output_bindings = []
         result_columns = []
         for field in plan.fields:
             if field.aggregate == "row_count":
                 if field.reference is not None:
-                    raise SqlValidationError("Row count does not take a value column")
+                    raise SqlValidationError(
+                        "Row count does not take a value column", branch="expression_arity"
+                    )
                 expression = func.count()
                 binding = ExpressionBinding(expression, "BIGINT", True)
             else:
                 if field.reference is None:
-                    raise SqlValidationError("A column reference is required")
+                    raise SqlValidationError(
+                        "A column reference is required", branch="unknown_reference"
+                    )
                 binding = expressions.resolve(field.reference)
                 expression = binding.sql
                 if field.aggregate:
@@ -202,12 +232,16 @@ class QueryCompiler:
                         or binding.kind == "BOOLEAN"
                         and field.aggregate != "value_count"
                     ):
-                        raise SqlValidationError("Invalid nested aggregate")
+                        raise SqlValidationError(
+                            "Invalid nested aggregate", branch="nested_aggregate"
+                        )
                     if field.aggregate in {"sum", "avg"} and binding.kind not in {
                         "BIGINT",
                         "NUMERIC",
                     }:
-                        raise SqlValidationError("A numeric measure is required")
+                        raise SqlValidationError(
+                            "A numeric measure is required", branch="expression_type"
+                        )
                     aggregate = {
                         "sum": func.sum,
                         "avg": func.avg,
@@ -228,7 +262,9 @@ class QueryCompiler:
             if field.alias in {"matched_row_count", "fact_row_count", "fact_value_count"} and (
                 not isinstance(expression, FunctionElement) or expression.name != "count"
             ):
-                raise SqlValidationError("Count aliases require a direct count metric")
+                raise SqlValidationError(
+                    "Count aliases require a direct count metric", branch="count_alias"
+                )
             if self._default_schema and edges:
                 for aggregate in visitors.iterate(expression):
                     if not isinstance(aggregate, FunctionElement) or aggregate.name not in {
@@ -280,7 +316,9 @@ class QueryCompiler:
         if has_aggregate or plan.group_by:
             for reference, binding in output_bindings:
                 if reference not in plan.group_by and not binding.ungrouped <= grouped_columns:
-                    raise SqlValidationError("Projection is outside the grouping grain")
+                    raise SqlValidationError(
+                        "Projection is outside the grouping grain", branch="projection_grain"
+                    )
         source = tables[root]
         for edge in edges:
             source = source.join(
@@ -292,23 +330,29 @@ class QueryCompiler:
         if plan.where:
             predicate = expressions.resolve(plan.where)
             if predicate.kind != "BOOLEAN" or predicate.aggregate or predicate.temporal_transform:
-                raise SqlValidationError("WHERE requires a nonaggregate predicate")
+                raise SqlValidationError(
+                    "WHERE requires a nonaggregate predicate", branch="where_predicate"
+                )
             query = query.where(predicate.sql)
         predicates = []
         for index, condition in enumerate(plan.filters):
             binding = expressions.resolve(condition.reference)
             if binding.aggregate or binding.temporal_transform:
-                raise SqlValidationError("WHERE requires unchanged temporal source columns")
+                raise SqlValidationError(
+                    "WHERE requires unchanged temporal source columns", branch="where_predicate"
+                )
             target = binding.sql
             if condition.operator in {"is_null", "is_not_null"}:
                 if condition.values:
-                    raise SqlValidationError("NULL predicates cannot take values")
+                    raise SqlValidationError(
+                        "NULL predicates cannot take values", branch="filter_arity"
+                    )
                 predicates.append(
                     target.is_(None) if condition.operator == "is_null" else target.is_not(None)
                 )
                 continue
             if not condition.values or (condition.operator != "in" and len(condition.values) != 1):
-                raise SqlValidationError("Filter arity is invalid")
+                raise SqlValidationError("Filter arity is invalid", branch="filter_arity")
             kind = binding.kind
             values = [self._value(value, kind) for value in condition.values]
             parameter = bindparam(
@@ -328,14 +372,20 @@ class QueryCompiler:
         if plan.group_by:
             grouped = [expressions.resolve(ref) for ref in plan.group_by]
             if any(item.aggregate or item.kind == "BOOLEAN" for item in grouped):
-                raise SqlValidationError("Invalid grouping expression")
+                raise SqlValidationError(
+                    "Invalid grouping expression", branch="grouping_expression"
+                )
             query = query.group_by(*(item.sql for item in grouped))
         if plan.having:
             predicate = expressions.resolve(plan.having)
             if predicate.kind != "BOOLEAN" or not predicate.aggregate:
-                raise SqlValidationError("HAVING requires an aggregate predicate")
+                raise SqlValidationError(
+                    "HAVING requires an aggregate predicate", branch="having_predicate"
+                )
             if not predicate.ungrouped <= grouped_columns:
-                raise SqlValidationError("HAVING is outside the grouping grain")
+                raise SqlValidationError(
+                    "HAVING is outside the grouping grain", branch="having_grain"
+                )
             query = query.having(predicate.sql)
         for sort in plan.sort:
             if sort.field in outputs:
@@ -347,7 +397,9 @@ class QueryCompiler:
                     and sort.field not in plan.group_by
                     and (not binding.ungrouped <= grouped_columns)
                 ):
-                    raise SqlValidationError("Sort is outside the grouping grain")
+                    raise SqlValidationError(
+                        "Sort is outside the grouping grain", branch="sort_grain"
+                    )
                 expression = binding.sql
             ordered = expression.desc() if sort.direction == "desc" else expression.asc()
             query = query.order_by(
@@ -365,7 +417,7 @@ class QueryCompiler:
             checked.statement
             != self._validator.validate(checked.statement, grouping=plan.grouping).statement
         ):
-            raise SqlValidationError("Final SQL validation is not stable")
+            raise SqlValidationError("Final SQL validation is not stable", branch="ast_stability")
         parameterized = self._validator.validate(str(compiled), grouping=plan.grouping)
         if self._default_schema and edges:
 
@@ -393,11 +445,15 @@ class QueryCompiler:
             checked.fact_table,
             checked.count_metrics,
         ):
-            raise SqlValidationError("Bound SQL changed validated query provenance")
+            raise SqlValidationError(
+                "Bound SQL changed validated query provenance", branch="provenance_mismatch"
+            )
         if parse_one(str(compiled), read="postgres").sql(dialect="postgres") != (
             parameterized.statement
         ):
-            raise SqlValidationError("Compiled query would require AST normalization")
+            raise SqlValidationError(
+                "Compiled query would require AST normalization", branch="ast_normalization"
+            )
         return CompiledQuery(
             replace(parameterized, statement=str(compiled)),
             dict(compiled.params),
@@ -407,6 +463,13 @@ class QueryCompiler:
 
     @staticmethod
     def _value(value: str, kind: str) -> Any:
+        try:
+            return QueryCompiler._parse_value(value, kind)
+        except (ValueError, TypeError, InvalidOperation, OverflowError) as exc:
+            raise SqlValidationError("Invalid typed literal", branch="literal_value") from exc
+
+    @staticmethod
+    def _parse_value(value: str, kind: str) -> Any:
         if kind == "NUMERIC":
             result = Decimal(value)
             if not result.is_finite():

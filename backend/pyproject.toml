@@ -70,6 +70,7 @@ addopts = "-ra --strict-markers"
 markers = [
     "integration: requires the local PostgreSQL service",
     "live: requires a real Gemini API key",
+    "reliability_golden: consolidated known failure classes and their safe counterparts",
 ]
 
 [tool.ruff]

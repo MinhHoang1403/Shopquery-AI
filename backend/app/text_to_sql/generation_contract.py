@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 from app.core.errors import ContractConversionError, ErrorContext, validation_context
@@ -82,8 +82,15 @@ class GenerationDecision(BaseModel):
     sort: list[PlanSort] = Field(max_length=10)
     limit: int = Field(strict=True, ge=0, le=1000)
     relationships: list[str] = Field(max_length=3)
-    where: str
-    having: str
+    where: str = Field(max_length=32)
+    having: str = Field(max_length=32)
+
+    @field_validator("where", "having")
+    @classmethod
+    def predicate_reference(cls, value: str) -> str:
+        if value:
+            QueryPlan.predicate_reference(value)
+        return value
 
     @model_validator(mode="after")
     def validate_outcome(self) -> "GenerationDecision":

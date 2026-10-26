@@ -41,6 +41,7 @@ def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryP
     refs.update(field.reference for field in plan.fields if field.reference)
     refs.update(item.reference for item in plan.filters)
     refs.update(arg for node in plan.expressions for arg in node.arguments)
+    refs.update(ref for ref in (plan.where, plan.having) if ref is not None)
     issued = set(references.columns) | {f"e{i}" for i in range(len(plan.expressions))}
     aliases = {field.alias for field in plan.fields}
     if refs - issued or any(item.field not in issued | aliases for item in plan.sort):

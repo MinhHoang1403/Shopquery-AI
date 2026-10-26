@@ -140,6 +140,8 @@ dynamic zero denominator and rejects literal zero. SUM(x)/COUNT(x) means AVG(x),
 No aggregate nesting. Uploaded JOIN metrics allow only direct root-fact SUM/AVG and direct
 counts; no aggregate arithmetic, MIN/MAX, dimension measures or COUNT HAVING. For grouping=entity,
 include each dimension entity key in group_by when selecting/grouping its attributes.
+Every selected non-aggregate attribute must also appear in group_by; grouping its key alone
+does not group its displayed name. Uploaded tables have no declared SQL primary-key dependency.
 Use identifiers
 from authorized headers, never infer entity keys or units from examples.
 The catalog's grouping_keys are backend-approved dimension IDs. When grouping dimension entities,

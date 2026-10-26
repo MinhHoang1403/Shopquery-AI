@@ -2,12 +2,10 @@
 
 import json
 
-import httpx
 import pytest
 
 from app.text_to_sql.query_plan import PlanDecision, PlanField, QueryPlan
-from tests.test_gemini import _build_harness
-from tests.test_providers import completion, harness
+from tests.test_plan_providers import gateway_harness, response
 
 
 @pytest.mark.parametrize("provider", ["gemini", "inetcloud-knowledge"])
@@ -24,22 +22,8 @@ def test_sql_draft_schema_survives_both_adapter_serializers(
         unsupported_reason=None if supported else "Synthetic unsupported grain",
     )
     content = expected.model_dump_json()
-    if provider == "gemini":
-        response = httpx.Response(
-            200,
-            json={
-                "candidates": [
-                    {
-                        "content": {"parts": [{"text": content}], "role": "model"},
-                        "finishReason": "STOP",
-                    }
-                ],
-            },
-        )
-        controlled = _build_harness(monkeypatch, [response])
-        gateway, calls = controlled.gateway, controlled.calls
-    else:
-        gateway, calls = harness(monkeypatch, [completion(content)])
+    adapter = "knowledge" if provider == "inetcloud-knowledge" else provider
+    gateway, calls = gateway_harness(monkeypatch, adapter, [response(adapter, content)])
     try:
         actual = gateway.generate_structured("Synthetic plan contract only", PlanDecision)
     finally:
@@ -48,6 +32,5 @@ def test_sql_draft_schema_survives_both_adapter_serializers(
     assert len(calls) == 1
     payload = json.loads(calls[0].content)
     serialized = json.dumps(payload)
-    assert "unsupported_reason" in serialized
-    assert "PlanDecision" in serialized
+    assert "outcome" in serialized and "GenerationDecision" in serialized
     assert "sql" not in PlanDecision.model_fields

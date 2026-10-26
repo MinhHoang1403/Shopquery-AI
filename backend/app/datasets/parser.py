@@ -7,6 +7,7 @@ import io
 import re
 import unicodedata
 import zipfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -101,9 +102,7 @@ def parse_tabular_file(
     if not content:
         raise UploadValidationError("File tải lên đang trống.")
     if len(content) > max_bytes:
-        raise UploadValidationError(
-            f"File vượt quá giới hạn {max_bytes // (1024 * 1024)} MB."
-        )
+        raise UploadValidationError(f"File vượt quá giới hạn {max_bytes // (1024 * 1024)} MB.")
     if extension == ".csv":
         if sheet_name:
             raise UploadValidationError("CSV không hỗ trợ lựa chọn sheet.")
@@ -111,25 +110,28 @@ def parse_tabular_file(
     return _parse_xlsx(safe_filename, content, sheet_name, max_rows, max_columns)
 
 
-def _parse_csv(
-    filename: str, content: bytes, max_rows: int, max_columns: int
-) -> ParsedTable:
+def _csv_records(decoded: str) -> Iterator[list[str]]:
+    try:
+        yield from csv.reader(io.StringIO(decoded, newline=""), strict=True)
+    except csv.Error as exc:
+        raise UploadValidationError("CSV không đúng cấu trúc.") from exc
+
+
+def _parse_csv(filename: str, content: bytes, max_rows: int, max_columns: int) -> ParsedTable:
     try:
         decoded = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise UploadValidationError("CSV phải sử dụng encoding UTF-8.") from exc
     if "\x00" in decoded:
         raise UploadValidationError("CSV chứa ký tự null không hợp lệ.")
-    try:
-        records = list(csv.reader(io.StringIO(decoded, newline=""), strict=True))
-    except csv.Error as exc:
-        raise UploadValidationError("CSV không đúng cấu trúc.") from exc
-    if not records or not records[0]:
+    records = _csv_records(decoded)
+    header = next(records, None)
+    if not header:
         raise UploadValidationError("CSV phải có hàng tiêu đề.")
-    headers = _validate_headers(records[0], max_columns)
+    headers = _validate_headers(header, max_columns)
     rows: list[tuple[Any, ...]] = []
     formula_warning = False
-    for line_number, record in enumerate(records[1:], start=2):
+    for line_number, record in enumerate(records, start=2):
         if len(record) != len(headers):
             raise UploadValidationError(
                 f"Dòng {line_number} có {len(record)} cột, cần đúng {len(headers)} cột."
@@ -180,9 +182,7 @@ def _parse_xlsx(
         dimension = worksheet.calculate_dimension(force=True)
         _, _, sheet_max_column, _ = range_boundaries(dimension)
         if sheet_max_column > max_columns:
-            raise UploadValidationError(
-                f"File vượt quá giới hạn {max_columns} cột dữ liệu."
-            )
+            raise UploadValidationError(f"File vượt quá giới hạn {max_columns} cột dữ liệu.")
         row_iterator = worksheet.iter_rows(values_only=False)
         try:
             header_cells = next(row_iterator)
@@ -198,9 +198,7 @@ def _parse_xlsx(
             if all(value is None or str(value).strip() == "" for value in values):
                 continue
             if len(rows) >= max_rows:
-                raise UploadValidationError(
-                    f"File vượt quá giới hạn {max_rows} dòng dữ liệu."
-                )
+                raise UploadValidationError(f"File vượt quá giới hạn {max_rows} dòng dữ liệu.")
             for cell in cells[: len(headers)]:
                 if cell.data_type == "f":
                     formula_warning = True
@@ -280,9 +278,7 @@ def _validate_headers(raw_headers: list[Any], max_columns: int) -> tuple[str, ..
     return headers
 
 
-def _build_columns(
-    headers: tuple[str, ...], rows: list[tuple[Any, ...]]
-) -> tuple[ColumnSpec, ...]:
+def _build_columns(headers: tuple[str, ...], rows: list[tuple[Any, ...]]) -> tuple[ColumnSpec, ...]:
     used_names: set[str] = set()
     columns: list[ColumnSpec] = []
     for index, header in enumerate(headers):
@@ -304,9 +300,7 @@ def _build_columns(
 
 def _identifier(header: str, position: int) -> str:
     header = header.translate(str.maketrans({"Đ": "D", "đ": "d"}))
-    ascii_name = (
-        unicodedata.normalize("NFKD", header).encode("ascii", "ignore").decode("ascii")
-    )
+    ascii_name = unicodedata.normalize("NFKD", header).encode("ascii", "ignore").decode("ascii")
     identifier = re.sub(r"[^a-zA-Z0-9]+", "_", ascii_name).strip("_").lower()
     if not identifier or identifier[0].isdigit():
         identifier = f"column_{position}"
@@ -359,8 +353,10 @@ def _is_boolean_text(value: Any) -> bool:
 
 
 def _is_integer(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) or (
-        isinstance(value, str) and bool(INTEGER_PATTERN.fullmatch(value.strip()))
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        or (isinstance(value, str) and bool(INTEGER_PATTERN.fullmatch(value.strip())))
     )
 
 
@@ -377,8 +373,10 @@ def _is_datetime(value: Any) -> bool:
 
 
 def _is_date(value: Any) -> bool:
-    return isinstance(value, date) and not isinstance(value, datetime) or (
-        isinstance(value, str) and bool(ISO_DATE_PATTERN.fullmatch(value.strip()))
+    return (
+        isinstance(value, date)
+        and not isinstance(value, datetime)
+        or (isinstance(value, str) and bool(ISO_DATE_PATTERN.fullmatch(value.strip())))
     )
 
 

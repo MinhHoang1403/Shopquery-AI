@@ -23,6 +23,23 @@ def parse(filename: str, content: bytes, **overrides):
     )
 
 
+def test_csv_row_limit_stops_reader_without_materializing_the_rest(monkeypatch):
+    consumed = []
+
+    def records(*args, **kwargs):
+        yield ["Key"]
+        for index in range(100):
+            consumed.append(index)
+            if index > 2:
+                raise AssertionError("Parser materialized rows beyond the response limit")
+            yield [str(index)]
+
+    monkeypatch.setattr("app.datasets.parser.csv.reader", records)
+    with pytest.raises(UploadValidationError, match="giới hạn 2"):
+        parse("bounded.csv", b"Key\n1\n", max_rows=2)
+    assert consumed == [0, 1, 2]
+
+
 def xlsx_bytes(rows: list[list[object]], second_sheet: bool = False) -> bytes:
     workbook = Workbook()
     worksheet = workbook.active

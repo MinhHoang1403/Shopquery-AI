@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.core.errors import ModelResponseError
+from app.core.errors import ContractConversionError, ModelResponseError
 from app.text_to_sql.generation_contract import GenerationDecision
 from app.text_to_sql.query_plan import PlanDecision
 from tests.test_gemini import _build_harness
@@ -75,8 +75,8 @@ def test_native_sdk_wire_is_flat_without_nullable_unions_refs_or_bounds(monkeypa
     ],
 )
 def test_compact_contract_does_not_remove_backend_validation(changes):
-    with pytest.raises(ValidationError):
-        GenerationDecision.model_validate({**wire_plan(), **changes})
+    with pytest.raises((ValidationError, ContractConversionError)):
+        GenerationDecision.model_validate({**wire_plan(), **changes}).decision()
 
 
 def test_invalid_wire_is_one_request_not_a_schema_repair_loop(monkeypatch):
