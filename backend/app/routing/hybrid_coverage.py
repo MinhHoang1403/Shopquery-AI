@@ -54,6 +54,9 @@ def classification_selection(
             rf"(?:theo (?:tài liệu|chính sách)(?: kpi)?,? )?{entity} nào "
             rf"(?P<status>chưa đạt|đạt)(?: kpi)?[?.]?",
             question,
+        ) or re.fullmatch(
+            rf"vậy còn (?:những )?{entity} (?P<status>chưa đạt|đạt)(?: kpi)?[?.]?",
+            question,
         )
         if match:
             return "not_qualified" if match["status"] == "chưa đạt" else "qualified"
