@@ -20,8 +20,8 @@ Tên bảng mở rộng cần thêm cột tên thực thể và một vai trò k
 hoạt TEXT/BIGINT cùng kiểu sau full-data N:1 verification, không NULL/trùng/orphan,
 không ứng viên cạnh tranh hoặc đường nối khác. Score chỉ sắp thứ tự kiểm tra.
 
-Tải bảng mới và nút “Tự tìm liên kết” dùng chung detector. Quét lại không re-ingest,
-không sửa bảng gốc, không gọi AI và không ghi đè liên kết đã có. API owner-scoped
+Tải bảng mới tự chạy detector. UI liên kết chỉ đọc, không gọi discovery khi mở/render.
+Quét lại qua API quản trị không re-ingest, sửa bảng gốc, gọi AI hoặc ghi đè liên kết đã có. API owner-scoped
 `POST /api/datasets/{dataset_id}/relationships/discover` giữ CSRF/quota/dataset lock.
 Mỗi lượt kiểm tối đa20 cặp, ngừng bắt đầu kiểm tiếp sau2 giây, từng SQL statement
 vẫn chịu timeout5 giây. Quét chưa đủ không tự kích hoạt kết quả một phần. Gợi ý cần

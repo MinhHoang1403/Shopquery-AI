@@ -11,6 +11,7 @@ vi.mock("../api", () => ({
   importDataset: vi.fn(), importDatasetTable: vi.fn(), previewDataset: vi.fn(),
   uploadDatasetDocument: vi.fn(),
   getUploadLimits: vi.fn(),
+  getDatasetTablePreview: vi.fn(),
 }));
 
 const workspace: Dataset = {
@@ -44,6 +45,14 @@ async function openManager(deletionDisabled = false) {
 }
 
 describe("workspace deletion", () => {
+  it("does not report document readiness when ingestion fails", async () => {
+    vi.mocked(api.uploadDatasetDocument).mockRejectedValueOnce(new Error("Embedding chưa hoàn tất"));
+    const { user, onImported } = await openManager();
+    await user.upload(screen.getByLabelText(/Thêm PDF, DOCX, TXT hoặc MD/), new File(["policy"], "new.md", { type: "text/markdown" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Embedding chưa hoàn tất");
+    expect(onImported).not.toHaveBeenCalled();
+    expect(screen.queryByText("new.md")).not.toBeInTheDocument();
+  });
   it("requires confirmation and cancellation does not send DELETE", async () => {
     const { user } = await openManager();
     await user.click(screen.getByRole("button", { name: "Xóa bảng Học viên" }));

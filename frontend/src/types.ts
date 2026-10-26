@@ -94,6 +94,10 @@ export interface DatasetDocument {
   created_at: string;
 }
 
+export interface DatasetTablePreview extends DatasetTable {
+  rows: ResultRow[];
+}
+
 export interface Dataset {
   dataset_id: number | null;
   kind: "default" | "uploaded";

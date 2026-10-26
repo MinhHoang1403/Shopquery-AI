@@ -5,6 +5,33 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
+## Upload-to-chat UX — source changes, deployment pending
+
+Normal chat omits route_hint and uses existing semantic routing; actual route/error
+evidence remains visible. RelationshipPanel only lists valid existing links. Upload
+still runs detect_on_upload with unchanged metadata, full-data N:1, NULL/duplicate/
+orphan and ambiguity guards; opening the manager never discovers or confirms links.
+No planner/compiler/Hybrid/context security changes or paid provider calls.
+
+UploadedTable lazily reads 25 imported PostgreSQL rows per expanded table, with
+loading/error/empty/abort states, keyboard toggle, separate delete and horizontal
+scroll. GET /api/datasets/{dataset_id}/tables/{table_id}/preview accepts registry
+IDs and limit1–50 only; owner/dataset scope, reader connection, READ ONLY transaction,
+5s statement timeout and existing preview resource limits apply. Decimal strings,
+NULL/zero, original headers and Unicode survive. No pagination or original-file
+formatting/formula preservation is promised. Metadata loading opts out of the old
+first-table preview via include_preview=false; old API default stays compatible.
+
+Uploading into another workspace starts a blank chat bound to it and preserves old
+history; same-workspace additions keep the current chat. Failed document ingestion
+does not update ready sources. File names supply table names. No auto AI message.
+
+Local targeted backend113 tests and Ruff PASS. Frontend75 unit tests, lint,
+typecheck and production build PASS. The six browser cases affected by ambiguous
+file-input labelling passed after an explicit accessible label; exact-head CI and
+isolated PostgreSQL validation are pending. API/Web runtime8080 is still the previously
+accepted images; this section does not claim deployment or real UI acceptance yet.
+
 ## SQL evidence coverage and verified conversation — FULL PASS (bounded scope)
 
 The actual SQL244/correlation79abb63129e34b1caa1561e8502253d8 established a

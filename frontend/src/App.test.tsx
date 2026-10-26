@@ -232,17 +232,41 @@ afterEach(() => {
 });
 
 describe("ShopQuery workspace", () => {
-  it("sends explicit source selection without changing the original question", async () => {
+  it.each([false, true])("upload updates workspace safely; same conversation workspace=%s", async (sameWorkspace) => {
+    const existing = summary(conversationId, { title: "Lịch sử đã lưu", dataset_id: sameWorkspace ? 7 : null, dataset_name: sameWorkspace ? uploadedDataset.name : defaultDataset.name });
+    const fetch = installApi({ conversations: [existing], datasets: [defaultDataset, uploadedDataset], details: {
+      [conversationId]: { ...existing, messages: [{ message_id: 1, role: "user", content: "Câu hỏi giữ trong lịch sử", response: null, created_at: "2026-10-14T00:00:00Z" }] },
+    } });
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByText("Câu hỏi giữ trong lịch sử");
+    await user.click(screen.getByRole("button", { name: "Quản lý dữ liệu" }));
+    if (!sameWorkspace) await user.click(screen.getByRole("tab", { name: "Quản lý bộ hiện có" }));
+    const file = new File(["Sản phẩm,Doanh thu\nÁo,120000\n"], "sales.csv", { type: "text/csv" });
+    await user.upload(await screen.findByLabelText(/Thêm CSV hoặc XLSX/), file);
+    await screen.findByText("120000");
+    await user.click(screen.getByRole("button", { name: "Thêm bảng" }));
+    await screen.findByText("Đã cập nhật Doanh số 2026 thành công.");
+    await user.click(screen.getByRole("button", { name: "Trò chuyện với dữ liệu" }));
+    expect(screen.getByRole("button", { name: /Chọn bộ dữ liệu.*Doanh số 2026/ })).toBeInTheDocument();
+    if (sameWorkspace) expect(screen.getByText("Câu hỏi giữ trong lịch sử")).toBeInTheDocument();
+    else expect(screen.queryByText("Câu hỏi giữ trong lịch sử")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lịch sử đã lưu" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Nhập câu hỏi cho ShopQuery AI")).toBeEnabled();
+    expect(fetch.mock.calls.some(([url, options]) => String(url).endsWith("/messages") && options?.method === "POST")).toBe(false);
+    expect(fetch.mock.calls.some(([, options]) => options?.method === "DELETE" || options?.method === "PATCH")).toBe(false);
+  });
+  it("uses Auto Routing without asking the user to select a source", async () => {
     const fetch = installApi();
     render(<App />);
     const input = await screen.findByLabelText("Nhập câu hỏi cho ShopQuery AI");
     await waitFor(() => expect(input).toBeEnabled());
-    fireEvent.change(screen.getByRole("combobox", { name: "Nguồn trả lời" }), { target: { value: "SQL" } });
+    expect(screen.queryByRole("combobox", { name: "Nguồn trả lời" })).not.toBeInTheDocument();
     fireEvent.change(input, { target: { value: "Tổng số bản ghi?" } });
     fireEvent.click(screen.getByRole("button", { name: "Gửi câu hỏi" }));
     await screen.findByText("Đây là câu trả lời.");
     const send = fetch.mock.calls.find(([url, options]) => String(url).endsWith("/messages") && options?.method === "POST");
-    expect(JSON.parse(String(send?.[1]?.body))).toMatchObject({ message: "Tổng số bản ghi?", route_hint: "SQL" });
+    expect(JSON.parse(String(send?.[1]?.body))).toMatchObject({ message: "Tổng số bản ghi?" });
+    expect(JSON.parse(String(send?.[1]?.body))).not.toHaveProperty("route_hint");
   });
   it("xóa workspace đang mở sẽ bỏ chat liên quan và trở về dữ liệu mẫu", async () => {
     const existing = summary(conversationId, {

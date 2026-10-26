@@ -6,6 +6,7 @@ import type {
   Dataset,
   DatasetDocument,
   DatasetPreview,
+  DatasetTablePreview,
   HealthResponse,
   ModelId,
   ModelsResponse,
@@ -306,12 +307,11 @@ export async function sendConversationMessage(
   message: string,
   signal?: AbortSignal,
   modelId?: ModelId,
-  routeHint?: Exclude<RouteLabel, "UNSUPPORTED">,
 ): Promise<ConversationSendResponse> {
   const body = await requestJson(`/api/conversations/${conversationId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, model_id: modelId, route_hint: routeHint }),
+    body: JSON.stringify({ message, model_id: modelId }),
     signal,
   });
   if (!isRecord(body) || !isRecord(body.user_message) || !isRecord(body.assistant_message)) {
@@ -336,8 +336,19 @@ export async function createDataset(name: string): Promise<Dataset> {
   }) as Dataset;
 }
 
-export async function getDataset(datasetId: number): Promise<Dataset> {
-  return await requestJson(`/api/datasets/${datasetId}`) as Dataset;
+export async function getDataset(datasetId: number, signal?: AbortSignal): Promise<Dataset> {
+  return await requestJson(`/api/datasets/${datasetId}?include_preview=false`, { signal }) as Dataset;
+}
+
+export async function getDatasetTablePreview(datasetId: number, tableId: number, signal?: AbortSignal) {
+  const body = await requestJson(`/api/datasets/${datasetId}/tables/${tableId}/preview?limit=25`, { signal });
+  if (!isRecord(body) || body.dataset_table_id !== tableId || !Array.isArray(body.rows)
+    || body.rows.length > 25 || !body.rows.every(isRecord) || !Array.isArray(body.columns)
+    || !body.columns.every((column) => isRecord(column) && typeof column.source_name === "string")
+    || typeof body.row_count !== "number") {
+    throw new ChatApiError("Phản hồi dữ liệu bảng không hợp lệ.", "invalid_response");
+  }
+  return body as unknown as DatasetTablePreview;
 }
 
 export function createRelationshipClient(datasetId: number): RelationshipClient {
@@ -415,8 +426,8 @@ export async function importDatasetTable(
   }, "Không thể import bảng.") as Dataset;
 }
 
-export async function getDatasetDocuments(datasetId: number): Promise<DatasetDocument[]> {
-  return await requestJson(`/api/datasets/${datasetId}/documents`) as DatasetDocument[];
+export async function getDatasetDocuments(datasetId: number, signal?: AbortSignal): Promise<DatasetDocument[]> {
+  return await requestJson(`/api/datasets/${datasetId}/documents`, { signal }) as DatasetDocument[];
 }
 
 export async function uploadDatasetDocument(

@@ -259,6 +259,15 @@ Kiểm cả UI8080, session/history và hành vi đã sửa sau deploy; health k
 minh AI đúng. Khi chỉ sửa Web, build frontend/Dockerfile rồi pin/deploy riêng web.
 Không đổi dependency extra, key, volume hoặc bật paid gates trong ví dụ này.
 
+### Upload-to-chat UX validation
+
+Workflow hiện có hỗ trợ `workflow_dispatch scope=ux, services=all`: preview/owner/
+resource/relationship unit checks, PostgreSQL integration trên service CI cô lập,
+frontend lint/typecheck/unit/build và mock browser routing. Không tạo local DB mới
+hoặc ghi fixture lên main để chạy các test này. Preview mới dùng registered table
+ID, reader READ ONLY, timeout5s và giới hạn1–50rows; UI tải25rows khi mở từng bảng.
+Không gọi provider để mở manager, đọc liên kết hoặc xem dữ liệu đã nhập.
+
 Nếu postdeploy FAIL, dùng rollback pin digest ở đầu runbook, cùng protected main
 volume và reviewed environment; kiểm image IDs, main identity, Google session/history
 và schema/data. Source drift của rollback phải được báo trung thực.

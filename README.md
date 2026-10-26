@@ -12,8 +12,9 @@ Giữ provider gate ON cho sử dụng thường ngày, cùng authentication, qu
 Guest preview hoạt động; Guest AI chưa được duyệt. Fallback OFF là lựa chọn cấu hình.
 SQL/RAG/Hybrid và follow-up đã có bằng chứng live trong phạm vi KPI synthetic;
 không coi đó là bảo đảm cho mọi dữ liệu. Auto-JOIN dùng tên khóa, metadata và kiểm
-toàn bộ dữ liệu; hỗ trợ cả `ma_*`/camelCase. Dùng “Tự tìm liên kết” để quét workspace
-đã upload; các ứng viên mơ hồ vẫn cần kiểm tra và xác nhận trong UI.
+toàn bộ dữ liệu; hỗ trợ cả `ma_*`/camelCase. Bảng mới tự kiểm chứng liên kết khi upload;
+UI chỉ hiển thị các liên kết hợp lệ. Cặp khóa mơ hồ không tự kích hoạt.
+Chat dùng Auto Routing; từng bảng có preview dữ liệu đã nhập, tải khi mở chevron.
 BGE tạm hoãn, retrieval dùng vector-only. Chưa tag hoặc tuyên bố nghiệm thu V2 đầy đủ.
 Nguồn trạng thái hiện tại: [nghiệm thu V2](docs/v2_final_acceptance.md).
 Các báo cáo lịch sử đã bỏ khỏi checkout; có thể tra tại Git commit `87cdf40`.

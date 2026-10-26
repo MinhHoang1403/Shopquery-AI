@@ -214,10 +214,14 @@ class DatasetRepository:
     def preview_rows(
         self, dataset_id: int, limit: int = 10, table_id: int | None = None
     ) -> list[dict[str, Any]]:
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise ValueError("Preview limit must be between 1 and 50")
         dataset = self.get(dataset_id)
         table_info = self._select_table(dataset, table_id)
         table = self._table(table_info.physical_table_name, table_info.columns)
-        with self._readonly_engine.connect() as connection:
+        with self._readonly_engine.connect() as connection, connection.begin():
+            connection.execute(text("SET TRANSACTION READ ONLY"))
+            connection.execute(text("SET LOCAL statement_timeout='5s'"))
             rows = [dict(row) for row in connection.execute(select(table).limit(limit)).mappings()]
         source_names = {column.name: column.source_name for column in table_info.columns}
         return [

@@ -104,6 +104,10 @@ class DatasetDocumentResponse(BaseModel):
     created_at: datetime
 
 
+class DatasetTablePreviewResponse(DatasetTableResponse):
+    rows: list[dict[str, JsonValue]]
+
+
 class DatasetCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=120)

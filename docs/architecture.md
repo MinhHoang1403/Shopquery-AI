@@ -40,9 +40,9 @@ Router chưa có CLARIFY riêng; dùng phản hồi `UNSUPPORTED` hiện hữu.
 
 ## Reliability boundaries
 
-`ChatRequest.route_hint` (SQL/RAG/HYBRID) là lựa chọn nguồn rõ ràng của người dùng,
-không phải kết luận suy ra từ từ khóa. UI có “Nguồn trả lời”; mặc định tự chọn vẫn
-dùng semantic router. Backend luôn kiểm lựa chọn với capabilities của workspace;
+UI gửi câu hỏi không có `route_hint`, dùng semantic Auto Routing hiện có.
+`ChatRequest.route_hint` (SQL/RAG/HYBRID) vẫn tương thích cho API/internal diagnostics,
+không phải kết luận suy ra từ từ khóa. Backend kiểm lựa chọn với capabilities của workspace;
 không hạ Hybrid thành SQL khi thiếu documents. Prefix /sql, /rag, /hybrid là lựa
 chọn tương đương. Không suy route từ tiền đề hội thoại hoặc tên bảng không tin cậy.
 Lựa chọn này bỏ một generation stage; không bỏ planner/grounding/security guards.

@@ -67,8 +67,7 @@ test("two approved synthetic SQL JOIN questions, one per live provider", async (
       expect((await imported).status()).toBe(200);
       await expect(page.locator(".guest-file-list")).toContainText(name);
     }
-    await page.getByText("Liên kết bảng", { exact: true }).click();
-    await expect(page.getByText("Tự động kiểm chứng từ tên khóa và toàn bộ dữ liệu", { exact: true })).toHaveCount(threeTables ? 2 : 1);
+    await expect(page.getByText("N:1 · Đã kiểm chứng · Tự động", { exact: true })).toHaveCount(threeTables ? 2 : 1);
     const relations = await (await request.get("/api/guest/relationships", { headers })).json();
     expect(relations.relationships).toHaveLength(threeTables ? 2 : 1);
     for (const relation of relations.relationships) {

@@ -5,6 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.ai.gemini import GeminiGateway
 from app.ai.providers import MODEL_LABELS
@@ -23,6 +24,7 @@ from app.api.models import (
     DatasetDocumentResponse,
     DatasetPreviewResponse,
     DatasetResponse,
+    DatasetTablePreviewResponse,
     DatasetTableResponse,
     HealthResponse,
     ModelOption,
@@ -306,13 +308,19 @@ def create_dataset(user: CurrentUser, request: DatasetCreateRequest) -> DatasetR
 
 
 @router.get("/datasets/{dataset_id}", response_model=DatasetDetailResponse)
-def get_dataset(user: CurrentUser, dataset_id: int) -> DatasetDetailResponse:
+def get_dataset(
+    user: CurrentUser,
+    dataset_id: int,
+    include_preview: bool = True,
+) -> DatasetDetailResponse:
     try:
         repository = build_dataset_repository(user.user_id)
         dataset = repository.get(dataset_id)
         return DatasetDetailResponse(
             **_dataset_response(dataset).model_dump(),
-            preview_rows=(repository.preview_rows(dataset_id) if dataset.table else []),
+            preview_rows=(
+                repository.preview_rows(dataset_id) if include_preview and dataset.table else []
+            ),
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -326,6 +334,33 @@ def get_dataset_preview(
         return build_dataset_repository(user.user_id).preview_rows(dataset_id, limit)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/datasets/{dataset_id}/tables/{table_id}/preview",
+    response_model=DatasetTablePreviewResponse,
+)
+def get_dataset_table_preview(
+    user: CurrentUser,
+    dataset_id: int,
+    table_id: int,
+    limit: Annotated[int, Query(ge=1, le=50)] = 25,
+) -> DatasetTablePreviewResponse:
+    try:
+        with resource_control().work(user.user_id, "preview"):
+            repository = build_dataset_repository(user.user_id)
+            dataset = repository.get(dataset_id)
+            table = next((t for t in dataset.tables if t.dataset_table_id == table_id), None)
+            if table is None:
+                raise ResourceNotFoundError("Không tìm thấy bảng trong bộ dữ liệu.")
+            return DatasetTablePreviewResponse(
+                **_dataset_table_response(table).model_dump(),
+                rows=repository.preview_rows(dataset_id, limit, table_id),
+            )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except SQLAlchemyError as exc:
+        raise HTTPException(503, "Chưa đọc được dữ liệu bảng. Vui lòng thử lại sau.") from exc
 
 
 @router.delete("/datasets/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)

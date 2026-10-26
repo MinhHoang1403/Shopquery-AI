@@ -1,4 +1,4 @@
-import { AlertCircle, FileSpreadsheet, FileText, Plus, Trash2, UploadCloud } from "lucide-react";
+import { AlertCircle, FileText, Plus, Trash2, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createDataset,
@@ -19,6 +19,7 @@ import type { Dataset, DatasetDocument, DatasetPreview, DatasetTable } from "../
 import { Modal } from "./Dialogs";
 import { ResultTable } from "./ResponseEvidence";
 import { RelationshipPanel } from "./RelationshipPanel";
+import { UploadedTable } from "./UploadedTable";
 
 interface DatasetUploadDialogProps {
   datasets: Dataset[];
@@ -26,6 +27,7 @@ interface DatasetUploadDialogProps {
   onImported: (dataset: Dataset) => void;
   onDeleted: (dataset: Dataset) => void;
   deletionDisabled?: boolean;
+  initialDatasetId?: number | null;
 }
 
 type DeleteTarget =
@@ -37,11 +39,11 @@ function messageFromError(error: unknown): string {
   return error instanceof Error ? error.message : "Không thể xử lý dữ liệu.";
 }
 
-export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, deletionDisabled }: DatasetUploadDialogProps) {
+export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, deletionDisabled, initialDatasetId }: DatasetUploadDialogProps) {
   const uploaded = datasets.filter(
     (item): item is Dataset & { dataset_id: number } => item.kind === "uploaded" && item.dataset_id !== null,
   );
-  const [mode, setMode] = useState<"new" | "existing">("new");
+  const [mode, setMode] = useState<"new" | "existing">(initialDatasetId ? "existing" : "new");
   const [workspace, setWorkspace] = useState<Dataset | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
   const [documents, setDocuments] = useState<DatasetDocument[]>([]);
@@ -55,6 +57,7 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleteHistory, setDeleteHistory] = useState(false);
   const previewController = useRef<AbortController | null>(null);
+  const workspaceController = useRef<AbortController | null>(null);
   const confirmation = useRef<HTMLElement | null>(null);
   const [limits, setLimits] = useState<UploadLimits | null>(null);
   const [limitsError, setLimitsError] = useState<string | null>(null);
@@ -70,7 +73,12 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
     return () => controller.abort();
   }, []);
 
-  useEffect(() => () => previewController.current?.abort(), []);
+  useEffect(() => {
+    if (initialDatasetId) void selectWorkspace(datasets.find((item) => item.dataset_id === initialDatasetId) ?? null);
+    return () => { previewController.current?.abort(); workspaceController.current?.abort(); };
+    // This dialog opens at the selected workspace; later selection is explicit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (!deleteTarget) return;
     confirmation.current?.focus();
@@ -78,6 +86,10 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
   }, [deleteTarget]);
 
   async function selectWorkspace(dataset: Dataset | null) {
+    workspaceController.current?.abort();
+    const controller = new AbortController();
+    workspaceController.current = controller;
+    setBusy(false);
     previewController.current?.abort();
     setIsPreviewing(false);
     setWorkspace(dataset);
@@ -94,15 +106,17 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
     setBusy(true);
     try {
       const [detail, items] = await Promise.all([
-        getDataset(dataset.dataset_id), getDatasetDocuments(dataset.dataset_id),
+        getDataset(dataset.dataset_id, controller.signal), getDatasetDocuments(dataset.dataset_id, controller.signal),
       ]);
+      if (controller.signal.aborted) return;
       setWorkspace(detail);
       setDocuments(items);
     } catch (loadError) {
+      if (controller.signal.aborted) return;
       setError(messageFromError(loadError));
       setWorkspace(null);
     } finally {
-      setBusy(false);
+      if (!controller.signal.aborted) setBusy(false);
     }
   }
 
@@ -134,10 +148,11 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
         controller.signal,
         workspace?.dataset_id,
       );
+      if (controller.signal.aborted) return;
       setPreview(result);
       setSelectedSheet(result.sheet_name);
     } catch (previewError) {
-      if (previewError instanceof DOMException && previewError.name === "AbortError") return;
+      if (controller.signal.aborted) return;
       setPreview(null);
       setError(messageFromError(previewError));
     } finally {
@@ -165,6 +180,7 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
     try {
       const created = await importDataset(file, workspaceName.trim(), selectedSheet);
       setWorkspace(created);
+      setFile(null); setPreview(null);
       onImported(created);
     } catch (importError) {
       setError(messageFromError(importError));
@@ -265,7 +281,7 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
   return (
     <Modal
       title="Quản lý bộ dữ liệu"
-      description="Tạo workspace và quản lý các bảng, tài liệu dùng cho SQL, RAG và Hybrid."
+      description="Thêm bảng hoặc tài liệu. Hệ thống tự chuẩn bị dữ liệu để bạn trò chuyện."
       onClose={() => { if (!busy) onClose(); }}
     >
       <div className="upload-flow workspace-flow">
@@ -288,8 +304,8 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
               <button className="primary-button" disabled={busy || !workspaceName.trim()} onClick={createWorkspace} type="button">{busy ? "Đang tạo…" : "Tạo workspace rỗng"}</button>
             </div>
             <label className="file-drop compact-drop" htmlFor="quick-dataset-file">
-              <UploadCloud size={21} /><span><strong>Hoặc import nhanh CSV/XLSX thành bộ mới</strong><small>Giữ tương thích với luồng import cũ</small></span>
-              <input accept=".csv,.xlsx" id="quick-dataset-file" onChange={(event) => { chooseTableFile(event.target.files?.[0] ?? null); event.target.value = ""; }} type="file" />
+              <UploadCloud size={21} /><span><strong>Tải CSV hoặc XLSX</strong><small>Tên bộ dữ liệu được lấy từ tên tệp, bạn có thể đổi nếu muốn.</small></span>
+              <input accept=".csv,.xlsx" aria-label="Tải CSV hoặc XLSX" id="quick-dataset-file" onChange={(event) => { chooseTableFile(event.target.files?.[0] ?? null); event.target.value = ""; }} type="file" />
             </label>
             {isPreviewing ? <div className="upload-status" role="status">Đang kiểm tra file…</div> : null}
             {preview ? (
@@ -325,10 +341,9 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
               <h3>Bảng dữ liệu</h3>
               <div className="source-list">
                 {(workspace.tables ?? []).map((table) => (
-                  <div className="source-row" key={table.dataset_table_id ?? table.display_name}>
-                    <FileSpreadsheet size={17} /><span><strong>{table.display_name}</strong><small>{table.original_filename} · {table.row_count.toLocaleString("vi-VN")} dòng</small></span>
-                    <button aria-label={`Xóa bảng ${table.display_name}`} disabled={deletionDisabled || table.dataset_table_id == null} onClick={() => requestTableDelete(table)} type="button"><Trash2 size={16} /></button>
-                  </div>
+                  <UploadedTable key={`${workspace.dataset_id}-${table.dataset_table_id ?? table.display_name}`}
+                    datasetId={workspace.dataset_id!} table={table} deletionDisabled={deletionDisabled}
+                    onDelete={() => requestTableDelete(table)} />
                 ))}
                 {(workspace.tables ?? []).length === 0 ? <p className="empty-source">Chưa có bảng dữ liệu.</p> : null}
               </div>
@@ -346,7 +361,6 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
                     </label>
                   ) : null}
                   <ResultTable rows={preview.rows} />
-                  <label className="field-label" htmlFor="table-name">Tên hiển thị của bảng<input id="table-name" maxLength={120} onChange={(event) => setTableName(event.target.value)} value={tableName} /></label>
                   <button className="primary-button" disabled={busy || !tableName.trim()} onClick={addTable} type="button">{busy ? "Đang import…" : "Thêm bảng"}</button>
                 </div>
               ) : null}
@@ -372,7 +386,7 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
 
         {workspace?.dataset_id && limits?.sql_join_v1_enabled && relationshipClient ? <RelationshipPanel
           key={JSON.stringify([workspace.dataset_id, workspace.tables])}
-          client={relationshipClient} disabled={deletionDisabled || busy}
+          client={relationshipClient}
           tables={(workspace.tables ?? []).filter((table) => table.dataset_table_id !== null).map((table) => ({ id: String(table.dataset_table_id), name: table.display_name, columns: table.columns }))}
         /> : null}
         </fieldset>
@@ -393,7 +407,9 @@ export function DatasetUploadDialog({ datasets, onClose, onImported, onDeleted, 
         ) : null}
         {deletionDisabled ? <p role="status">Chờ yêu cầu chat hoàn tất trước khi xóa dữ liệu.</p> : null}
 
-        <div className="dialog-actions"><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Đóng</button></div>
+        <div className="dialog-actions"><button className="secondary-button" disabled={busy} onClick={onClose} type="button">Đóng</button>
+          {workspace && ((workspace.table_count ?? 0) > 0 || (workspace.document_count ?? 0) > 0) ? <button className="primary-button" disabled={busy} onClick={onClose} type="button">Trò chuyện với dữ liệu</button> : null}
+        </div>
       </div>
     </Modal>
   );

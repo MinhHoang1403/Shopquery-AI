@@ -10,7 +10,7 @@ on:
       scope:
         description: Checks to run (reliability avoids unrelated golden/model suites)
         type: choice
-        options: [all, reliability]
+        options: [all, reliability, ux]
         default: reliability
       services:
         description: Services whose source changed
@@ -49,7 +49,9 @@ jobs:
         env:
           CHECK_SCOPE: ${{ inputs.scope }}
         run: |
-          if [ "$CHECK_SCOPE" = reliability ]; then
+          if [ "$CHECK_SCOPE" = ux ]; then
+            uv run pytest -m "not integration and not live" tests/test_table_preview.py tests/test_relationship_detection.py tests/test_relationships.py tests/test_api.py tests/test_dataset_deletion.py tests/test_dataset_routing.py tests/test_evidence_coverage.py tests/test_verified_conversation_contract.py tests/test_conversation_context.py -q
+          elif [ "$CHECK_SCOPE" = reliability ]; then
             uv run pytest -m "not integration and not live" tests/test_error_contract.py tests/test_explicit_routing.py tests/test_sql_answer.py tests/test_gemini.py tests/test_providers.py tests/test_plan_providers.py tests/test_dataset_routing.py tests/test_conversation_context.py tests/test_diagnostics.py tests/test_api.py tests/test_plan_security.py tests/test_plan_binding.py tests/test_query_compiler.py tests/test_hybrid_sequence.py tests/test_hybrid_answer_consistency.py tests/test_count_conformance.py tests/test_join_policy.py tests/test_three_table_join.py tests/test_sql_reliability.py -q
           else
             uv run pytest -m "not integration and not live"
@@ -128,7 +130,9 @@ jobs:
         env:
           CHECK_SCOPE: ${{ inputs.scope }}
         run: |
-          if [ "$CHECK_SCOPE" = reliability ]; then
+          if [ "$CHECK_SCOPE" = ux ]; then
+            uv run pytest -m "integration and not live" tests/test_table_preview_integration.py tests/test_auto_relationships_integration.py tests/test_relationship_api_integration.py -q
+          elif [ "$CHECK_SCOPE" = reliability ]; then
             uv run pytest -m "integration and not live" tests/test_plan_factory_integration.py tests/test_plan_expressions_integration.py tests/test_hybrid_evidence_integration.py tests/test_hybrid_policy_domains_integration.py tests/test_context_permutations_integration.py -q
           else
             uv run pytest -m "integration and not live" -v

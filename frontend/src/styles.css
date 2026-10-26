@@ -233,8 +233,6 @@ tr:last-child td { border-bottom: 0; }
 .composer-box { min-height: 64px; display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; padding: 9px 10px 9px 19px; border: 1px solid #d9d9d9; border-radius: 32px; background: #fbfbfb; box-shadow: 0 2px 8px rgba(0,0,0,.025); }
 .composer-box textarea { min-width: 0; }
 .composer-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-.source-selector { max-width: 136px; min-width: 0; min-height: 36px; border: 1px solid var(--line); border-radius: 18px; padding: 6px; background: #fff; color: #444; font-size: 12px; }
-.composer-source { display: flex; justify-content: flex-end; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
 .model-selector { position: relative; flex: 0 0 116px; width: 116px; min-width: 0; }
 .model-selector select { appearance: none; width: 100%; min-height: 36px; padding: 6px 26px 6px 11px; border: 1px solid var(--line); border-radius: 18px; background: #fff; color: #444; font-size: 13px; text-overflow: ellipsis; cursor: pointer; }
 .model-selector svg { position: absolute; right: 9px; top: 11px; pointer-events: none; }
@@ -440,6 +438,24 @@ button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-v
   .app-shell--collapsed .account-trigger .account-details, .app-shell--collapsed .account-chevron { display: none; }
 }
 .relationship-panel { min-width: 0; }
+.section-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.section-heading h3 { display: flex; align-items: center; gap: 7px; }
+.section-heading > span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.relationship-list { display: flex; flex-direction: column; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.relationship-list li { display: flex; gap: 9px; padding: 11px; border: 1px solid var(--line); border-radius: 9px; }
+.relationship-list li > svg { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
+.relationship-list li > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.relationship-list strong { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.relationship-list small { color: var(--muted); font-size: 11px; }
+.uploaded-table { min-width: 0; }
+.source-row .table-preview-toggle { flex: 1; width: auto; min-width: 0; height: auto; min-height: 40px; display: flex; gap: 9px; padding: 0; color: var(--text); text-align: left; }
+.source-row .table-preview-toggle:hover { background: transparent; }
+.table-preview-toggle > span { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+.table-preview-toggle > svg { flex-shrink: 0; }
+.chevron-expanded { transform: rotate(180deg); }
+.uploaded-table-preview { min-width: 0; padding: 10px 0; }
+.uploaded-table-preview .table-shell { max-width: 100%; max-height: 320px; overflow: auto; }
+.uploaded-table-preview th { position: sticky; top: 0; background: var(--panel, #fff); }
 .relationship-panel summary { cursor: pointer; font-weight: 600; }
 .relationship-panel fieldset { min-width: 0; margin: 10px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
 .relationship-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }

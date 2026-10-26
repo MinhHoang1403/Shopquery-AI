@@ -1,6 +1,6 @@
 import { ArrowUp } from "lucide-react";
 import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
-import type { ModelId, ModelOption, RouteLabel } from "../types";
+import type { ModelId, ModelOption } from "../types";
 import { ModelSelector } from "./ModelSelector";
 
 interface ChatInputProps {
@@ -15,10 +15,6 @@ interface ChatInputProps {
   onModelSelect: (model: ModelId) => void;
   placeholder?: string;
   submitUnavailableReason?: string | null;
-  routeChoice?: Exclude<RouteLabel, "UNSUPPORTED"> | "";
-  onRouteChange?: (route: Exclude<RouteLabel, "UNSUPPORTED"> | "") => void;
-  hasTables?: boolean;
-  hasDocuments?: boolean;
 }
 
 export function ChatInput({
@@ -33,10 +29,6 @@ export function ChatInput({
   onModelSelect,
   placeholder,
   submitUnavailableReason,
-  routeChoice = "",
-  onRouteChange,
-  hasTables,
-  hasDocuments,
 }: ChatInputProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const showCharacterCount = value.length > 0;
@@ -79,17 +71,6 @@ export function ChatInput({
 
   return (
     <form className="composer" onSubmit={submit}>
-      {onRouteChange ? (
-        <div className="composer-source">
-          <label>Nguồn trả lời: <select className="source-selector" aria-label="Nguồn trả lời" disabled={disabled} value={routeChoice}
-            onChange={(event) => onRouteChange(event.target.value as Exclude<RouteLabel, "UNSUPPORTED"> | "")}>
-            <option value="">Tự chọn nguồn</option>
-            <option value="SQL" disabled={!hasTables}>Bảng dữ liệu</option>
-            <option value="RAG" disabled={!hasDocuments}>Tài liệu</option>
-            <option value="HYBRID" disabled={!hasTables || !hasDocuments}>Bảng + Tài liệu</option>
-          </select></label>
-        </div>
-      ) : null}
       <div className={`composer-box ${validationError ? "composer-box--invalid" : ""}`}>
         <label className="sr-only" htmlFor="chat-message">
           Nhập câu hỏi cho ShopQuery AI

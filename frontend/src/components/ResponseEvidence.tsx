@@ -63,8 +63,8 @@ function SqlPanel({ sql }: { sql: string }) {
   );
 }
 
-export function ResultTable({ rows }: { rows: ResultRow[] }) {
-  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+export function ResultTable({ rows, columns: registeredColumns }: { rows: ResultRow[]; columns?: string[] }) {
+  const columns = registeredColumns ?? Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
   return (
     <div className="table-shell" aria-label="Kết quả truy vấn" role="region" tabIndex={0}>
       <table>

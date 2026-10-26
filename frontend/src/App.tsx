@@ -20,7 +20,6 @@ import type {
   Dataset,
   ModelId,
   ModelOption,
-  RouteLabel,
 } from "./types";
 
 const DEFAULT_QUESTIONS = [
@@ -63,7 +62,6 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   const [providerEnabled, setProviderEnabled] = useState(true);
   const [defaultModel, setDefaultModel] = useState<ModelId>("inetcloud-knowledge");
   const [selectedModel, setSelectedModel] = useState<ModelId>("inetcloud-knowledge");
-  const [routeChoice, setRouteChoice] = useState<Exclude<RouteLabel, "UNSUPPORTED"> | "">("");
   const [isSavingModel, setIsSavingModel] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null);
@@ -202,7 +200,6 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   }
 
   function startNewChat(datasetId = selectedDatasetId) {
-    setRouteChoice("");
     selectionSequence.current += 1;
     stopPendingRequest();
     activeConversation.current = null;
@@ -216,7 +213,6 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   }
 
   async function selectConversation(conversation: ConversationSummary) {
-    setRouteChoice("");
     if (conversation.conversation_id === activeConversation.current) {
       setSidebarOpen(false);
       return;
@@ -294,7 +290,7 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
     try {
       const result = isGuest
         ? await client.sendConversationMessage(requestConversationId, question, controller.signal, requestModel)
-        : await persistentApi.sendConversationMessage(requestConversationId, question, controller.signal, requestModel, routeChoice || undefined);
+        : await persistentApi.sendConversationMessage(requestConversationId, question, controller.signal, requestModel);
       upsertConversation(result.conversation);
       if (activeConversation.current === requestConversationId) {
         setMessages((current) => [
@@ -321,7 +317,6 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
   }
 
   function chooseDataset(dataset: Dataset) {
-    setRouteChoice("");
     if (sameDataset(dataset.dataset_id, selectedDatasetId)) {
       setSidebarOpen(false);
       return;
@@ -387,8 +382,8 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
 
   function datasetImported(dataset: Dataset) {
     setDatasets((current) => [...current.filter((item) => item.dataset_id !== dataset.dataset_id), dataset]);
-    if (!activeConversation.current && messages.length === 0) {
-      setSelectedDatasetId(dataset.dataset_id);
+    if (!sameDataset(dataset.dataset_id, selectedDatasetId)) {
+      startNewChat(dataset.dataset_id);
     }
     setImportNotice(`Đã cập nhật ${dataset.name} thành công.`);
   }
@@ -478,10 +473,6 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
               models={models}
               selectedModel={selectedModel}
               onModelSelect={chooseModel}
-              routeChoice={routeChoice}
-              onRouteChange={isGuest ? undefined : setRouteChoice}
-              hasTables={selectedDataset?.kind === "default" || (selectedDataset?.table_count ?? 0) > 0}
-              hasDocuments={selectedDataset?.kind === "default" || (selectedDataset?.document_count ?? 0) > 0}
               onChange={updateDraft}
               onSubmit={() => submitQuestion()}
               validationError={validationError}
@@ -498,7 +489,7 @@ export default function App({ account, onLogout, accessMode = "authenticated" }:
         </footer>
       </div>
 
-      {uploadOpen ? guestClient ? <GuestUploadDialog client={guestClient} status={guestStatus} onClose={() => setUploadOpen(false)} onImported={datasetImported} /> : <DatasetUploadDialog datasets={datasets} deletionDisabled={isLoading || isBooting || isSavingModel} onClose={() => setUploadOpen(false)} onDeleted={datasetDeleted} onImported={datasetImported} /> : null}
+      {uploadOpen ? guestClient ? <GuestUploadDialog client={guestClient} status={guestStatus} onClose={() => setUploadOpen(false)} onImported={datasetImported} /> : <DatasetUploadDialog initialDatasetId={selectedDataset?.kind === "uploaded" ? selectedDatasetId : undefined} datasets={datasets} deletionDisabled={isLoading || isBooting || isSavingModel} onClose={() => setUploadOpen(false)} onDeleted={datasetDeleted} onImported={datasetImported} /> : null}
       {loginOpen ? <Modal className="login-modal" title="Đăng nhập ShopQuery AI" description="Mở không gian dữ liệu riêng và lưu lịch sử chat. Tệp dùng thử không tự chuyển vào tài khoản." onClose={() => setLoginOpen(false)}>
         <div className="dialog-actions"><a className="primary-button" href="/api/auth/login" onClick={() => guestClient?.dispose()}>Tiếp tục với Google</a><button className="secondary-button" type="button" onClick={() => setLoginOpen(false)}>Tiếp tục dùng thử</button></div>
       </Modal> : null}

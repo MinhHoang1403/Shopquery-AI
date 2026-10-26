@@ -265,6 +265,7 @@ async function installApi(page: Page, options: { seed?: boolean; delayMs?: numbe
     }
     if (url.pathname === `/api/conversations/${conversationId}/messages` && method === "POST") {
       state.messageRequests += 1;
+      expect(request.postDataJSON()).not.toHaveProperty("route_hint");
       const question = String(request.postDataJSON().message);
       const requestedModel = request.postDataJSON().model_id ?? state.modelId;
       state.messageModels.push(requestedModel);

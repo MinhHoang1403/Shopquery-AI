@@ -38,30 +38,29 @@ test("live local guest relationship lifecycle and capability security without AI
     expect((await importResponse).status()).toBe(200);
     await expect(page.locator(".guest-file-list")).toContainText(name);
   }
-  await page.getByText("Liên kết bảng", { exact: true }).click();
-  await expect(page.getByText("Tự động kiểm chứng từ tên khóa và toàn bộ dữ liệu", { exact: true })).toBeVisible();
+  await expect(page.locator(".relationship-panel")).toContainText("N:1 · Đã kiểm chứng · Tự động");
   const automatic = await (await request.get("/api/guest/relationships", { headers })).json();
   expect(automatic.relationships).toHaveLength(1);
   expect(automatic.relationships[0].origin).toBe("automatic");
   expect(automatic.relationships[0].confirmed).toBe(false);
-  await page.getByLabel("Bảng chi tiết (fact)").selectOption({ label: "payments.csv" });
-  await page.getByLabel("Khóa ở bảng chi tiết").selectOption("student_id");
-  await page.getByLabel("Bảng danh mục (dimension)").selectOption({ label: "students.csv" });
-  await page.getByLabel("Khóa ở bảng danh mục").selectOption("id");
-  const previewResponse = page.waitForResponse((response) => response.url().endsWith("/api/guest/relationships/preview"));
-  await page.getByRole("button", { name: "Kiểm tra quan hệ", exact: true }).click();
-  const preview = await (await previewResponse).json();
+  await expect(page.locator(".relationship-panel").getByRole("button")).toHaveCount(0);
+  await expect(page.locator(".relationship-panel").getByRole("combobox")).toHaveCount(0);
+  // Preserve advanced API lifecycle coverage without exposing setup in normal UI.
+  const selection = { source_table_id: automatic.relationships[0].source_table_id,
+    source_column: automatic.relationships[0].source_column,
+    target_table_id: automatic.relationships[0].target_table_id,
+    target_column: automatic.relationships[0].target_column };
+  const checked = await request.post("/api/guest/relationships/preview", { headers, data: selection });
+  expect(checked.status()).toBe(200);
+  const preview = await checked.json();
   expect(preview.valid).toBe(true);
   expect([preview.source_rows, preview.target_rows, preview.orphan_rows]).toEqual([3, 2, 0]);
-  await expect(page.getByRole("region", { name: "Kết quả kiểm tra quan hệ" })).toContainText("chưa được kích hoạt");
-  const confirmResponse = page.waitForResponse((response) => response.url().endsWith("/api/guest/relationships") && response.request().method() === "POST");
-  await page.getByRole("button", { name: "Xác nhận liên kết", exact: true }).click();
-  const relation = await (await confirmResponse).json();
+  const confirmed = await request.post("/api/guest/relationships", { headers, data: { ...selection, revision: preview.revision } });
+  expect(confirmed.status()).toBe(200);
+  const relation = await confirmed.json();
   expect(relation.relationship_id).toBe(automatic.relationships[0].relationship_id);
   expect(relation.origin).toBe("manual");
   expect(relation.confirmed).toBe(true);
-  const remove = page.getByRole("button", { name: "Xóa liên kết payments.csv đến students.csv", exact: true });
-  await expect(remove).toBeVisible();
   const foreign = await request.post("/api/guest/session", { headers: { Origin: headers.Origin }, data: {} });
   expect(foreign.ok()).toBe(true);
   const other = await foreign.json();
@@ -70,7 +69,6 @@ test("live local guest relationship lifecycle and capability security without AI
   expect((await (await request.get("/api/guest/relationships", { headers: otherHeaders })).json()).relationships).toEqual([]);
   expect((await request.delete(`/api/guest/relationships/${relation.relationship_id}?confirmed=true`, { headers: otherHeaders })).status()).toBe(404);
   expect((await request.post("/api/guest/relationships/preview", { headers: otherHeaders, data: preview })).status()).toBe(422);
-  const selection = { source_table_id: preview.source_table_id, source_column: preview.source_column, target_table_id: preview.target_table_id, target_column: preview.target_column };
   expect((await request.post("/api/guest/relationships/preview", { headers: otherHeaders, data: selection })).status()).toBe(404);
   expect((await request.post("/api/guest/relationships/preview", { headers: { ...headers, "X-Guest-CSRF": "invalid" }, data: selection })).status()).toBe(403);
   expect((await request.post("/api/guest/relationships/preview", { headers: { ...headers, Origin: "https://invalid.example" }, data: selection })).status()).toBe(403);
@@ -81,11 +79,11 @@ test("live local guest relationship lifecycle and capability security without AI
   await page.screenshot({ path: info.outputPath("live-guest-join.png") });
   await page.getByRole("button", { name: "Đóng", exact: true }).last().click();
   await open();
-  await page.getByText("Liên kết bảng", { exact: true }).click();
-  await remove.click();
-  await page.getByRole("button", { name: "Xác nhận xóa liên kết", exact: true }).click();
-  await expect(page.getByText("Chưa có liên kết hợp lệ. Hãy kiểm tra và xác nhận nếu hệ thống chưa tự nhận diện được. Tên mô tả hoặc khác ngôn ngữ với khóa cần bạn xác nhận ý nghĩa nghiệp vụ; trùng giá trị không đủ để tự liên kết.", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Bảng chi tiết (fact)").locator("option")).toHaveCount(3);
+  expect((await request.delete(`/api/guest/relationships/${relation.relationship_id}?confirmed=true`, { headers })).status()).toBe(204);
+  await page.getByRole("button", { name: "Đóng", exact: true }).last().click();
+  await open();
+  await expect(page.locator(".relationship-panel")).toContainText("Có bảng chưa xác định được liên kết đáng tin cậy.");
+  await expect(page.locator(".relationship-panel").getByRole("combobox")).toHaveCount(0);
   expect((await (await request.get("/api/guest/limits", { headers })).json()).files).toHaveLength(2);
   expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
   expect((await request.post("/api/guest/reset", { headers: otherHeaders, data: {} })).status()).toBe(204);
@@ -123,16 +121,15 @@ test("three uploaded tables automatically expose two valid relationships without
       expect((await imported).status()).toBe(200);
       await expect(page.locator(".guest-file-list")).toContainText(name);
     }
-    await page.getByText("Liên kết bảng", { exact: true }).click();
-    await expect(page.locator(".relationship-panel")).toContainText("tối đa 3 bảng qua 2 liên kết hợp lệ");
-    expect(await page.getByText("Tự động kiểm chứng từ tên khóa và toàn bộ dữ liệu", { exact: true }).count()).toBe(2);
+    await expect(page.locator(".relationship-panel")).toContainText("2 đang hoạt động");
+    expect(await page.getByText("N:1 · Đã kiểm chứng · Tự động", { exact: true }).count()).toBe(2);
     const result = await request.get("/api/guest/relationships", { headers });
     expect(result.status()).toBe(200);
     const records = (await result.json()).relationships;
     expect(records).toHaveLength(2);
     expect(records.every((r: { valid: boolean; origin: string; confirmed: boolean; orphan_rows: number }) => r.valid && r.origin === "automatic" && !r.confirmed && r.orphan_rows === 0)).toBe(true);
-    await expect(page.getByRole("button", { name: "Xóa liên kết students.csv đến courses.csv", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Xóa liên kết payments.csv đến students.csv", exact: true })).toBeVisible();
+    await expect(page.locator(".relationship-panel").getByRole("button")).toHaveCount(0);
+    await expect(page.locator(".relationship-list li")).toHaveCount(2);
     expect(chats).toBe(0);
     await page.screenshot({ path: info.outputPath("three-table-auto-relations.png"), fullPage: true });
   } finally {
