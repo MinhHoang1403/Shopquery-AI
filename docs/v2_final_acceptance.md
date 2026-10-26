@@ -5,7 +5,128 @@
 Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
 Operator authorized consolidation before completion of AI/BGE acceptance.
 
-## SQL category repair and explicit Knowledge contract — source checkpoint, live pending
+## SQL category repair / Knowledge contract / UX — PARTIAL, deployed26/10/2026
+
+### Bàn giao hiện hành (tiếng Việt)
+
+- Đã đọc toàn bộ rootAGENTS.md; không có AGENTS.md con. Giữ phạm vi, PEP8/types,
+  không framework/pipeline/stack mới, không secrets/env/log/data vào Git. Fixture
+  bảo trì đang tạm dừng/untracked không bị thêm vào commit hoặc ingest.
+- Main nghiệm thu `29d6ad11f21a50cdd06422ccbc2c0ce64cdad4b8`;
+  API source `0656765c86f98de7f315a6e11bb43e7aa7a9c0ac`, image
+  `sha256:6994abd7145482c2e83a95ea09e8cb2dd872ecc550a534f5109ad10b204c1b3e`;
+  Web source `fd1f5109202daa15cb8368e1f248f1c974248e3b`, image
+  `sha256:127da3e8b7b1d1885bd3a8457dbf78ae1935d3add141510a2037362ff5fb30d0`.
+  Các commit sau application source chỉ thay test/workflow; build input bytes khớp.
+- [CI40285627334](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40285627334)
+  PASS508 backend /118 PostgreSQL /80 frontend unit /110 responsive mock E2E,
+  lint/typecheck/production build PASS. Hai CI trước được hủy/thay thế khi sửa
+  assertion E2E cũ vốn đòi lỗi chi tiết luôn hiện. Không xóa assertion an toàn;
+  test mới mở panel rồi kiểm đúng nội dung/không lặp. Offline không phải live PASS.
+- Cutover API/Web đã được operator duyệt, chỉ sau CI PASS; hoàn tất14:29 Asia/Saigon.
+  Strict verifier87 modules PASS, Nginx syntax/graceful reload PASS, Web/API8080HTTP200.
+  API29303a46, Web842044f1; DB511c4f5a/image/start time/volume giữ nguyên. Không migrate,
+  BGE, đổi key/dimensions, re-embed, xóa images/volumes hay đụng project khác.
+
+### A. SQL root cause và kết quả live
+
+| Câu hỏi đã duyệt | Kết quả thực tế |
+| --- | --- |
+| Q1Gemini: từng khu vực và nhóm phòng | PASS12 cặp, mỗi cặp200 lượt; từng tổng tiền khớp oracle, tổng2400/638885507.75 |
+| Q2Gemini: khách sạn hơn100 phòng | FAILcontract_conversion tại domain_conversion, chưa tới Binder/Compiler/Executor |
+| Q3Knowledge COUNT+SUM / Q4JOIN / Q5RAG / Q6Hybrid | NOT_RUN, dừng cửa sổ sau blockerQ2 |
+
+Q1conversation914b8cfc-2fd9-4e5b-b8ff-1b48b4da13a4, response286,
+correlation61c3992094774d26bb280b1a705377d9. SQL thực có đúng2approved JOIN và
+GROUP BYkhu_vuc/nhom_phong, không entity IDs; JSON rows12 khớp từng dòng oracle
+READ ONLY, không chỉ khớp tổng. Before: typed reconstruction qua Binder cũ thêm
+ma_khach_san/ma_hang_phong, compiled nhưng vượt row cap200. After: cùng truy vấn
+explicitcategory giữ2group columns, không thêm fields, thực thi12rows. Lỗi cũ999…/
+658… thiếu original plan/SQL/driver exception, nên đây là reconstructed root cause
+đã chứng minh, không khẳng định payload cũ giống hệt. Row cap giữ200, không né guard.
+
+Q2response288, correlation `b223559314bf4b86b8eed5804795fc38`: routerSQL thành công,
+providerGemini, attempt1, phase domain_conversion/categorycontract_conversion tại
+sql_plan_generation. Không SQL execution/fallback. Đây không phải lỗi so_phong>100
+trong compiler: oracle và typed production path trả đúng16IDs
+KS004/005/006/007/008/009/012/013/014/015/016/017/021/022/023/024,
+không JOIN, parameter100. Old994…/8fe… là Knowledge query-outcome binding failures,
+không có plan gốc để so reference. Model trả sai ID hay conversion nào trong Q2mới
+chưa xác định được; adapter không giữ raw payload và branch chi tiết của ValueError.
+Không đoán rồi sửa literal/filter/sentinel hoặc tự gửi lại trong cửa sổ đã đóng.
+
+### B. Knowledge K1/K2 và compatibility
+
+K1cũ109…: outcomequery, binding refusal; original reference UNKNOWN. Giờ
+bind_approved_grain phân biệt source/relationship/reference chưa được cấp, duplicate,
+missing/ambiguous path, nhiều fact, alias collision và bound contract. Issued IDs vẫn
+sort từ cùng SchemaReferences trong prompt/compiler; không fuzzy remap hay cấp quyền
+theo tên gần giống. Numeric filter hợp lệ không tự thêm JOIN.
+
+K2cũ: root one_outcome violation, chưa biết both/neither. PlanDecision vẫn từ chối
+cả hai/thiếu cả hai, nay bằng outcome_conflict/outcome_missing có cấu trúc. Knowledge
+wire chuyển sang GenerationDecision đã có với discriminator outcome, sau đó validate/
+convert vào cùng QueryPlan; Gemini giữ native schema adapter. Không rawSQL/regex/
+repair/retry. Router và RAG schema không đổi. Test SDK thực/mock transport xác nhận
+strictjson_schema choKnowledge, native schema choGemini, query/unsupported/conflict/
+missing/unknown-reference/COUNT+SUM/JOIN. Đây là sửa biểu diễn outcome và diagnostics,
+không phải chứng cứ nested refs không được provider hỗ trợ hoặc Knowledge live PASS.
+Knowledge live chưa được chạy trong cửa sổ này vì Q2dừng trước; K1/K2reliability
+vẫn LIVE_PENDING, chưa đủ điều kiện chuyển mặc định.
+
+### C. Hàm sửa, guards, trả lời và Error UX
+
+SQL: QueryPlan/GenerationDecision.grouping; bind_approved_grain; QueryCompiler._compile;
+SqlValidator.validate; _validate_entity_groups. Entity vẫn bắt buộc identity;
+category chỉ direct non-identity group/projection khớp; không thêm IDs ngầm. Approved
+N:1/revision/root fact/grain/COUNT/SQLGlot/read-only/parameterization/resource limits,
+owner/workspace, Decimal/NULL và entity KPI fullcoverage giữ nguyên. Category không
+được dùng để qua mặt coverage; nhiều đường/measure dimension/fanout vẫn reject.
+Executor chỉ thêm branchrow_limit/database_error và SQLSTATE đã kiểm dạng; không raw
+driver/sql parameters. Pipeline không thêm generation để viết câu trả lời.
+
+compose_sql_answer/format_number: scalarCOUNT từ CountMetric (không suy từ alias),
+scalar số định dạng Việt Nam, zero khác giá trị thiếu, empty result không phải lỗi.
+Nhiều cột/nhóm dùng câu trung tính và bảng chi tiết. Không tự bịa units/VND/tên nghiệp
+vụ khi metadata không đủ; chưa đạt mọi ví dụ business-specific wording trong yêu cầu.
+JSON numeric strings/large integers/Decimal và SQL evidence/history giữ nguyên.
+Frontend displayNumber định dạng decimal string không quaNumber; preview bảng gốc
+giữ nguyên. AssistantContent bỏ table Markdown khi đã có canonicalrows, giữ legacy
+Markdown khi không có rows; không có hai bảng cùng dữ liệu. Hybrid policy/citations/
+verification metadata không đổi (live mới NOT_RUN).
+
+ErrorDetails/ChatMessage: một summary ngắn; panel mặc định đóng, mở/đóng bàn phím,
+copy boundedcorrelation ID, thiếu model/reason thì bỏ qua, không đoán. Không hiển thị
+stack/secrets/URLs/SQLparams. Sau reload8080 Q1/Q2 vẫn còn; Q1main12kết quả, một bảng
+với56.531.054,50; Q2summary một lần, panel hiệncontract_conversion/stage/support ID.
+Copy được unit test; keyboard/toggle/bảng/format/history trực tiếp8080 đã kiểm.
+Fallback taxonomy/turn-local memo từ bản trước giữ nguyên, offline regressions PASS;
+notice không gọi schema mismatch là mất kết nối. Không live fallback.
+
+### D. Usage, runtime, integrity và giới hạn
+
+Ngân sách mới12generation/4query/0document: dùng2questions/4generation stages
+(Q1router+planner2, Q2router+planner2),0query/document embeddings,0Knowledge generation,
+không retry/fallback/paid diagnostic. Cửa sổ ĐÃ ĐÓNG tại Q2; không reuse phần dư.
+UI token usage/tiền thực tế không đo độc lập, không báo chi phí bằng0. Oracle/probes
+READ ONLY và UI mở bằng chứng/reload không gọi provider. Không chạy follow-up mới.
+
+Gemini default, fallbackOFF, provider gateON, GuestOFF, gemini-embedding-2/768 và
+vector/index giữ nguyên. Before/after fingerprints: schema, uploaded business tables,
+documents/chunks/vectors/relationships và toàn bộ oldmessages không đổi; chỉ thêm
+conversation/messages285–288 cùng rate bookkeeping. Google session/history reloadPASS.
+Rollback APIfbfeb03f/Web5f4ab329 và privateconfig .env.release.before được giữ.
+Private evidence sql-repair-20261026: hotel metadata/oracles/reconstructed plans,
+CI/logs/usage/verified-live và screenshots compact-answer-error/error-details/category-table.
+
+**Kết luận PARTIAL:** categorySQL đã sửa và livePASS; filterbackend/oraclePASS nhưng
+liveGemini Q2conversionFAIL; Knowledge contract/guards offlinePASS, Knowledge live và
+RAG/Hybrid mới chưa nghiệm thu. Không kích hoạt Knowledge default/Gemini fallback,
+không tuyên bố FULL_PASS hoặc che lỗi bằng UI. Việc tiếp theo cần bằng chứng nhánh
+conversion trước khi validate, trong phạm vi dữ liệu/ngân sách mới được duyệt; không
+vá tiếp khi chưa có payload/typed branch đủ kết luận.
+
+### Source checkpoint trước cutover (lịch sử)
 
 Read root AGENTS.md (no nested files), deployment/current acceptance/capabilities;
 kept one main/8080 and protected database. Original hotel errors258/272 reached

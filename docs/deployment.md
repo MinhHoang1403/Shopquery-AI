@@ -20,10 +20,21 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-Current API source `e49f838e71ce902ae8532dd1034694d08aaa7aa6`, digest `fbfeb03fd137aadbfeb038d9858eac2ceea3e9dacd96e7abbba8bb0e2c798c9a`.
-Current Web source `881bfe165502be927346408a46c263efb09af0dd`, digest `5f4ab329c750f58c5514e7e2929a6ca8bb4ef3fa4375c9520cfc1ff130192955`.
+Current API source `0656765c86f98de7f315a6e11bb43e7aa7a9c0ac`, digest `6994abd7145482c2e83a95ea09e8cb2dd872ecc550a534f5109ad10b204c1b3e`.
+Current Web source `fd1f5109202daa15cb8368e1f248f1c974248e3b`, digest `127da3e8b7b1d1885bd3a8457dbf78ae1935d3add141510a2037362ff5fb30d0`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
+
+26/10/2026 14:29 operator-approved API/Web cutover: category grouping repair,
+explicit Knowledge planning wire contract, natural neutral SQL summaries and compact
+error details. CI40285627334 PASS508backend/118PostgreSQL/80frontend/110mockE2E;
+strict87modules/Nginx syntax+graceful reload/Web+API8080PASS. DB511c4f5a và protected
+volume/start time không đổi. Q1Gemini hotel category livePASS12rows/oracle; Q2Gemini
+filter failed atcontract_conversion before binding/execution. Paid window stopped:
+2questions/4generation/0embeddings; Knowledge/RAG/Hybrid NOT_RUN. Gemini default,
+fallbackOFF/gateON/GuestOFF/embedding2/768/noBGE retained, no migrations/re-embed.
+Rollback APIe49f838/fbfeb03f and Web881bfe1/5f4ab329 retained with private config
+snapshot sql-repair-20261026/.env.release.before. See current acceptance for limits.
 
 26/10 planning/fallback correction deployed API-only after operator approval and
 exact-main CI497unit/116PostgreSQL PASS. Strict86modules and Nginx reload PASS.
