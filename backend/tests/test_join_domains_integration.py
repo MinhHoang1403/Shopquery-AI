@@ -265,7 +265,7 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
     assert result.route == route and result.used_model == model and not result.fallback_used
     if route == RouteLabel.HYBRID:
         assert result.rows == expected
-        assert_decision_summary(result.answer, expected, statuses)
+        assert_decision_summary(result.answer, expected, statuses, language="vi")
     else:
         assert result.rows == [] and "PlanDecision" not in calls
     if route != RouteLabel.UNSUPPORTED:

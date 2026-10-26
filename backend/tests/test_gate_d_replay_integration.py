@@ -299,18 +299,15 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
 
 
 @pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
-@pytest.mark.parametrize("contradiction", [False, True])
-def test_structured_classification_api_history_and_failure_safety(
+def test_verified_rule_classification_does_not_request_model_verdict(
     gate_d_workspace,
     monkeypatch,
     model,
-    contradiction,
 ):
     accounts, dataset, facts, embedder = gate_d_workspace  # noqa: F811
     policy = rule_block("kho_id", "phi_giao_vnd", "500000.00")
     dataset = add_policy(accounts, dataset, embedder, policy)
     expected = independent_oracle(facts, "H")
-    statuses = ["not_qualified", "qualified", "qualified", "not_qualified", "qualified"]
     calls = []
 
     class Gateway:
@@ -320,13 +317,7 @@ def test_structured_classification_api_history_and_failure_safety(
                 return RouteDecision(route=RouteLabel.HYBRID, reason="Offline evidence test")
             if schema is PlanDecision:
                 return decision_from_sql(draft_sql(dataset, "H"), prompt)
-            assert schema is HybridAnswerDraft
-            ids = [int(value) for value in re.findall(r"\[chunk_id=(\d+)", prompt)]
-            assert len(ids) == 1 and json.dumps(expected, ensure_ascii=False) in prompt
-            draft = classification_draft(expected, statuses, ids[0], identity_field="kho_id")
-            if contradiction:
-                draft.decisions[1].status = "not_qualified"
-            return draft
+            raise AssertionError("Verified policy verdict must not request a model draft")
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -340,17 +331,13 @@ def test_structured_classification_api_history_and_failure_safety(
     )
     assert sent.status_code == 200
     response = sent.json()["assistant_message"]["response"]
-    if contradiction:
-        assert response["error"] and response["rows"] == [] and response["sources"] == []
-        assert response["sql"] is None and "KHO02" not in response["answer"]
-        assert "Hybrid decision" not in response["answer"]
-        assert response["error"] == "Chưa đủ bằng chứng để kết luận chính xác từ dữ liệu hiện có."
-    else:
-        assert response["error"] is None and response["rows"] == expected
-        assert "Qualified: KHO02, KHO03, KHO05." in response["answer"]
-        assert response["used_model"] == model and not response["fallback_used"]
-        assert response["sources"][0]["content"] == policy
+    assert response["error"] is None and response["rows"] == expected
+    assert "Đạt: KHO02, KHO03, KHO05." in response["answer"]
+    assert "Chưa đạt: KHO01, KHO04." in response["answer"]
+    assert response["used_model"] == model and not response["fallback_used"]
+    assert response["sources"][0]["content"] == policy
+    assert response["verification_status"] == "unverified"
     before = list(calls)
     assert accounts.a.client.get(path).json()["messages"][-1]["response"] == response
     assert accounts.b.client.get(path).status_code == 404
-    assert calls == before == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]
+    assert calls == before == ["RouteDecision", "PlanDecision"]

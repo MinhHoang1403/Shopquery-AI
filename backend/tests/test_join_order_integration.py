@@ -402,9 +402,9 @@ def test_aggregate_drafts_guarded_execution_and_independent_fact_oracle(
                 assert actual[key] == str(value)
             else:
                 assert actual[key] == value
-    prompt = gateway.generate_text.call_args.args[0]
-    assert "non_null_value_count counts only non-NULL" in prompt
-    assert "only JSON null means null" in prompt
+    assert result.answer
+    gateway.generate_text.assert_not_called()
+    assert result.count_metrics == executor.execute.call_args.args[0].count_metrics
 
 
 @pytest.mark.parametrize(

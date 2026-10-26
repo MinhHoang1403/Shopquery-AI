@@ -216,8 +216,8 @@ def test_guest_upload_detects_then_chats_without_manual_confirmation(
     body = response.json()["response"]
     assert body["route"] == "SQL" and body["used_model"] == model
     assert body["rows"] == [
-        {"name": "An", "total": "20.00", "fact_row_count": 2},
-        {"name": "Binh", "total": "0.00", "fact_row_count": 1},
+        {"name": "An", "total": "20.00", "fact_row_count": 2, "id": "S1"},
+        {"name": "Binh", "total": "0.00", "fact_row_count": 1, "id": "S2"},
     ]
     assert calls == ["RouteDecision", "PlanDecision"]
     assert legacy_fingerprints(get_setup_engine()) == before

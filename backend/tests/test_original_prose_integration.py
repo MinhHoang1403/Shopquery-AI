@@ -25,12 +25,14 @@ pytestmark = pytest.mark.integration
 @pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
 @pytest.mark.parametrize("business_alias", [False, True])
 @pytest.mark.parametrize("unsafe", [None, "exception", "unit_conflict"])
+@pytest.mark.parametrize("verified_request", [False, True])
 def test_original_prose_exact_kh_acceptance_and_history(
     gate_d_workspace,  # noqa: F811
     monkeypatch,
     model,
     business_alias,  # noqa: F811
     unsafe,
+    verified_request,
 ):
     actors, dataset, facts, embedder = gate_d_workspace
     policy = ORIGINAL
@@ -52,8 +54,9 @@ def test_original_prose_exact_kh_acceptance_and_history(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 if "Vậy còn" in prompt:
-                    assert "Previous successful turns" in prompt
-                    assert "KHO02, KHO03, KHO05" in prompt
+                    assert ("Previous successful turns" in prompt) is verified_request
+                    if verified_request:
+                        assert "KHO02, KHO03, KHO05" in prompt
                     assert "Account 1" not in prompt
                 return RouteDecision(route=RouteLabel.HYBRID, reason="Offline original prose")
             if schema is PlanDecision:
@@ -102,7 +105,15 @@ def test_original_prose_exact_kh_acceptance_and_history(
     created = actors.a.client.post("/api/conversations", json={"dataset_id": dataset.dataset_id})
     path = "/api/conversations/" + created.json()["conversation_id"]
     sent = actors.a.client.post(
-        path + "/messages", json={"message": QUESTIONS["H"], "model_id": model}
+        path + "/messages",
+        json={
+            "message": (
+                "Theo chính sách KPI, những kho nào đạt và kho nào chưa đạt?"
+                if verified_request
+                else QUESTIONS["H"]
+            ),
+            "model_id": model,
+        },
     )
     assert sent.status_code == 200
     response = sent.json()["assistant_message"]["response"]
@@ -115,6 +126,9 @@ def test_original_prose_exact_kh_acceptance_and_history(
         return
     assert response["error"] is None, response["error"]
     assert response["route"] == "HYBRID"
+    assert response["verification_status"] == (
+        "verified_classification" if verified_request else "unverified"
+    )
     # The omitted dimension key is a backend-issued output; never guessed from a label.
     assert response["rows"] == expected
     assert response["used_model"] == model and not response["fallback_used"]
