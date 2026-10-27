@@ -44,7 +44,84 @@ Immediate rollback API67a891b0/sourcef6f44ae + `.env.release.before` tại priva
 backups/shopquery-ai/knowledge-final-20261027. Không xóa images/volumes/prune trong lượt
 này. Xem [acceptance hiện hành](v2_final_acceptance.md) trước các đoạn lịch sử bên dưới.
 
-Các đoạn triển khai dưới đây là lịch sử; không dùng image refs lịch sử làm cấu hình hiện hành.
+## Langfuse: preflight dừng do thiếu tài nguyên — 27/10/2026
+
+**BLOCKED_INSUFFICIENT_RESOURCES**. Chưa pull/start Langfuse, chưa tạo Compose project,
+network, volumes, credentials, SDK dependency hoặc instrumentation. Không sửa/rebuild/
+recreate API/Web/DB8080 và không gọi provider. Đây là dừng tại gate tài nguyên, không
+phải integration đã được thử rồi thất bại. Mục17 của yêu cầu operator bắt buộc dừng
+nếu máy không đáp ứng; không tự nới Docker/WSL memory hoặc đóng ứng dụng của operator.
+
+Phần quy tắc đã hoàn tất trước preflight: `AGENTS.md` commit
+`ac4111e53a18c64979746cd75c3fc32ff172be6e`, push origin/main và đối chiếu remote SHA
+khớp. Giữ quy tắc cũ, bổ sung chất lượng/tên/source/Git/Docker/kiểm thử/telemetry,
+ngoại lệ đủ sáu service Langfuse vận hành và bảo vệ dữ liệu. Không có AGENTS.md con.
+Không mở branch tích hợp khi gate đã chặn; thay đổi bàn giao này chỉ là docs.
+
+### Bằng chứng tài nguyên
+
+Đo bằng CIM Windows, `/proc/meminfo` của Docker Desktop, `docker info/stats/system df`,
+volume C và listener inventory, khoảng10:46 Asia/Saigon. Không tạo test containers.
+
+| Hạng mục | Kết quả |
+| --- | --- |
+| RAM vật lý Windows |15.31GiB tổng;1.51–1.58GiB khả dụng; ba mẫu1549/1547/1555MiB |
+| Commit/pagefile |27.8GiB committed; pagefile đang dùng3156MiB, allocated26624MiB |
+| Paging tại ba mẫu |Pages/sec0/31/99, PageReads/sec0/3/15; không gọi đây là benchmark hoặc chứng minh paging nghiêm trọng liên tục |
+| Docker Desktop/WSL2 |7.415GiB tổng,12logical CPUs; WSL MemAvailable khoảng6.25GiB bao gồm phần có thể thu hồi; không coi đây là RAM vật lý mới ngoài Windows |
+| ShopQuery khi nhàn rỗi |API183.9MiB, Web18.37MiB, DB65.25MiB; không đại diện peak khi chat/ingest |
+| Ổ C |475.91GiB tổng,135.03GiB trống; chưa dành/reserve dung lượng cho traces |
+| Docker storage hiện có |41images/50.03GB;27volumes/1.816GB; build cache53.59GB; có layer dùng chung, không cộng thành số dung lượng có thể thu hồi |
+| Cổng |3000/3030/5432/6379/8123/9000/9001/9090 không thấy TCP listener tại thời điểm đo;8080/8001/15432 vẫn loopback |
+
+[Hướng dẫn Compose chính thức](https://langfuse.com/self-hosting/deployment/docker-compose)
+khuyến nghị VM ít nhất4cores/16GiB RAM và khoảng100GiB storage cho tracing.
+Đây là khuyến nghị VM, không phải bằng chứng rằng mọi workload đều cần chính xác16GiB.
+[Sizing chính thức](https://langfuse.com/self-hosting/configuration/scaling) nêu
+ClickHouse8GiB, Web/Worker mỗi4GiB, PostgreSQL4GiB, Redis1.5GiB, blob storage4GiB.
+Riêng ClickHouse theo sizing này đã vượt toàn bộ RAM Docker hiện có. Windows gần hết
+headroom, nên chưa có cơ sở an toàn để nhận thêm sáu service vận hành. Không thử giới
+hạn RAM thấp, swap hoặc cắt service bắt buộc để tìm một lần startup may mắn.
+
+### Phiên bản đã tra và phương án triển khai tiếp
+
+- Stable server được tra là
+  [Langfuse v4.70.1](https://github.com/langfuse/langfuse/releases/tag/v4.70.1).
+  [Compose tại release đó](https://github.com/langfuse/langfuse/blob/v4.70.1/docker-compose.yml)
+  có Web/Worker/PostgreSQL/ClickHouse/Redis/MinIO. Chỉ đọc upstream, không clone repo
+  thứ hai hay áp dụng mặc định secrets/tag major trong file mẫu.
+- PyPI JSON thực lúc preflight trả Python SDK5.0.4, Python>=3.11; search cache còn
+  hiển thị SDK4 nên không dùng cache chọn major. [SDK overview/compatibility](https://langfuse.com/docs/observability/sdk/overview)
+  yêu cầu SDK5 với server>=4.59.0. Chưa cài SDK, kiểm dependency compatibility dự án,
+  chọn/pin image digest hoặc xác nhận ingestion runtime; không coi tra version là PASS.
+- Dùng máy/VM riêng cho `shopquery-observability`, cấu hình vẫn quản lý trong
+  `ops/langfuse/` của repository này. Khởi điểm Compose theo khuyến nghị16GiB/4vCPU/
+  100GiB; ưu tiên32GiB nếu cấp đủ các mức RAM theo từng service cộng headroom OS.
+  Chốt kích thước/retention theo tải thực, không hứa capacity chưa đo.
+- Trên VM riêng: sáu service chính thức, volumes/DB riêng, secret ngẫu nhiên, image
+  stable pin digest. UI bind127.0.0.1:3000, có thể dùng SSH forwarding để truy cập;
+  endpoint telemetry từ API phải qua kết nối riêng có TLS/auth phù hợp. Docker bridge
+  cục bộ không tự nối qua hai máy. Không expose main DB hoặc dùng localhost container
+  sai nghĩa; không tự mở LAN/Internet trong lượt này.
+- Khi có tài nguyên phù hợp mới tiếp tục branch ngắn hạn, instrumentation tối thiểu
+  từ diagnostics, metadata-only/privacy, measured/UNKNOWN token usage, cost có nguồn,
+  bounded async export/fail-open, targeted tests/CI rồi triển khai và live smoke mới.
+  Không reuse ngân sách đã đóng hoặc đổi SQL/RAG/Hybrid/default/fallback để giám sát.
+
+### Trạng thái ShopQuery và bàn giao
+
+Strict verifier87modules PASS, source/image/environment không drift;8080 và API health
+trả200. Runtime vẫn API069e7f67/sourcea67242d, Webae181335/source02d5cbb, mainDB511c4f5a
+và protected volume giữ nguyên. Không thực hiện database writes/migrations/data cleanup;
+không chạy lại full regression hoặc fingerprint toàn corpus khi chỉ sửa quy tắc/docs.
+Gemini default/fallbackOFF/gateON/GuestOFF, embedding2/768/vector-only giữ nguyên.
+Không phát sinh generation/query/document embeddings. Không có Langfuse login URL đang
+vận hành, project keys, traces, pricing configuration, fail-open tests hoặc live smoke
+được nghiệm thu. Không báo LANGFUSE_READY. CI application không chạy lại cho docs-only;
+`git diff --check` PASS. Ba script bảo trì untracked của operator được giữ nguyên.
+Không tạo/xóa container/image/volume/cache nào, không thay settings Windows/WSL.
+
+## Lịch sử triển khai trước preflight Langfuse
 
 26/10/2026 17:03 cutover theo quyền triển khai có điều kiện trong master audit:
 exact-main/test `272cbf81`, CI40303628357 PASS1349backend/833PG/85frontend/125mockE2E.

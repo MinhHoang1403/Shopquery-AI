@@ -28,9 +28,13 @@ Các báo cáo lịch sử đã bỏ khỏi checkout; có thể tra tại Git co
 
 ## Quy trình làm việc trên bản chính
 
-GitHub `main` → local `main` → targeted tests → commit/push → build service thay đổi
-→ pin digest trong private `.env.release` → deploy8080 → verify. Không cần build
-image khi chỉ sửa docs hoặc dọn cache. Không tạo candidate/sandbox app stack.
+Thay đổi nhỏ theo GitHub `main` → local `main` → targeted tests → commit/push → build
+service thay đổi → pin digest trong private `.env.release` → deploy8080 → verify.
+Tích hợp công nghệ mới/nhiều file/rủi ro runtime dùng một branch ngắn hạn, CI trước
+merge main, theo [AGENTS.md](AGENTS.md). Không build image khi chỉ sửa docs/config-only,
+không tạo candidate/sandbox app stack. Langfuse đủ sáu service vận hành được phép;
+[preflight27/10](docs/deployment.md#langfuse-preflight-dừng-do-thiếu-tài-nguyên--27102026)
+hiện chặn triển khai cùng máy vì thiếu RAM; chưa có monitoring được nghiệm thu.
 
 Cần Docker Desktop/Compose hỗ trợ `!override`, PowerShell, Git, Python 3.11/uv;
 Node 24 nếu chạy frontend tests native. Đọc [AGENTS.md](AGENTS.md) trước khi sửa source.
@@ -53,7 +57,9 @@ Private `.env`, `.env.release` và local overrides phải được giữ, không
 Không chạy base Compose một mình trên máy đã có overrides riêng. Chuyển API/Web
 sang development là thao tác maintenance có gián đoạn; `scripts/dev.ps1` và Compose
 dev vẫn là công cụ source, không phải deployment thứ hai cần chạy thường trực.
-Test DB dùng volume riêng được giữ lại, chỉ khởi động khi integration test cần.
+Test DB dùng volume riêng được giữ lại. Ưu tiên CI; các lệnh DevDB dưới đây chỉ dùng
+khi cần môi trường isolated đã có và không có cách kiểm chứng phù hợp hơn, không
+tạo thêm local test stack. Langfuse không cần containers riêng cho tests.
 
 ```powershell
 ./scripts/test.ps1 -Tests tests/test_plan_binding.py
