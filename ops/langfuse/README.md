@@ -1,11 +1,38 @@
-# Chuẩn bị Langfuse trên VM riêng
+# Langfuse trên Docker Desktop
 
-**BLOCKED_INSUFFICIENT_RESOURCES — CONFIG_ONLY — NOT_DEPLOYED — LIVE_PENDING.**
-Không chạy `up`/`pull` trên máy Windows hiện tại. Nhánh này chỉ chứa cấu hình đã kiểm
-tra offline, không có SDK/instrumentation hoặc endpoint ShopQuery→Langfuse đang chạy.
-Không dùng Compose config PASS để công nhận health, login, ingestion hay fail-open.
+**BLOCKED_RUNTIME_RESOURCES — một lần khởi động đã dùng, không thử lại.**
 
-## Preflight sau restart, 27/10/2026
+## Kết quả lần thử localhost, 27/10/2026
+
+- Pull thành công cả6immutable images trong `compose.yaml`. Chỉ một lệnh `up -d`
+  lúc12:09:41 Asia/Saigon, Docker vẫn7.415GiB; không đổi WSL/Windows hoặc dừng app khác.
+- Cả6containers đã chạy; PostgreSQL/ClickHouse/Redis/MinIO healthy. Web/Worker còn
+  `starting`; **chưa** chứng minh app readiness, Dashboard/login hoặc ingestion.
+- Giám sát host thấy available RAM472→449→371→344→311→254→184MiB. Hai mẫu cuối cách
+  khoảng5giây dưới256MiB (ngưỡng dừng bảo thủ của lần thử, không phải minimum do
+  Langfuse công bố). Tín hiệu thực tế này kích hoạt stop, không phải sizing16GiB.
+  Mẫu độc lập trong lúc dừng170MiB; sau dừng1469MiB. Không có OOMKilled/restart hoặc
+  bằng chứng ShopQuery failure; không suy ra Langfuse chắc chắn sẽ OOM nếu chờ thêm.
+- Graceful stop **riêng** project, exit CLI0; hoàn tất12:10:41. Web exit143 doSIGTERM,
+  Worker và4datastores exit0; mọi RestartCount0/OOMKilledfalse. Không SIGKILL, không
+  điều chỉnh RAM/thử lại. Container/images,5volumes và private `.env` được giữ nguyên.
+- API8080HTTP200 trong toàn bộ các mẫu; API/Web/DB IDs/images/start times không đổi.
+  Không recreate API/Web/DB, không migrate hoặc ghi main dữ liệu, không paid calls.
+- Kiểm sau dừng:9Compose tests PASS; strict verifier87modules PASS, không source/
+  environment drift,3ShopQuery services healthy và đúng main volume. Google login/
+  history UI không kiểm lại trong lần thử này; không dùng kết quả lịch sử làm PASS mới.
+- SDK chưa cài, không project/API keys hoặc trace thật. Token/cost/privacy/fail-open
+  integration và Dashboard đều **NOT_VERIFIED**; không báo READY từ4healthchecks.
+  Không nối network ShopQuery hoặc bật flag instrumentation. Không merge nhánh chỉ
+  có cấu hình này vào main như một integration hoàn tất.
+
+Chỉ thị mới ngày27/10 cho phép **một lần khởi động có kiểm soát** trên Docker Desktop
+hiện tại, thay điều kiện dừng theo sizing khuyến nghị trước đó. Dùng lại cấu hình này,
+không đổi giới hạn7.415GiB, Windows/WSL hoặc dừng ShopQuery/ứng dụng khác. Kết quả
+runtime phải ghi riêng sau lần thử; Compose config PASS chưa chứng minh ingestion.
+Chưa có SDK/instrumentation hoặc endpoint ShopQuery→Langfuse đang chạy.
+
+## Preflight sau restart, trước chỉ thị thử localhost
 
 Đã đọc AGENTS.md/README/deployment/audit/acceptance và báo cáo maintenance ngoài repo.
 Không cập nhật lại AGENTS.md: main đã có quy tắc tại ac4111e. Baseline branch từ
@@ -30,22 +57,17 @@ Theo [Compose chính thức](https://langfuse.com/self-hosting/deployment/docker
 VM khởi điểm4vCPU/16GiB/100GiB. [Sizing từng service](https://langfuse.com/self-hosting/configuration/scaling)
 nêu ClickHouse8GiB, Web/Worker mỗi4GiB, PostgreSQL4GiB, Redis1.5GiB, MinIO4GiB.
 Đây là hướng dẫn sizing khác nhau, không bảo đảm mọi tải. Riêng ClickHouse đã lớn hơn
-tổng RAM Docker hiện hành; không có headroom Windows/ShopQuery/peak phù hợp. Không
-dùng swap hoặc bỏ service bắt buộc để vượt resource gate.
-
-Đề xuất VM **4vCPU tối thiểu, ưu tiên8vCPU/32GiB RAM/100GiB SSD hoặc hơn**, Linux
-Ubuntu được Docker hỗ trợ.32GiB là đề xuất headroom cho các service cộng OS, không
-capacity/SLA đã đo. Trace storage theo events/ngày×bytes/event×retention, cộng index,
-blob, logs, backup và dung lượng trống; chỉ đo được sau ingestion thực. Không tự mua
-VM. Cần operator cung cấp host/quyền SSH, mạng riêng/VPN, DNS/TLS và nơi backup.
+tổng RAM Docker hiện hành theo sizing, nhưng operator đã cho phép thử tải thực tế.
+Không dùng sizing này làm điều kiện tự động từ chối lần thử. Trace storage vẫn cần
+đo sau ingestion; cộng index/blob/logs/backup và dung lượng trống khi đặt retention.
 
 ## Nguồn và pin images
 
 Nền tảng là [Compose release4.70.1](https://github.com/langfuse/langfuse/blob/v4.70.1/docker-compose.yml).
 Không clone source Langfuse, không dùng Kubernetes hoặc stack khác.
 Registry manifests được tra bằng `docker buildx imagetools inspect` ngày27/10;
-không pull image layers, tạo container/network/volume. Digest trong compose.yaml là
-multi-platform index đã kiểm có Linux amd64; không phải build/runtime đã nghiệm thu.
+trước khi pull. Digest trong compose.yaml là multi-platform index đã kiểm có Linux
+amd64; pull thành công đơn lẻ chưa chứng minh runtime đã nghiệm thu.
 
 | Service | Nguồn pin |
 | --- | --- |
@@ -67,50 +89,48 @@ MinIO media127.0.0.1:9090; worker3030, DB5432, Redis6379, ClickHouse8123/9000,
 MinIO console9001 không publish. Redis auth healthcheck, AOF/noeviction; Docker
 json-file rotation10m×3 mỗi service. ClickHouse system-table logs cần giám sát riêng;
 Docker log rotation không giới hạn database growth. Chưa ép per-service RAM limits
-thấp khi chưa đo VM và workload.
+thấp để thử may rủi trên máy này.
 
-Không có credentials thật. Sau khi host được duyệt, copy `.env.example` thành `.env`
-trên VM, `chmod600`; tạo riêng mỗi secret bằng `openssl rand -hex32` (lệnh thật bên
-dưới có khoảng trắng). Encryption key đúng32random bytes/64hex. PostgreSQL dùng hex
+Credentials thật nằm trong `ops/langfuse/.env`, bị Git ignore. Mỗi secret riêng được
+sinh bằng bộ tạo số ngẫu nhiên mật mã,32bytes/64hex; không dùng giá trị template.
+Encryption key đúng32random bytes/64hex. PostgreSQL dùng hex
 để không gây ambiguity URL encoding. Không in secrets hoặc resolved Compose JSON
 vào logs; `config --quiet` là kiểm tra cấu hình phù hợp. Thiếu bất kỳ secret nào
 Compose phải từ chối; template trống không được dùng để tuyên bố integration PASS.
 
-## Thực hiện trên host đã được duyệt, chưa chạy trong lượt này
+## Vận hành localhost theo chỉ thị hiện hành
 
-1. Xác minh CPU/RAM/disk/ports/architecture/quyền và backup destination; giữ VM riêng.
-   Dùng checkout cùng repository/commit, không tạo source ShopQuery thứ hai trên máy
-   hiện tại; chỉ chuyển thư mục cấu hình này tới VM bằng quy trình operator cho phép.
-2. Trong thư mục cấu hình trên VM (Linux shell):
+Tại repository gốc, kiểm Docker hoạt động,8080healthy,3000/9090không xung đột và
+còn dung lượng. Không audit máy lại hoặc thay memory limits. Secrets phải đã có
+trước `config --quiet`; không ghi đè `.env` nếu volumes đã tồn tại.
 
-   ```bash
-   umask 077
-   cp .env.example .env
-   chmod 600 .env
-   # Mỗi lần sinh một secret riêng; nhập vào .env bằng editor an toàn, không ghi log:
-   # openssl rand -hex 32
-   docker compose --env-file .env -f compose.yaml config --quiet
-   # Chỉ khi resource/security gates và thời điểm triển khai đã duyệt:
-   docker compose --env-file .env -f compose.yaml pull
-   docker compose --env-file .env -f compose.yaml up -d
-   docker compose --env-file .env -f compose.yaml ps
-   ```
+```powershell
+docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml config --quiet
+docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml pull --quiet
+# Chỉ một lần khởi động trong cửa sổ đã duyệt, kèm giám sát bên dưới:
+docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml up -d
+```
 
-3. Truy cập UI/media bằng SSH forwarding cổng3000/9090. Không có default admin;
-   operator tạo user/org/project và API keys thật. Không tạo email/account giả.
-   Không public DB/Redis/ClickHouse hoặc gửi telemetry qua Internet HTTP.
-4. Với API trên máy Windows: cần endpoint HTTPS qua VPN/private network có DNS và
-   certificate tin cậy. Dùng reverse proxy được quản trị trên VM chuyển HTTPS tới
-   loopback3000, hạn chế ingress từ ShopQuery/VPN; xác minh từ API container. Docker
-   bridge không nối hai máy. Chưa có host nên không đặt hostname/endpoint giả trong
-   ShopQuery, không thay Compose/API mạng đang chạy. Public/media URL phải theo luồng
-   SSH hoặc TLS thực, không dùng localhost3000 bên trong API container.
-5. Xác minh4datastores health/auth, Web login và worker readiness theo
+Trong startup và sau đó kiểm API8080, DB/API health/start time/restart/OOM, trạng
+thái Langfuse và Windows available memory cơ bản. Có OOM, crash loop, daemon restart,
+Windows thiếu RAM nghiêm trọng hoặc ShopQuery bị ảnh hưởng: **dừng riêng Langfuse**,
+giữ5volumes/.env/images; không `down -v`, không thử cấu hình RAM khác hoặc restart
+vòng lặp. Dùng `docker compose ... stop --timeout -1` với đúng project/file/env ở
+trên để chờ graceful stop; kiểm ShopQuery lại và báo `BLOCKED_RUNTIME_RESOURCES`.
+
+Dashboard `http://127.0.0.1:3000`, media `http://127.0.0.1:9090`. Không có default
+admin; tạo user/org/project và API keys bằng luồng chính thức, không bịa email/keys.
+Nếu ổn định và có credentials thật, chỉ nối API và Langfuse Web bằng mạng ingestion
+cần thiết; DB ShopQuery không nối mạng Langfuse. Endpoint bên trong API phải là
+Docker hostname, không dùng `127.0.0.1:3000`. Hiện chưa thêm mạng này vào ShopQuery.
+
+Xác minh4datastores health/auth, Web login và worker readiness theo
    [hướng dẫn health](https://langfuse.com/self-hosting/configuration/health-readiness-endpoints).
-   Đã thêm healthcheck wget theo tài liệu cho Web/Worker; Web kiểm cả database.
-   Kiểm riêng `/api/public/ready`; health PASS/`up --wait` đơn lẻ không đủ để chấm
-   ingestion. Kiểm ingestion synthetic được gắn nhãn, worker queue drains,
-   persistence qua restart chỉ service Langfuse. Không tạo test containers/stack.
+Đã thêm healthcheck wget theo tài liệu cho Web/Worker; Web kiểm cả database.
+Kiểm riêng `/api/public/ready`; health PASS/`up --wait` đơn lẻ không đủ để chấm
+ingestion. Kiểm ingestion synthetic được gắn nhãn, worker queue drains,
+persistence qua restart chỉ service Langfuse. Các bước này chưa được thực hiện;
+không tạo test containers/stack.
 
 ## Retention, backup và restore
 
@@ -123,7 +143,7 @@ events có thể sai/deduplicate không đúng. Không tự kích hoạt deletio
 
 Theo [backup chính thức](https://langfuse.com/self-hosting/configuration/backups),
 bảo vệ PostgreSQL(project/users/keys), ClickHouse(observations), MinIO(raw events/blobs),
-Redis(queue) và private secrets, đặc biệt SALT/ENCRYPTION_KEY. VM/storage snapshots
+Redis(queue) và private secrets, đặc biệt SALT/ENCRYPTION_KEY. Storage snapshots
 có thể dùng sau khi ngừng ingestion và gracefully stop **riêng project này** trong
 maintenance window; chụp đồng bộ tất cả5volumes, giữ manifest image digests và mã
 kiểm tra. `docker volume inspect` tìm exact mountpoints, không đoán data-root.

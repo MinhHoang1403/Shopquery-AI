@@ -1,4 +1,4 @@
-# Based on langfuse/langfuse v4.70.1/docker-compose.yml; resource gate is in README.md.
+# Based on langfuse/langfuse v4.70.1/docker-compose.yml; safe operation is in README.md.
 name: shopquery-observability
 
 x-logging: &logging

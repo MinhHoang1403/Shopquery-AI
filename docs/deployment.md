@@ -44,7 +44,30 @@ Immediate rollback API67a891b0/sourcef6f44ae + `.env.release.before` tại priva
 backups/shopquery-ai/knowledge-final-20261027. Không xóa images/volumes/prune trong lượt
 này. Xem [acceptance hiện hành](v2_final_acceptance.md) trước các đoạn lịch sử bên dưới.
 
-## Langfuse sau restart — cấu hình VM chưa triển khai, 27/10/2026
+## Langfuse localhost — đã thử một lần và dừng an toàn, 27/10/2026
+
+**BLOCKED_RUNTIME_RESOURCES.** Chỉ thị mới cho phép đúng một lần trên Docker7.415GiB.
+Pull6pinned images thành công; `up -d`12:09:41 Asia/Saigon tạo đủ6containers/5volumes
+riêng project `shopquery-observability`. Bốn datastores healthy, Web/Worker còn
+starting. Windows available RAM472MiB xuống254/184MiB ở2mẫu cách khoảng5giây;
+ngưỡng bảo thủ256MiB kích hoạt graceful stop riêng Langfuse, xong12:10:41. Không OOM,
+crash/restart hoặc ShopQuery failure; không khẳng định eventual OOM từ các mẫu này.
+Sau dừng available1469MiB. Không đổi WSL/pagefile, đóng app, tuning RAM hoặc thử lại.
+
+Giữ6stopped containers,6current images,5named volumes, network riêng và private secrets;
+không cleanup/prune/dùng main DB. Web exit143 doSIGTERM, Worker/4datastores exit0,
+mọi OOMKilledfalse/RestartCount0. Xem [runbook và bằng chứng](../ops/langfuse/README.md).
+Không SDK/instrumentation/project keys, không Dashboard/trace ingestion/usage/cost/
+privacy/fail-open acceptance; không READY, không merge như integration đã hoàn tất.
+
+8080HTTP200 xuyên suốt mẫu đo; API3ce1af0d/Webc6f1f591/DB511c4f5a với images và start
+times giữ nguyên. Main volume `shopquery-ai_postgres_auth_20261019` không đổi; Gemini
+default/fallbackOFF/gateON/GuestOFF/embedding2/768/vector-only giữ nguyên. Không build,
+recreate/migrate ShopQuery hoặc gọi provider. Phần dưới là lịch sử trước chỉ thị mới.
+Kiểm sau stop:9Compose tests PASS, strict87modules PASS/no source hoặc environment
+drift/3services healthy. Google login/history UI không nghiệm thu lại trong lượt này.
+
+## Langfuse sau restart — lịch sử cấu hình VM trước chỉ thị localhost, 27/10/2026
 
 **BLOCKED_INSUFFICIENT_RESOURCES — CONFIG_ONLY — LIVE_PENDING.** Windows boot11:45:57,
 đo11:52:57 Asia/Saigon: RAM15.31GiB, khả dụng1.47GiB, commit20.65GiB/pagefile1199MiB,
