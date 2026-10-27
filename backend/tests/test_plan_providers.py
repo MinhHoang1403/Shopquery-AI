@@ -1,4 +1,5 @@
 import json
+import re
 
 import httpx
 import httpx2
@@ -16,6 +17,83 @@ from app.text_to_sql.query_plan import PlanDecision
 from tests.test_gemini import _build_harness
 from tests.test_providers import completion, harness
 from tests.test_workspace_prompts import tuition_context
+
+
+@pytest.mark.parametrize("predicate", ["where", "having"])
+def test_knowledge_wire_expresses_the_predicate_grammar(monkeypatch, predicate):
+    payload = {
+        "plan": {
+            "source": "t0",
+            "fields": [{"reference": "e0", "alias": "n"}],
+            "expressions": [{"operation": "row_count"}],
+        }
+    }
+    gateway, calls = gateway_harness(
+        monkeypatch, "knowledge", [response("knowledge", json.dumps(payload))]
+    )
+    try:
+        gateway.generate_structured("Synthetic count", PlanDecision)
+        body = json.loads(calls[0].content)
+        contract = body["response_format"]["json_schema"]
+        assert contract["strict"] is True
+        pattern = contract["schema"]["properties"][predicate].get("pattern")
+        assert pattern is not None
+        for valid in ("", "e0", "e79", "t0.c0", "t12.c34"):
+            assert re.fullmatch(pattern, valid)
+        for invalid in (",having=[]}", ",limit=0,", "n > 100", "unknown"):
+            assert not re.search(pattern, invalid)
+        assert len(calls) == 1
+    finally:
+        gateway.close()
+
+
+@pytest.mark.parametrize("predicate", ["where", "having"])
+@pytest.mark.parametrize("value", [",having=[]}", ",limit=0,", "e0\n"])
+def test_knowledge_pattern_bypass_still_fails_local_validation(monkeypatch, predicate, value):
+    payload = {
+        "plan": {
+            "source": "t0",
+            "fields": [{"reference": "e0", "alias": "n"}],
+            "expressions": [{"operation": "row_count"}],
+            predicate: value,
+        }
+    }
+    gateway, calls = gateway_harness(
+        monkeypatch, "knowledge", [response("knowledge", json.dumps(payload))]
+    )
+    try:
+        with pytest.raises(ProviderError) as caught:
+            gateway.generate_structured("Synthetic count", PlanDecision)
+        assert caught.value.error_context.phase == "wire_validation"
+        assert caught.value.error_context.validation_type == "predicate_reference"
+        assert caught.value.error_context.validation_location == [predicate]
+        assert value not in caught.value.error_context.model_dump_json()
+        assert len(calls) == 1
+    finally:
+        gateway.close()
+
+
+def test_knowledge_schema_projection_does_not_change_gemini_wire(monkeypatch):
+    from app.text_to_sql.generation_contract import GenerationDecision
+
+    assert "pattern" not in GenerationDecision.model_json_schema()["properties"]["where"]
+    payload = {
+        "plan": {
+            "source": "t0",
+            "fields": [{"reference": "e0", "alias": "n"}],
+            "expressions": [{"operation": "row_count"}],
+        }
+    }
+    gateway, calls = gateway_harness(
+        monkeypatch, "gemini", [response("gemini", json.dumps(payload))]
+    )
+    try:
+        gateway.generate_structured("Synthetic count", PlanDecision)
+        schema = json.loads(calls[0].content)["generationConfig"]["responseSchema"]
+        assert "pattern" not in json.dumps(schema)
+        assert len(calls) == 1
+    finally:
+        gateway.close()
 
 
 def response(provider, text):

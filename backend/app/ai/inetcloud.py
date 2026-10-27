@@ -6,7 +6,7 @@ from typing import Any
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 from openai import APIConnectionError, APIStatusError, APITimeoutError, DefaultHttpxClient
-from pydantic import ValidationError
+from pydantic import ConfigDict, ValidationError
 
 from app.ai.gemini import StructuredModel
 from app.core.config import Settings
@@ -24,6 +24,17 @@ from app.text_to_sql.generation_contract import GENERATION_INSTRUCTIONS, Generat
 from app.text_to_sql.query_plan import PlanDecision
 
 TRANSIENT_STATUS_CODES = frozenset(TRANSIENT_PROVIDER_STATUSES)
+
+
+def _predicate_schema(schema: dict[str, Any]) -> None:
+    for name in ("where", "having"):
+        schema["properties"][name]["pattern"] = r"^(?:e[0-9]+|t[0-9]+\.c[0-9]+)?$"
+
+
+class KnowledgeGenerationDecision(GenerationDecision):
+    """Expose predicate syntax to Knowledge without changing the shared domain contract."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra=_predicate_schema)
 
 
 class StructuredOutputError(ProviderError):
@@ -60,7 +71,8 @@ class InetCloudGateway:
     def generate_structured(
         self, prompt: str, response_model: type[StructuredModel]
     ) -> StructuredModel:
-        wire_model = GenerationDecision if response_model is PlanDecision else response_model
+        is_plan = response_model is PlanDecision
+        wire_model = KnowledgeGenerationDecision if is_plan else response_model
         try:
             client = self._client.with_structured_output(
                 wire_model, method="json_schema", strict=True, include_raw=True
@@ -68,7 +80,7 @@ class InetCloudGateway:
         except (ValueError, TypeError) as exc:
             raise self._failure("schema_preparation", "sdk_preparation") from exc
         response = self._invoke(
-            client, prompt + (GENERATION_INSTRUCTIONS if wire_model is GenerationDecision else "")
+            client, prompt + (GENERATION_INSTRUCTIONS if is_plan else "")
         )
         raw = response.get("raw")
         if getattr(raw, "additional_kwargs", {}).get("refusal"):

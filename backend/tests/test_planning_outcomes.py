@@ -38,7 +38,7 @@ def test_knowledge_explicit_outcome_uses_existing_generation_contract(monkeypatc
         assert result.plan.source == "t0" and result.plan.expressions[0].operation == "row_count"
         payload = json.loads(calls[0].content)
         schema = payload["response_format"]["json_schema"]
-        assert schema["name"] == "GenerationDecision" and schema["strict"]
+        assert schema["name"] == "KnowledgeGenerationDecision" and schema["strict"]
         assert (
             "outcome" in schema["schema"]["required"]
             and "plan" not in schema["schema"]["properties"]

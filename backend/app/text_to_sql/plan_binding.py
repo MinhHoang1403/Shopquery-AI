@@ -126,6 +126,17 @@ def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryP
             )
             if key not in groups:
                 groups.append(key)
+            if key in plan.group_by:
+                # A verified N:1 target key determines its direct attributes. Adding
+                # those projections to GROUP BY preserves this explicitly selected grain.
+                for field in fields:
+                    if (
+                        field.aggregate is None
+                        and field.reference in references.columns
+                        and references.columns[field.reference][0] == edge.target_table
+                        and field.reference not in groups
+                    ):
+                        groups.append(field.reference)
             if not any(field.reference == key for field in fields):
                 alias = edge.target_column
                 if any(field.alias == alias for field in fields):

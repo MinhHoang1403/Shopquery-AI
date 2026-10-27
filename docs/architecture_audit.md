@@ -1,5 +1,79 @@
 # ShopQuery AI — architecture, reliability and security audit
 
+## Ổn định Knowledge SQL lần cuối — 27/10/2026
+
+Trạng thái: đang kiểm chứng, chưa `KNOWLEDGE_ACCEPTED`. Đây là đợt hẹp cuối cùng,
+không mở lại audit toàn hệ thống. Baseline mainb6565d4/API67a891b0/Webae181335,
+strict87modules PASS; Gemini default/fallbackOFF/gateON/GuestOFF/embedding2/768 giữ nguyên.
+AGENTS.md gốc đã đọc, không có AGENTS.md con. Ba script fixture bảo trì untracked
+được giữ nguyên; không dùng fixture bảo trì production chưa hoàn tất.
+
+### Nguyên nhân được xác nhận và phần chưa biết
+
+Actual SDK: Pydantic2.14.1, langchain-openai1.7.2/langchain-core1.6.12, OpenAI3.35.1,
+google-genai1.75.0, SQLAlchemy2.1.4, SQLGlot29.0.1. MockTransport của chính SDK xác nhận
+Chat Completions/modelknowledge/response_format=json_schema/strict=true/include_raw=true.
+Strict serializer yêu cầu đủ14 trường; where/having chỉ là string/maxLength32, không có
+predicate grammar. Validator Python không tự trở thành JSON Schema constraint. Vì vậy
+các chuỗi lỗi `,having=[]}` và `,limit=0,` vẫn phù hợp kiểu JSON string trong schema cũ.
+Conversion chỉ chuyển chuỗi rỗng thànhNone, không sửa chuỗi lỗi; chưa có bằng chứng SDK
+tự tạo những chuỗi này. Nguyên nhân nội bộ model/serving phát sinh delimiter vẫn UNKNOWN.
+
+Việc14 trường bắt buộc/unused sentinel gây lỗi, decoder có thực sự constrained hay không,
+và giới hạn token phía server vẫn là giả thuyết. Không có quyền/log quản trị Knowledge
+để kết luận. Client không đặt max_tokens; diagnostic cũ có JSON đầy đủ nên không có bằng
+chứng truncation. Probe mới1stage synthetic chấp nhận đúng schema thêm pattern, parser/
+domain PASS, finish_reason=stop,38873.42ms. Đây là compatibility evidence, không phải
+chứng minh cơ chế decoder hoặc SQL acceptance. Không thay endpoint/model, không trả rawSQL.
+
+### So sánh phương án và lựa chọn
+
+| Tiêu chí | A: ràng buộc hợp đồng hiện có | B: wire contract mới/nullable | C: phần cơ học trong Binder |
+| --- | --- | --- | --- |
+|Root cause|Đưa cú pháp predicate còn thiếu vào schema|Có thể giảm sentinel, chưa chứng minh nguyên nhân|Bổ sung tên/thuộc tính phụ thuộc khóa dimension đã chọn rõ|
+|Knowledge|Projection cùng GenerationDecision, thêm2pattern|Đổi representation/required/union nhiều hơn|Giảm nghĩa vụ GROUP BY cơ học của model|
+|Gemini|Không đổi schema/adapter Gemini|Cần chứng minh lại SDK/native schema|Cùng Binder, oracle hai adapter bắt buộc|
+|Complexity|Một schema projection trong adapter hiện có|Cao hơn, conversion/compatibility mới|Một vòng trực tiếp trên approved N:1 path|
+|Security/validation|Pydantic/domain/binding vẫn quyết định; pattern không cấp quyền|Không được bỏ predicate không hiểu|Chỉ explicit target identity; không đoán category/FK grain/fact attribute|
+|Regression risk|Thấp; server bỏ pattern vẫn bị local validator chặn|Lớn hơn do anyOf/nullable/sentinel|Có giới hạn; Compiler/AST/revision guard giữ nguyên|
+|Compatibility|Một probe đúng schema đã PASS; offline SDK wire kiểm được|Chưa có evidence hơn A|Backend, độc lập provider và tên domain|
+|Cost/latency|Không thêm call/retry, latency decoder cần đo|Chưa chứng minh lợi ích|Không thêm generation hoặc query DB|
+|Rollback|API image cũ + environment trước cutover|API rollback nhưng phạm vi đổi lớn hơn|Cùng một API image rollback|
+
+Chọn **A + phần C cơ học tối thiểu**, không chọn B, không đổi prompt theo câu hỏi,
+không tạo planner thứ hai. `KnowledgeGenerationDecision` kế thừa nguyên contract và
+validators, chỉ xuất pattern cho where/having trong request Knowledge. Gemini giữ nguyên
+GenerationDecision/native responseSchema. Empty string vẫn là absent; predicate sai không
+bị chuyển thành absent. Reference đã đúng syntax nhưng không được cấp vẫn bị Binder chặn.
+
+`bind_approved_grain` chỉ thêm direct selected attributes vàoGROUP BY khi chính target
+identity của approved N:1 dimension đã nằm trong group_by gốc. Thuộc tính phụ thuộc duy
+nhất khóa ấy nên không chia thêm entity; không thêm measure/count/filter. Thiếu identity,
+FK grain, category, fact attribute hoặc biểu thức không xác minh vẫn refusal như trước.
+Compiler gọi trực tiếp vẫn từ chối projection_grain; execution guard vẫn recheck quan hệ.
+
+### Before/after và kế hoạch nghiệm thu
+
+Ba regression mới FAIL trước sửa:2 predicate wire constraints thiếu,1 selected dimension
+attribute thiếuGROUP BY. Negative counterparts không được đổi thành query đoán mò.
+Tests đã thêm cả server-bypass/local refusal, Gemini schema isolation và24 PostgreSQL
+oracle cases trên6 domain/hai adapters, có filters+WHERE+HAVING phân biệt nhau.
+Chưa dùng mock/compile PASS để tuyên bố live PASS. CI/deploy/live và quyết định cuối sẽ
+được ghi tiếp trong chính mục này, không tạo report mới.
+
+Budget MỚI toàn nhiệm vụ: Knowledge40/Gemini5 generation,8query/0document embeddings;
+đã dùng1Knowledge contract probe, không dùng số dư audit cũ. Mỗi SDK1attempt, không repair
+loop/fallback trong isolated acceptance. Chỉ datasets13/15/16 synthetic đã xác minh;
+mọi SQL so với PostgreSQL oracle READ ONLY, không lấy Gemini làm đáp án Knowledge.
+
+Nguồn kỹ thuật: [Pydantic JSON Schema](https://pydantic.dev/docs/validation/latest/concepts/json_schema/),
+[LangChain structured output](https://reference.langchain.com/python/langchain-openai/chat_models/base/ChatOpenAI/with_structured_output),
+[OpenAI schema subset](https://developers.openai.com/api/docs/guides/structured-outputs).
+Spec OpenAI không tự chứng minh Knowledge server thực thi cùng decoder; installed SDK
+serialization và live conformance được đối chiếu riêng.
+
+## Audit gốc 26/10/2026 — bằng chứng lịch sử
+
 Audit date: 26/10/2026, Asia/Saigon. This is the current report, updated in place.
 Recommendation: **DEMO_READY_WITH_LIMITATIONS using Gemini**. Audit changes are deployed
 on8080 and the bounded acceptance is complete. Knowledge SQL is NOT accepted; no universal

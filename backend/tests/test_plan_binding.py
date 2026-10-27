@@ -50,6 +50,53 @@ def test_unique_fact_path_and_stable_group_key_come_from_approved_metadata():
     assert plan.source != bound.source  # Input remains immutable evidence.
 
 
+def test_explicit_approved_identity_completes_its_projected_dimension_attribute():
+    _, compiler, plan = setup_plan()
+    identity = field(compiler, "courses", "course_id")
+    name = plan.fields[0].reference
+    plan = plan.model_copy(update={"group_by": [identity]})
+    bound = bind_approved_grain(plan, compiler.references)
+    assert bound.group_by == [identity, name]
+    assert plan.group_by == [identity]
+    assert compiler.compile(bound).validated.fact_table == "payments"
+
+
+@pytest.mark.parametrize("table,column", [("students", "course_id"), ("payments", "student_id")])
+def test_foreign_key_group_is_not_guessed_as_the_requested_dimension_grain(table, column):
+    _, compiler, plan = setup_plan()
+    identity = field(compiler, table, column)
+    bound = bind_approved_grain(
+        plan.model_copy(update={"group_by": [identity]}), compiler.references
+    )
+    assert identity in bound.group_by
+    assert plan.fields[0].reference not in bound.group_by
+    with pytest.raises(SqlValidationError):
+        compiler.compile(bound)
+
+
+@pytest.mark.parametrize(
+    "case", ["category", "missing_identity", "fact_attribute", "same_name_unapproved_key"]
+)
+def test_group_completion_does_not_guess_a_different_grain(case):
+    _, compiler, plan = setup_plan()
+    identity = field(compiler, "courses", "course_id")
+    updates = {"group_by": [identity]}
+    if case == "category":
+        updates["grouping"] = "category"
+    elif case == "missing_identity":
+        updates["group_by"] = []
+    elif case == "same_name_unapproved_key":
+        updates["group_by"] = [field(compiler, "payments", "course_id")]
+    else:
+        updates["fields"] = [
+            *plan.fields,
+            PlanField(reference=field(compiler, "payments", "amount"), alias="raw_amount"),
+        ]
+    bound = bind_approved_grain(plan.model_copy(update=updates), compiler.references)
+    with pytest.raises((SqlValidationError, SqlUnsupportedError)):
+        compiler.compile(bound)
+
+
 def test_compiler_still_rejects_wrong_fact_without_backend_binding():
     _, compiler, plan = setup_plan()
     with pytest.raises(SqlUnsupportedError) as error:

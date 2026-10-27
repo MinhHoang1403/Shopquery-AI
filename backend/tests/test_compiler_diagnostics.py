@@ -11,13 +11,14 @@ def test_captured_failure_class_missing_projected_attribute_group_is_explicit():
     _, compiler, plan = setup_plan()
     identity = field(compiler, "courses", "course_id")
     invalid = plan.model_copy(update={"group_by": [identity]})
-    bound = bind_approved_grain(invalid, compiler.references)
+    valid = bind_approved_grain(invalid, compiler.references)
+    invalid = valid.model_copy(update={"group_by": [identity]})
     with pytest.raises(SqlValidationError) as caught:
-        compiler.compile(bound)
+        compiler.compile(invalid)
     assert caught.value.error_context.validation_branch == "projection_grain"
     assert caught.value.error_context.origin_stage == "plan_compilation"
     assert "courses" not in caught.value.error_context.model_dump_json()
-    valid = bound.model_copy(update={"group_by": [identity, plan.fields[0].reference]})
+    assert valid.group_by == [identity, plan.fields[0].reference]
     assert compiler.compile(valid).validated.fact_table == "payments"
 
 
