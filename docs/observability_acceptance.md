@@ -36,7 +36,7 @@ Mọi metadata qua allowlist và export masking; không raw content/identity.
 
 Mọi stage backend có duration từ SDK start/end và safe error metadata khi exception;
 error path được kiểm bằng tests, không tạo lỗi provider trả phí. Success span không cần
-error_category giả. Tất cả input/output content của226observations live đều null.
+error_category giả. Tất cả input/output content của234observations live đều null.
 
 | Nhóm | Trace/duration live | Model/token live | Error metadata | Privacy | Trạng thái |
 | --- | --- | --- | --- | --- | --- |
@@ -73,11 +73,13 @@ thêm conversation/user IDs thô; chỉ correlation ngẫu nhiên nối diagnost
   caller, làm đổi taxonomy. Chưa triển khai image đó. Thêm annotate_error=False cho
   telemetry-only stages, giữ error contract cũ và regression riêng. Không sửa assertions
   để che lỗi. Image candidate cũ không được nghiệm thu.
-- Targeted đã chạy130 provider/pipeline cases,70 auth/context/binding; thêm kiểm thử
+- Final targeted CI132 provider/pipeline cases PASS, local70 auth/context/binding PASS; thêm kiểm thử
   missing credentials, partial root consumption, SDK embedding schema và preservation
   của error origin. Các lượt sau có overlap; không cộng thành số test độc lập giả.
 - OFF/missing keys/SDK exceptions/blocked exporter/queue overflow/privacy kiểm bằng
-  SDK thật với exporter memory và mocks, không provider calls. Bằng chứng runtime
+  SDK thật với exporter memory và mocks, không provider calls.
+- CI application3fe4cc2:1391backend unit,857isolated PostgreSQL,85frontend và125mockE2E
+  PASS tự động; không chạy lại toàn bộ suite trên máy hoặc gọi provider trong CI. Bằng chứng runtime
   export timeout từ đợt trước: API401/health200 vẫn trả, trace đó bị mất.
 
 ## Usage và cost
