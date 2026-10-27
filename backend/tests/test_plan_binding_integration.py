@@ -31,7 +31,8 @@ def test_dimension_identity_completion_matches_independent_postgresql(
     predicates,
 ):
     domain, _, _, dataset, settings, context, _ = domain_workspace
-    outer, inner, fact = (table.physical_table_name for table in dataset.tables)
+    names = {table.display_name: table.physical_table_name for table in dataset.tables}
+    outer, inner, fact = (names[label] for label in domain.labels)
     compiler = QueryCompiler(context)
     key = field(compiler, outer, domain.keys[0])
     name = field(compiler, outer, domain.names[0])
