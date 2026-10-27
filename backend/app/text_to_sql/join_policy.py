@@ -402,6 +402,13 @@ def _validate_entity_groups(
             table = aliases.get(column.table.lower())
             if table in keys:
                 dimensions.add(table)
+    # A scalar aggregate has one global group, not a category/entity grouping key.
+    # Fact provenance, approved INNER N:1 edges and aggregate types are still checked
+    # by _validate_join_aggregates. Never take this path for a projected attribute.
+    if group is None and all(
+        isinstance(p.this if isinstance(p, exp.Alias) else p, exp.AggFunc) for p in root.expressions
+    ):
+        return
     if grouping == "category":
         selected: set[tuple[str | None, str]] = set()
         for projection in root.expressions:

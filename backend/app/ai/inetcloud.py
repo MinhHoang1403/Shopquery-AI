@@ -21,13 +21,18 @@ from app.core.errors import (
     validation_context,
 )
 from app.core.observability import provider_observation
-from app.text_to_sql.generation_contract import GENERATION_INSTRUCTIONS, GenerationDecision
+from app.text_to_sql.generation_contract import (
+    GENERATION_INSTRUCTIONS,
+    GenerationDecision,
+    apply_catalog_schema,
+)
 from app.text_to_sql.query_plan import PlanDecision
 
 TRANSIENT_STATUS_CODES = frozenset(TRANSIENT_PROVIDER_STATUSES)
 
 
 def _predicate_schema(schema: dict[str, Any]) -> None:
+    apply_catalog_schema(schema)
     for name in ("where", "having"):
         schema["properties"][name]["pattern"] = r"^(?:e[0-9]+|t[0-9]+\.c[0-9]+)?$"
 

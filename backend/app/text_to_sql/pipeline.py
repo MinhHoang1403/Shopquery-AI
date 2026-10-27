@@ -88,7 +88,13 @@ class TextToSqlPipeline:
         answer = ""
         if ground_answer:
             with diagnostic_stage("answer_grounding"):
-                answer = compose_sql_answer(rows, validated.count_metrics, compiled.result_columns)
+                answer = compose_sql_answer(
+                    rows,
+                    validated.count_metrics,
+                    compiled.result_columns,
+                    grouped=compiled.grouped,
+                    ranking=compiled.ranking,
+                )
         return SqlResult(
             answer=answer,
             sql=compiled.evidence_sql,

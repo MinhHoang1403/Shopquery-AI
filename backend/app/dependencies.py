@@ -84,12 +84,13 @@ def build_workspace_context(
             joins = RelationshipRepository(get_setup_engine(), dataset.owner_user_id).approved(
                 dataset.dataset_id
             )
-    return build_dataset_sql_context(
+    context = build_dataset_sql_context(
         dataset,
         repository.categorical_values(dataset),
         approved_joins=joins,
         join_v1_enabled=settings.sql_join_v1_enabled,
     )
+    return replace(context, column_profiles=repository.column_profiles(dataset))
 
 
 def _build_dataset_chat_service(

@@ -67,7 +67,11 @@ function SqlPanel({ sql }: { sql: string }) {
 export function ResultTable({ rows, columns: registeredColumns, formatNumbers = true, metadata = [], friendly = false }: { rows: ResultRow[]; columns?: string[]; formatNumbers?: boolean; metadata?: ResultColumn[]; friendly?: boolean }) {
   const columns = registeredColumns ?? Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
   const definitions = new Map(metadata.map((column) => [column.key, column]));
-  const numeric = (column: string) => formatNumbers && definitions.get(column)?.numeric === true;
+  const numeric = (column: string) => {
+    const definition = definitions.get(column);
+    return formatNumbers && definition?.numeric === true
+      && (!definition.data_type || definition.data_type === "NUMERIC" || definition.data_type === "BIGINT");
+  };
   return (
     <div className="table-shell" aria-label="Kết quả truy vấn" role="region" tabIndex={0}>
       <table>
@@ -86,13 +90,23 @@ export function ResultTable({ rows, columns: registeredColumns, formatNumbers = 
 
 function PagedResults({ response, friendly }: { response: ChatResponse; friendly: boolean }) {
   const [page, setPage] = useState(0);
+  const [showAll, setShowAll] = useState(false);
   const pageSize = 20;
-  const rows = friendly && response.answer_row_indices != null
-    ? response.answer_row_indices.filter((i) => Number.isInteger(i) && i >= 0 && i < response.rows.length).map((i) => response.rows[i])
+  const selected = response.verification_status === "verified_classification"
+    && response.answer_row_indices != null
+    && new Set(response.answer_row_indices).size === response.answer_row_indices.length
+    && response.answer_row_indices.every((i) => Number.isInteger(i) && i >= 0 && i < response.rows.length)
+      ? response.answer_row_indices : null;
+  const rows = selected !== null && !showAll
+    ? selected.map((i) => response.rows[i])
     : response.rows;
   const start = page * pageSize;
   const end = Math.min(start + pageSize, rows.length);
-  return <div className="inline-results" aria-label={friendly ? "Kết quả trong câu trả lời" : "Dữ liệu chi tiết"}>
+  return <div className="inline-results" aria-label="Dữ liệu chi tiết">
+    {selected !== null && selected.length !== response.rows.length ? <button type="button" className="evidence-scope" onClick={() => { setShowAll(!showAll); setPage(0); }}>
+      {showAll ? "Chỉ xem kết quả trong câu trả lời" : `Xem toàn bộ ${response.rows.length} dòng bằng chứng SQL`}
+    </button> : null}
+    {rows.length === 0 ? <p>Không có dòng nào trong tập kết quả đã xác minh.</p> : null}
     <ResultTable rows={rows.slice(start, end)} metadata={response.result_columns} friendly={friendly} />
     {rows.length > pageSize ? <div className="result-pagination" role="group" aria-label="Trang kết quả">
       <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>Trước</button>
@@ -143,14 +157,13 @@ export function ResponseEvidence({ response }: { response: ChatResponse }) {
 
   return (
     <div className="evidence-stack">
-      {hasRows && activePanel !== "rows" ? <PagedResults response={response} friendly /> : null}
       <div className="evidence-toolbar" aria-label="Bằng chứng hỗ trợ" role="group">
         {hasRows ? (
           <EvidenceButton
             active={activePanel === "rows"}
             controls={panelIds.rows}
             icon={<Table2 size={15} />}
-            label={`Bảng dữ liệu · ${response.rows.length}`}
+            label={`Xem bảng dữ liệu · ${response.rows.length} dòng`}
             onClick={() => togglePanel("rows")}
           />
         ) : null}
@@ -159,7 +172,7 @@ export function ResponseEvidence({ response }: { response: ChatResponse }) {
             active={activePanel === "sql"}
             controls={panelIds.sql}
             icon={<Database size={15} />}
-            label="Xem SQL"
+            label="Xem truy vấn SQL"
             onClick={() => togglePanel("sql")}
           />
         ) : null}
@@ -175,7 +188,7 @@ export function ResponseEvidence({ response }: { response: ChatResponse }) {
       </div>
 
       {activePanel === "rows" && hasRows ? (
-        <div className="evidence-panel" id={panelIds.rows}><PagedResults response={response} friendly={false} /></div>
+        <div className="evidence-panel" id={panelIds.rows}><PagedResults response={response} friendly /></div>
       ) : null}
       {activePanel === "sql" && response.sql ? (
         <div className="evidence-panel" id={panelIds.sql}><SqlPanel sql={response.sql} /></div>

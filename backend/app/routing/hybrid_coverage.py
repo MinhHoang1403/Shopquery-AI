@@ -7,7 +7,7 @@ from app.core.diagnostics import diagnostic_stage
 from app.core.errors import ModelResponseError, SqlValidationError
 from app.datasets.context import DatasetSqlContext
 from app.rag.repository import RetrievedChunk
-from app.routing.hybrid_policy import numeric_policies
+from app.routing.hybrid_policy import numeric_policies, policy_content
 from app.routing.hybrid_policy_binding import identity_source, verification_error, verified_policies
 from app.routing.natural_policy import ProseRule, normalized, parse_prose
 from app.text_to_sql.compiler import QueryCompiler, SchemaReferences
@@ -45,18 +45,22 @@ def classification_selection(
             question,
         ) or re.fullmatch(rf"which {entity}s? qualify and which do not\??", question):
             return "all"
-        match = re.fullmatch(
-            rf"(?:theo (?:tài liệu|chính sách)(?: kpi)?,? )?(?:vậy (?:còn )?)?"
-            rf"(?:những )?{entity} (?P<status>chưa đạt|đạt)(?: kpi)? "
-            rf"(?:là )?(?:{entity} )?nào[?.]?",
-            question,
-        ) or re.fullmatch(
-            rf"(?:theo (?:tài liệu|chính sách)(?: kpi)?,? )?{entity} nào "
-            rf"(?P<status>chưa đạt|đạt)(?: kpi)?[?.]?",
-            question,
-        ) or re.fullmatch(
-            rf"vậy còn (?:những )?{entity} (?P<status>chưa đạt|đạt)(?: kpi)?[?.]?",
-            question,
+        match = (
+            re.fullmatch(
+                rf"(?:theo (?:tài liệu|chính sách)(?: kpi)?,? )?(?:vậy (?:còn )?)?"
+                rf"(?:những )?{entity} (?P<status>chưa đạt|đạt)(?: kpi)? "
+                rf"(?:là )?(?:{entity} )?nào[?.]?",
+                question,
+            )
+            or re.fullmatch(
+                rf"(?:theo (?:tài liệu|chính sách)(?: kpi)?,? )?{entity} nào "
+                rf"(?P<status>chưa đạt|đạt)(?: kpi)?[?.]?",
+                question,
+            )
+            or re.fullmatch(
+                rf"vậy còn (?:những )?{entity} (?P<status>chưa đạt|đạt)(?: kpi)?[?.]?",
+                question,
+            )
         )
         if match:
             return "not_qualified" if match["status"] == "chưa đạt" else "qualified"
@@ -70,6 +74,8 @@ def resolve_coverage(
     question: str,
     chunks: list[RetrievedChunk],
     context: DatasetSqlContext | None,
+    *,
+    classification: Selection | None = None,
 ) -> EvidenceCoverageRequirement | None:
     if context is None:
         return None
@@ -78,10 +84,15 @@ def resolve_coverage(
         return None
     policy, chunk_id = next(iter(candidates.values()))
     chunk = next(c for c in chunks if c.chunk_id == chunk_id)
-    prose = parse_prose(chunk.content)
+    content = policy_content(chunk, chunks)
+    prose = parse_prose(content) if content is not None else None
     if prose is None or prose.aggregate not in {"sum", "avg"}:
         return None
-    selection = classification_selection(question, prose, context)
+    selection = (
+        classification
+        if classification is not None
+        else classification_selection(question, prose, context)
+    )
     if selection is None:
         return None
     with diagnostic_stage("plan_coverage_validation"):

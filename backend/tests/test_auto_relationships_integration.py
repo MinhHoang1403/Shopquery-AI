@@ -197,7 +197,7 @@ def test_upload_chat_and_history_with_automatic_relation(
         {"student_id": "S1", "student_name": "An", "total": "20.00", "fact_row_count": 2},
         {"student_id": "S2", "student_name": "Binh", "total": None, "fact_row_count": 1},
     ]
-    assert "2 kết quả" in response["answer"]
+    assert "2 nhóm kết quả" in response["answer"]
     assert {c["key"] for c in response["result_columns"] if c["numeric"]} == {
         "total",
         "fact_row_count",

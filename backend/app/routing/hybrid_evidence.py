@@ -210,6 +210,14 @@ def compose_answer(
             + "\n".join(f"> {_cell(note.quote)} [chunk {note.chunk_id}]" for note in draft.notes)
         )
     identities = _identities(result, draft.identity_fields, context)
+    if draft.metric_field is not None:
+        _, bindings = projection_bindings(result)
+        metric = bindings.get(draft.metric_field)
+        # Unverified means that policy semantics are unknown, not that a constant
+        # may masquerade as a source metric. Check lineage even without a bound rule.
+        row_count = isinstance(metric, exp.Count) and isinstance(metric.this, exp.Star)
+        if metric is None or not (row_count or any(metric.find_all(exp.Column))):
+            _fail("policy_metric_unbound")
     decisions = {tuple(item.entity_values): item for item in draft.decisions}
     if len(decisions) != len(draft.decisions):
         _fail("classification_duplicate_entities")
@@ -320,6 +328,10 @@ def verified_classification(
     identity, metric = pairs[0]
     identities = _identities(result, [identity], context)
     chunk = next(chunk for chunk in chunks if chunk.chunk_id == chunk_id)
+    required_chunks = (
+        chunk.document_scope.chunk_ids if chunk.document_scope is not None else (chunk_id,)
+    )
+    source_chunks = {c.chunk_id: c for c in chunks}
     return HybridAnswerDraft(
         mode="classification",
         language=language,
@@ -330,12 +342,14 @@ def verified_classification(
             EntityDecision(
                 entity_values=list(entity),
                 status=_evaluate(row[metric], policy),
-                supporting_chunk_ids=[chunk_id],
+                supporting_chunk_ids=list(required_chunks),
             )
             for entity, row in zip(identities, result.rows, strict=True)
         ],
-        notes=[EvidenceNote(chunk_id=chunk_id, quote=chunk.content[:4000])],
-        used_chunk_ids=[chunk_id],
+        notes=[
+            EvidenceNote(chunk_id=i, quote=source_chunks[i].content[:4000]) for i in required_chunks
+        ],
+        used_chunk_ids=list(required_chunks),
     )
 
 

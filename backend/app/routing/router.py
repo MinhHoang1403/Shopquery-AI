@@ -2,6 +2,7 @@
 
 import re
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +20,17 @@ class RouteLabel(StrEnum):
 class RouteDecision(BaseModel):
     route: RouteLabel
     reason: str = Field(description="Short reason based on the route definitions")
+    policy_intent: Literal["none", "all", "qualified", "not_qualified"] = Field(
+        default="none",
+        description="For HYBRID only: requested policy classification, otherwise none. "
+        "all means both qualifying and non-qualifying entities. Do not infer a policy verdict.",
+    )
+    policy_scope: Literal["unspecified", "all_entities", "filtered_entities"] = Field(
+        default="unspecified",
+        description="all_entities only when the user requests the whole workspace entity set "
+        "without additional entity/date/status/top-N restrictions. Preserve all user qualifiers "
+        "as filtered_entities; unspecified when intent is unclear.",
+    )
 
 
 class QueryRouter:

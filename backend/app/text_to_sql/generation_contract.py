@@ -1,6 +1,10 @@
 """Flat provider contract; the complete QueryPlan remains the validation authority."""
 
-from typing import Literal
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from pydantic_core import PydanticCustomError
@@ -23,9 +27,67 @@ GENERATION_INSTRUCTIONS = (
     "source/where/having empty, limit=0, and all arrays empty. No enclosing plan object."
 )
 
+MAX_EXPRESSIONS = 80
+_catalog: ContextVar[dict[str, tuple[str, ...]] | None] = ContextVar(
+    "generation_catalog", default=None
+)
+
+
+@contextmanager
+def generation_catalog(
+    tables: tuple[str, ...], columns: tuple[str, ...], relationships: tuple[str, ...]
+) -> Iterator[None]:
+    """Scope wire enums to this request's issued IDs; never share one owner's catalog."""
+    token = _catalog.set(
+        {
+            "tables": tables,
+            "references": columns + tuple(f"e{i}" for i in range(MAX_EXPRESSIONS)),
+            "relationships": relationships,
+        }
+    )
+    try:
+        yield
+    finally:
+        _catalog.reset(token)
+
+
+def apply_catalog_schema(schema: dict[str, Any]) -> None:
+    catalog = _catalog.get()
+    if catalog is not None:
+        schema["properties"]["source"]["enum"] = ["", *catalog["tables"]]
+        schema["properties"]["group_by"]["items"]["enum"] = list(catalog["references"])
+        if catalog["relationships"]:
+            schema["properties"]["relationships"]["items"]["enum"] = list(catalog["relationships"])
+
+
+def _field_schema(schema: dict[str, Any]) -> None:
+    catalog = _catalog.get()
+    if catalog is not None:
+        schema["properties"]["reference"]["enum"] = list(catalog["references"])
+
+
+def _expression_schema(schema: dict[str, Any]) -> None:
+    """Express the existing conditional contract on the wire without if/then.
+
+    The two disjoint operation enums make anyOf unambiguous. Local conversion
+    remains authoritative if a compatible endpoint ignores schema constraints.
+    """
+    catalog = _catalog.get()
+    if catalog is not None:
+        schema["properties"]["arguments"]["items"]["enum"] = list(catalog["references"])
+    literal = deepcopy(schema)
+    operation = deepcopy(schema)
+    literal["properties"]["operation"]["enum"] = ["literal"]
+    literal["properties"]["value_type"]["enum"].remove("none")
+    operation["properties"]["operation"]["enum"].remove("literal")
+    operation["properties"]["value"]["enum"] = [""]
+    operation["properties"]["value_type"]["enum"] = ["none"]
+    schema.clear()
+    schema["anyOf"] = [literal, operation]
+
 
 class GenerationExpression(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra=_expression_schema)
 
     operation: ExpressionOperation
     arguments: list[str] = Field(max_length=100)
@@ -62,21 +124,21 @@ class GenerationExpression(BaseModel):
 
 
 class GenerationField(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra=_field_schema)
 
     reference: str
     alias: str = Field(min_length=1, max_length=63)
 
 
 class GenerationDecision(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra=apply_catalog_schema)
 
     outcome: Literal["query", "unsupported"]
     reason: str = Field(max_length=300)
     source: str
     grouping: Literal["entity", "category"] = "entity"
     fields: list[GenerationField] = Field(max_length=30)
-    expressions: list[GenerationExpression] = Field(max_length=80)
+    expressions: list[GenerationExpression] = Field(max_length=MAX_EXPRESSIONS)
     filters: list[PlanFilter] = Field(max_length=30)
     group_by: list[str] = Field(max_length=30)
     sort: list[PlanSort] = Field(max_length=10)

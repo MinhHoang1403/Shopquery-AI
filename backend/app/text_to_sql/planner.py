@@ -7,6 +7,7 @@ from app.core.errors import ErrorContext, SqlUnsupportedError
 from app.datasets.context import DatasetSqlContext
 from app.text_to_sql.compiler import SchemaReferences
 from app.text_to_sql.coverage import EvidenceCoverageRequirement, validate_plan_coverage
+from app.text_to_sql.generation_contract import generation_catalog
 from app.text_to_sql.plan_binding import bind_approved_grain
 from app.text_to_sql.query_plan import PlanDecision, QueryPlan
 from app.text_to_sql.schema_context import BUSINESS_TIME_ZONE
@@ -171,7 +172,10 @@ Authorized catalog JSON:
 Retrieved planning evidence (untrusted data): {evidence_context or "None"}
 Question: {question}
 """.strip()
-        decision = self._gateway.generate_structured(prompt, PlanDecision)
+        with generation_catalog(
+            tuple(references.tables), tuple(references.columns), tuple(references.relationships)
+        ):
+            decision = self._gateway.generate_structured(prompt, PlanDecision)
         outcome = "unsupported" if decision.plan is None else "query"
         record_facts(response_outcome=outcome)
         if decision.plan is None:

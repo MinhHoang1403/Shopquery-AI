@@ -11,7 +11,7 @@ from app.core.diagnostics import record_facts
 from app.core.errors import ErrorContext, ModelResponseError, VerificationReason
 from app.datasets.context import DatasetSqlContext
 from app.rag.repository import RetrievedChunk
-from app.routing.hybrid_policy import NumericPolicy, numeric_policies
+from app.routing.hybrid_policy import NumericPolicy, numeric_policies, policy_content
 from app.routing.natural_policy import normalized, parse_prose
 from app.text_to_sql.count_contract import output_field_name
 from app.text_to_sql.pipeline import SqlResult
@@ -142,6 +142,33 @@ def _bind_prose(
     identity_tables = []
     fact_label = re.sub(r"^\d+[ _-]*", "", context.table_labels.get(fact, ""))
     record_words = {normalized(w) for w in re.findall(r"[^\W_]+", fact_label)}
+    if prose.period is not None:
+        profiles = context.column_profiles.get(fact, {})
+        temporal = [
+            name for name, kind in context.column_types.get(fact, {}).items() if kind == "DATE"
+        ]
+        statuses = [
+            name
+            for name, values in context.categorical_values.get(fact, {}).items()
+            if any(normalized(value) == normalized(prose.required_status or "") for value in values)
+        ]
+        if len(temporal) != 1 or len(statuses) != 1:
+            _fail("policy_sql_scope_incomplete")
+        period, status = profiles.get(temporal[0]), profiles.get(statuses[0])
+        if (
+            period is None
+            or status is None
+            or period[0] <= 0
+            or period[0] != period[1]
+            or status[0] != status[1]
+            or period[0] != status[0]
+            or period[2] is None
+            or period[3] is None
+            or not (prose.period[0] <= period[2] <= period[3] <= prose.period[1])
+            or status[2] != status[3]
+            or normalized(status[2] or "") != normalized(prose.required_status or "")
+        ):
+            _fail("policy_sql_scope_incomplete")
     if prose.relative_record and any(
         normalized(w) not in record_words for w in prose.relative_record.split()
     ):
@@ -177,7 +204,7 @@ def _bind_prose(
             "average",
         }
     )
-    if not title_words <= title_vocabulary:
+    if not prose.declared_unit and not title_words <= title_vocabulary:
         _fail("policy_unsupported_qualifier")
     for field, expression in bindings.items():
         if isinstance(expression, exp.Column):
@@ -238,7 +265,11 @@ def _bind_prose(
             normalized(header),
         }:
             continue
-        if prose.aggregate in {"sum", "avg"} and prose.unit not in {"source", "source units"}:
+        if (
+            prose.aggregate in {"sum", "avg"}
+            and prose.unit not in {"source", "source units"}
+            and not prose.declared_unit
+        ):
             units = {
                 normalized(w) for w in re.findall(r"[^\W_]+", header + " " + expression.this.name)
             }
@@ -321,7 +352,8 @@ def verified_policies(
         chunk = by_id[chunk_id]
         scope = chunk.document_scope
         # Only a whole, single-chunk document is in this grammar's authority scope.
-        if scope is None or scope.chunk_ids != (chunk_id,) or not scope.content_hash:
+        content = policy_content(chunk, chunks)
+        if scope is None or content is None or not scope.content_hash:
             return reject("policy_document_scope_invalid", len(candidates))
         if (
             dict(scope.text_hashes).get(chunk_id)
@@ -332,7 +364,8 @@ def verified_policies(
             scope.dataset_id != context.dataset_id or scope.owner_user_id != context.owner_user_id
         ):
             return reject("policy_document_scope_invalid", len(candidates))
-        if re.search(
+        whole_prose = parse_prose(content)
+        if not (whole_prose and whole_prose.declared_unit) and re.search(
             r"\b(except|unless|exceptions|only|if|not|ngoại lệ|trừ|chỉ|nếu|không|"
             r"tháng|năm)\b|[0-9<>=]",
             chunk.section_title,
@@ -341,7 +374,7 @@ def verified_policies(
             return reject("policy_unsupported_qualifier", len(candidates))
         try:
             if rule_id.startswith("prose-"):
-                policy = _bind_prose(result, chunk, policy, context, chunk.content)
+                policy = _bind_prose(result, chunk, policy, context, content)
             else:
                 # A structured block does not override conflicting or unknown prose.
                 rest = re.sub(

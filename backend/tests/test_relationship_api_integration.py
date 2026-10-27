@@ -197,8 +197,18 @@ def test_join_api_pipelines_and_persisted_history(
     assert response["used_model"] == model and selected == [model]
     assert len(calls) == {"SQL": 2, "RAG": 2, "HYBRID": 3}[pipeline]
     if pipeline == "SQL":
-        assert response["answer"] == "Total: **5**."
-        assert response["result_columns"] == [{"key": "total", "label": "Total", "numeric": True}]
+        assert response["answer"] == "Trong phạm vi dữ liệu truy vấn, **Tổng Amount** là **5**."
+        assert response["result_columns"] == [
+            {
+                "key": "total",
+                "label": "Tổng Amount",
+                "numeric": True,
+                "data_type": "NUMERIC",
+                "provenance": "aggregate",
+                "aggregate": "sum",
+                "source_label": "Amount",
+            }
+        ]
     if pipeline != "RAG":
         assert response["rows"] == [{"total": "5"}] and " JOIN " in response["sql"]
         root = parse_one(response["sql"], read="postgres")

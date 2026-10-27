@@ -26,6 +26,9 @@ class DatasetSqlContext:
     table_labels: dict[str, str] = field(default_factory=dict)
     categorical_values: dict[str, dict[str, tuple[str, ...]]] = field(default_factory=dict)
     table_row_counts: dict[str, int] = field(default_factory=dict)
+    column_profiles: dict[str, dict[str, tuple[int, int, str | None, str | None]]] = field(
+        default_factory=dict
+    )
 
 
 def build_dataset_sql_context(

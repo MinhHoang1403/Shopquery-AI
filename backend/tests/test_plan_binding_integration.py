@@ -6,6 +6,8 @@ from sqlalchemy import text
 from app.database.session import get_readonly_engine
 from app.dependencies import _build_dataset_chat_service
 from app.text_to_sql.compiler import QueryCompiler
+from app.text_to_sql.executor import SqlExecutor
+from app.text_to_sql.plan_binding import bind_approved_grain
 from app.text_to_sql.query_plan import (
     PlanDecision,
     PlanExpression,
@@ -19,6 +21,53 @@ from tests.test_plan_providers import gateway_harness, response
 from tests.test_query_compiler import field, source
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.mark.parametrize("domain_workspace", [(domain, 11) for domain in DOMAINS], indirect=True)
+@pytest.mark.parametrize("grouping", ["entity", "category"])
+def test_scalar_join_count_sum_average_match_independent_fact_oracle(
+    domain_workspace,  # noqa: F811
+    grouping,
+):
+    """Renamed domains and a different fixture seed must preserve global fact grain."""
+    domain, _, _, dataset, _, context, _ = domain_workspace
+    names = {table.display_name: table.physical_table_name for table in dataset.tables}
+    fact = names[domain.labels[-1]]
+    compiler = QueryCompiler(context)
+    amount = field(compiler, fact, domain.measure)
+    plan = QueryPlan(
+        source=source(compiler, fact),
+        grouping=grouping,
+        relationships=list(compiler.references.relationships),
+        expressions=[
+            PlanExpression(operation="row_count"),
+            PlanExpression(operation="sum", arguments=[amount]),
+            PlanExpression(operation="avg", arguments=[amount]),
+        ],
+        fields=[
+            PlanField(reference=f"e{i}", alias=alias)
+            for i, alias in enumerate(("n", "total", "average"))
+        ],
+    )
+    compiled = compiler.compile(bind_approved_grain(plan, compiler.references))
+    result = SqlExecutor(get_readonly_engine(), 3000, 1000).execute(
+        compiled.validated, compiled.parameters
+    )
+    # Written independently: no plan/compiler SQL is reused as the expected query.
+    with get_readonly_engine().connect() as connection:
+        connection.execute(text("SET TRANSACTION READ ONLY"))
+        expected = [
+            dict(r)
+            for r in connection.execute(
+                text(
+                    f'SELECT COUNT(*) AS n, SUM("{domain.measure}")::text AS total, '
+                    f'AVG("{domain.measure}")::text AS average FROM uploaded_data."{fact}"'
+                )
+            ).mappings()
+        ]
+    assert result == expected
+    assert [c.aggregate for c in compiled.result_columns] == ["row_count", "sum", "avg"]
+    assert all(c.numeric and c.provenance == "aggregate" for c in compiled.result_columns)
 
 
 @pytest.mark.parametrize("domain_workspace", [(domain, 7) for domain in DOMAINS], indirect=True)

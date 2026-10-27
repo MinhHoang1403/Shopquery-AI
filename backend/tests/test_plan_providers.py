@@ -19,6 +19,39 @@ from tests.test_providers import completion, harness
 from tests.test_workspace_prompts import tuition_context
 
 
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+def test_sdk_wire_limits_references_to_this_requests_issued_catalog(monkeypatch, provider):
+    from app.text_to_sql.generation_contract import GenerationDecision, generation_catalog
+
+    payload = {
+        "plan": {
+            "source": "t0",
+            "fields": [{"reference": "e0", "alias": "n"}],
+            "expressions": [{"operation": "row_count"}],
+        }
+    }
+    gateway, calls = gateway_harness(
+        monkeypatch, provider, [response(provider, json.dumps(payload))]
+    )
+    try:
+        with generation_catalog(("t0",), ("t0.c0",), ("r0",)):
+            gateway.generate_structured("Synthetic issued references", PlanDecision)
+        body = json.loads(calls[0].content)
+        schema = (
+            body["response_format"]["json_schema"]["schema"]
+            if provider == "knowledge"
+            else body["generationConfig"]["responseSchema"]
+        )
+        assert schema["properties"]["source"]["enum"] == ["", "t0"]
+        assert schema["properties"]["relationships"]["items"]["enum"] == ["r0"]
+        assert "t0.c0" in schema["properties"]["group_by"]["items"]["enum"]
+        assert "t9.c9" not in json.dumps(schema)
+        assert "enum" not in GenerationDecision.model_json_schema()["properties"]["source"]
+        assert len(calls) == 1
+    finally:
+        gateway.close()
+
+
 @pytest.mark.parametrize("predicate", ["where", "having"])
 def test_knowledge_wire_expresses_the_predicate_grammar(monkeypatch, predicate):
     payload = {

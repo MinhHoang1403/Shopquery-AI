@@ -25,7 +25,7 @@ from app.text_to_sql.answer import ResultColumn, column_label
 from app.text_to_sql.count_contract import analyze_counts
 from app.text_to_sql.expressions import ExpressionBinding, ExpressionCompiler
 from app.text_to_sql.join_policy import ApprovedJoin, resolve_join_tree
-from app.text_to_sql.query_plan import QueryPlan
+from app.text_to_sql.query_plan import PlanField, QueryPlan
 from app.text_to_sql.schema_context import default_sql_context
 from app.text_to_sql.validator import SqlValidator, ValidatedSql
 
@@ -62,6 +62,8 @@ class CompiledQuery:
     parameters: dict[str, Any]
     evidence_sql: str
     result_columns: tuple[ResultColumn, ...] = ()
+    grouped: bool = False
+    ranking: tuple[str, str] | None = None
 
 
 class QueryCompiler:
@@ -283,34 +285,7 @@ class QueryCompiler:
                                 grain_reason="dimension_measure",
                             )
             outputs[field.alias] = expression.label(field.alias)
-            direct = self.references.columns.get(field.reference) if not field.aggregate else None
-            header = (
-                self._context.column_headers.get(direct[0], {}).get(direct[1]) if direct else None
-            )
-            identifier = direct is not None and any(
-                direct
-                in {
-                    (edge.source_table, edge.source_column),
-                    (edge.target_table, edge.target_column),
-                }
-                for edge in self._context.approved_joins
-            )
-            # Bare BIGINT may be a date code or identifier. Only proven metrics and
-            # non-key NUMERIC columns opt into numeric presentation.
-            numeric = (
-                binding.kind in {"BIGINT", "NUMERIC"}
-                and not identifier
-                and (
-                    binding.aggregate
-                    or binding.kind == "NUMERIC"
-                    and not binding.temporal_transform
-                )
-            )
-            result_columns.append(
-                ResultColumn(
-                    key=field.alias, label=column_label(header or field.alias), numeric=numeric
-                )
-            )
+            result_columns.append(self._result_column(field, binding, plan))
         has_aggregate = any(binding.aggregate for _, binding in output_bindings)
         grouped_columns = {ref for ref in plan.group_by if ref in self.references.columns}
         if has_aggregate or plan.group_by:
@@ -454,11 +429,93 @@ class QueryCompiler:
             raise SqlValidationError(
                 "Compiled query would require AST normalization", branch="ast_normalization"
             )
+        row_counts = {
+            metric.output_alias for metric in checked.count_metrics if metric.kind == "row_count"
+        }
+        result_columns = [
+            column.model_copy(
+                update={"label": "Số bản ghi", "aggregate": "row_count", "source_label": None}
+            )
+            if column.key in row_counts
+            else column
+            for column in result_columns
+        ]
         return CompiledQuery(
             replace(parameterized, statement=str(compiled)),
             dict(compiled.params),
             checked.statement,
             tuple(result_columns),
+            bool(plan.group_by),
+            (plan.sort[0].field, plan.sort[0].direction) if plan.limit == 1 and plan.sort else None,
+        )
+
+    def _result_column(
+        self, field: PlanField, binding: ExpressionBinding, plan: QueryPlan
+    ) -> ResultColumn:
+        """Describe actual expression lineage, not business semantics from an alias."""
+        location = self.references.columns.get(field.reference)
+        direct = location if field.aggregate is None else None
+        node = (
+            plan.expressions[int(field.reference[1:])]
+            if field.reference and field.reference.startswith("e")
+            else None
+        )
+        operation = field.aggregate
+        if operation is None and node is not None:
+            operation = (
+                node.operation
+                if node.operation in {"sum", "avg", "min", "max", "row_count", "value_count"}
+                else None
+            )
+            location = (
+                self.references.columns.get(node.arguments[0]) if len(node.arguments) == 1 else None
+            )
+        literal = node is not None and node.operation == "literal" and field.aggregate is None
+        identifier = direct is not None and any(
+            direct
+            in {(edge.source_table, edge.source_column), (edge.target_table, edge.target_column)}
+            for edge in self._context.approved_joins
+        )
+        numeric = (
+            binding.kind in {"BIGINT", "NUMERIC"}
+            and not identifier
+            and (binding.aggregate or binding.kind == "NUMERIC" and not binding.temporal_transform)
+        )
+        header = (
+            self._context.column_headers.get(location[0], {}).get(location[1], location[1])
+            if location
+            else None
+        )
+        source_label = column_label(header) if header else None
+        label = (source_label or column_label(direct[1])) if direct else "Kết quả tính toán"
+        if literal:
+            label = "Hằng số " + binding.kind
+        if operation is not None:
+            prefix = {
+                "sum": "Tổng",
+                "avg": "Trung bình",
+                "min": "Nhỏ nhất",
+                "max": "Lớn nhất",
+                "row_count": "Số bản ghi",
+                "value_count": "Số giá trị có dữ liệu",
+            }[operation]
+            label = prefix + (
+                " " + source_label if source_label and operation != "row_count" else ""
+            )
+        return ResultColumn(
+            key=field.alias,
+            label=label,
+            numeric=numeric,
+            data_type=binding.kind,
+            provenance="literal"
+            if literal
+            else "aggregate"
+            if binding.aggregate
+            else "column"
+            if direct
+            else "expression",
+            aggregate=operation,
+            source_label=source_label,
         )
 
     @staticmethod

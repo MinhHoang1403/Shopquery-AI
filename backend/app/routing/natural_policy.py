@@ -3,6 +3,7 @@
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 OPERATORS = {
@@ -67,6 +68,9 @@ class ProseRule:
     status_example: str | None = None
     relative_record: str | None = None
     presentation_reference: str | None = None
+    period: tuple[str, str] | None = None
+    required_status: str | None = None
+    declared_unit: bool = False
 
 
 def _number(value: str, locale: str | None) -> str | None:
@@ -89,6 +93,9 @@ def parse_prose(content: str) -> ProseRule | None:
     """Every sentence must be consumed; an unknown qualifier invalidates the rule."""
     if not content or len(content) > 12000:
         return None
+    regulation = _parse_regulation(content)
+    if regulation is not None:
+        return regulation
     body = " ".join(content.split())
     sentences = re.split(r"(?<=[.!?])\s+(?=[A-ZÀ-Ỹ])", body)
     sentences = [s.removesuffix(".") for s in sentences]
@@ -229,4 +236,129 @@ def parse_prose(content: str) -> ProseRule | None:
         status_example,
         relative["records"] if relative else None,
         presentation_reference,
+    )
+
+
+def _parse_regulation(content: str) -> ProseRule | None:
+    """Closed sectioned SUM regulation: every clause is consumed, never extracted away.
+
+    References, period, status, threshold, entity and unit are captured from the
+    document. Registry/full-column proofs are required separately before authority.
+    An exception or an extra sentence cannot silently become an all-row rule.
+    """
+    body = " ".join(content.split())
+    scope = re.search(
+        r"Chính sách này áp dụng cho từng (?P<subject>[\w ]+?) trong kỳ từ ngày "
+        r"(?P<start>\d{2}/\d{2}/\d{4}) đến hết ngày (?P<end>\d{2}/\d{2}/\d{4})\. "
+        r"Bộ dữ liệu kiểm thử chỉ gồm các (?P<records>[\w ]+?) đã "
+        r"(?P<status>[\w ]+?) trong kỳ này\. "
+        r"Đơn vị tiền là (?P<unit>[\w ]+?) \((?P<unit_code>[A-Z]{3})\)\. ",
+        body,
+    )
+    if scope is None:
+        return None
+    prefix = body[: scope.start()]
+    # Header is descriptive only; allow one title/reference/publication header,
+    # with an explicit test period, not arbitrary preconditions or exceptions.
+    header = re.fullmatch(
+        r"[A-ZÀ-ỸĐ0-9 _/-]+ \| Ban hành cho bộ dữ liệu tổng hợp \| "
+        r"Hiệu lực kiểm thử: (?P<first>\d{2})[–-](?P<last>\d{2})/(?P<month>\d{2})/(?P<year>\d{4}) "
+        r"1\. Phạm vi và số liệu cần dùng ",
+        prefix,
+    )
+    if header is None:
+        return None
+    tail = body[scope.end() :]
+    definition = re.match(
+        r"2\. Định nghĩa chỉ tiêu KPI Chỉ tiêu duy nhất dùng để đánh giá là tổng "
+        r"(?P<label>[\w ]+?) của tất cả (?P<completed>[\w ]+?) "
+        r"thuộc một (?P<entity>[\w ]+?) trong kỳ\. "
+        r"Tổng (?P=label) phải được lấy từ trường (?P<metric>\w+) của bảng (?P<fact>[\w ]+?), "
+        r"gom nhóm theo (?P<identity>\w+)\. "
+        r"Tên (?P=entity) lấy từ bảng danh mục (?P=entity) "
+        r"bằng liên kết khóa (?P=entity) đã xác minh\. ",
+        tail,
+    )
+    if definition is None:
+        return None
+    entity, label = definition["entity"], definition["label"]
+    title = prefix.split(" |", 1)[0]
+    title = re.sub(r"\b[A-Z]+(?:-[A-Z0-9]+)+\b", "", title)
+    allowed_title = {
+        normalized(w) for w in ("quy định KPI tổng theo " + label + " " + entity).split()
+    }
+    if any(normalized(w) not in allowed_title for w in title.split()):
+        return None
+    if normalized(definition["completed"]) != normalized(scope["records"] + " " + scope["status"]):
+        return None
+    if not normalized(scope["subject"]).startswith(normalized(entity)):
+        return None
+    rest = tail[definition.end() :]
+    entity_pattern, metric_pattern = re.escape(entity), re.escape(label)
+    verdict = re.match(
+        r"3\. Ngưỡng đánh giá và trường hợp bằng ngưỡng "
+        rf"Một {entity_pattern} được xếp loại ĐẠT KPI "
+        rf"khi tổng {metric_pattern} lớn hơn hoặc bằng "
+        rf"(?P<threshold>{NUMBER}) (?P<code>[A-Z]{{3}})\. "
+        rf"{entity_pattern.capitalize()} có tổng {metric_pattern} nhỏ hơn "
+        r"(?P=threshold) (?P=code) được xếp loại CHƯA ĐẠT KPI\. "
+        rf"Trường hợp tổng {metric_pattern} bằng đúng (?P=threshold) "
+        r"(?P=code) phải được coi là ĐẠT KPI, "
+        r"không được xếp vào nhóm chưa đạt\. ",
+        rest,
+    )
+    if verdict is None or verdict["code"] != scope["unit_code"]:
+        return None
+    remainder = rest[verdict.end() :]
+    if not re.fullmatch(
+        rf"4\. Quy tắc kết luận Đánh giá riêng từng {entity_pattern}, không dùng phí bình quân mỗi "
+        rf"{re.escape(scope['records'])} để thay thế tổng {metric_pattern}\. "
+        r"Không cộng trùng phí khi kết nối bảng danh mục dịch vụ\. "
+        rf"Mỗi {entity_pattern} phải xuất hiện đúng một lần "
+        rf"trong kết quả tổng hợp theo {entity_pattern}\. "
+        rf"Nếu thiếu {re.escape(definition['fact'])}, "
+        rf"thiếu liên kết {entity_pattern} đã được kiểm chứng "
+        r"hoặc thiếu số liệu cần thiết, kết quả phải ghi là chưa đủ bằng chứng; "
+        r"không tự gán doanh thu bằng 0 rồi kết luận chưa đạt\. "
+        r"5\. Phân biệt tài liệu quy định và số liệu vận hành "
+        r"Tài liệu này chỉ mô tả quy tắc KPI và không công bố "
+        rf"tổng phí thực tế của bất kỳ {entity_pattern} nào\. "
+        rf"Muốn trả lời {entity_pattern} nào đạt/chưa đạt, "
+        r"phải kết hợp tài liệu chính sách này với số liệu "
+        r"trong các bảng CSV của cùng workspace\. "
+        r"Ghi chú: Tất cả tên doanh nghiệp, [\w ,]+ và số liệu trong bộ kiểm thử đều là dữ liệu "
+        r"tổng hợp giả lập, không đại diện cho giao dịch thật\.",
+        remainder,
+    ):
+        return None
+    try:
+        start = date.fromisoformat("-".join(reversed(scope["start"].split("/"))))
+        end = date.fromisoformat("-".join(reversed(scope["end"].split("/"))))
+        header_start = date(int(header["year"]), int(header["month"]), int(header["first"]))
+        header_end = date(int(header["year"]), int(header["month"]), int(header["last"]))
+    except ValueError:
+        return None
+    threshold = _number(verdict["threshold"], "vi-VN")
+    if (
+        start > end
+        or threshold is None
+        or len(threshold) > 100
+        or (header_start, header_end) != (start, end)
+    ):
+        return None
+    return ProseRule(
+        scope["subject"],
+        "sum",
+        definition["metric"],
+        definition["identity"],
+        "gte",
+        threshold,
+        scope["unit_code"],
+        None,
+        None,
+        content,
+        period=(str(start), str(end)),
+        required_status=scope["status"],
+        declared_unit=True,
+        relative_record=definition["fact"],
     )

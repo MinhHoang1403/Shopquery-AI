@@ -40,6 +40,13 @@ export function ChatMessage({ entry }: { entry: ConversationEntry }) {
             ) : null}
           </div>
         ) : null}
+        {entry.response?.route === "HYBRID" ? (
+          <p className={`verification-notice verification-notice--${entry.response.verification_status === "verified_classification" ? "verified" : "unverified"}`}>
+            {entry.response.verification_status === "verified_classification" ? "Kết luận đã được xác minh"
+              : entry.response.verification_status === "explanation" ? "Giải thích từ tài liệu"
+              : "Chưa xác minh kết luận"}
+          </p>
+        ) : null}
         {isError ? <ErrorDetails response={entry.response} text={text} />
           : isUser ? <p className="message-text">{text}</p>
           : <AssistantContent text={text} hideTables={Boolean(entry.response?.rows.length)} />}
