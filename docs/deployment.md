@@ -20,12 +20,31 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-Current API source `f6f44ae55745e8451ff5b458b98e384ac139bc9f`.
-API digest `67a891b04fcd0f0a9d6e6e7eea6bf6bccc2b3f0e72bec23be5a8c57f871d9a5a`.
+Current API source `a67242d1e6a1e267c440eeb6547c7ddbd961fb9a`.
+API digest `069e7f67fb409ac3a587c6327104f509bf3182ca2d410e281f2f3cf90818c599`.
 Web source `02d5cbb445901f7eb63f82bee87e2e8785d35663`.
 Web digest `ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
+
+27/10/2026 10:00:55–10:01:11 API-only cutover cho Knowledge predicate wire constraints
+và approved identity grouping completion. CI40441018076 exact main/testa67242d PASS
+1365backend/857isolated PostgreSQL; Web không thay nên frontend job SKIPPED, không build.
+API3ce1af0d/Webc6f1f591/DB511c4f5a, strict87modules/no drift/health8080/Nginx PASS.
+Web/DB image/container/start time, protected main volume giữ nguyên; không migrate/BGE.
+Final schema/40table fingerprints và old-history prefix PASS; chỉ quota/login metadata
+và2conversations/4messages UI mới. Google login/workspace/history/reload PASS.
+Knowledge SQL15PASS/1UNKNOWN(recorder lỗi), Gemini compatibility1PASS, RAG/Hybrid smoke
+mỗi nhánh1PASS/citation23. Không loại UNKNOWN để promote: Gemini default/fallbackOFF,
+gateON/GuestOFF, embedding2/768/vector-only giữ nguyên. Final status
+`KNOWLEDGE_NOT_ACCEPTED — GEMINI_PRODUCTION_READY`, không tuyên bố model failure từ
+instrumentation failure. Agent budget đã đóng36Knowledge(debit gồm2unknown)/2Gemini/
+2query/0document; không retry hoặc dùng phần dư. Không tiếp tục cải tiến sau bàn giao.
+Immediate rollback API67a891b0/sourcef6f44ae + `.env.release.before` tại private
+backups/shopquery-ai/knowledge-final-20261027. Không xóa images/volumes/prune trong lượt
+này. Xem [acceptance hiện hành](v2_final_acceptance.md) trước các đoạn lịch sử bên dưới.
+
+Các đoạn triển khai dưới đây là lịch sử; không dùng image refs lịch sử làm cấu hình hiện hành.
 
 26/10/2026 17:03 cutover theo quyền triển khai có điều kiện trong master audit:
 exact-main/test `272cbf81`, CI40303628357 PASS1349backend/833PG/85frontend/125mockE2E.

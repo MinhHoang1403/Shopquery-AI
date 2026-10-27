@@ -2,7 +2,60 @@
 
 **MAIN CONSOLIDATED — 8080 ACTIVE — GEMINI DEFAULT — ACCEPTANCE PARTIAL — PROVIDER GATE ON**
 
-Updated 2026-10-26 (Asia/Saigon). No release tag or full Stage 2 acceptance.
+Updated 2026-10-27 (Asia/Saigon). No release tag or full Stage 2 acceptance.
+
+## Ổn định Knowledge SQL cuối — deployed 27/10/2026, cửa sổ nghiệm thu đã đóng
+
+**KNOWLEDGE_NOT_ACCEPTED — GEMINI_PRODUCTION_READY**. Chỉ sửa schema projection
+Knowledge cho predicate references và phần GROUP BY cơ học của approved dimension
+identity trong Binder. Không đổi prompt/DTO Gemini, Compiler guards, RAG/Hybrid, UI,
+auth, embedding hoặc dữ liệu. Root cause, so sánh A/B/C, bảng đầy đủ từng mẫu và giới
+hạn bằng chứng nằm trong [architecture audit](architecture_audit.md).
+
+- Wire cũ không thể hiện Python predicate grammar: malformed strings vẫn đúng kiểu
+  string trong JSON Schema. Thêm pattern vào Knowledge-only schema; validators backend
+  vẫn bắt buộc. Không chứng minh được decoder nội bộ/nguồn delimiter của server.
+- Grouping completion chỉ thêm direct selected attributes khi approved N:1 target ID
+  đã có trong group_by gốc; không đoán FK/category/fact grain, không bỏ WHERE/HAVING.
+- Before3 tests FAIL, targeted217 PASS; exact application/test main
+  `a67242d1e6a1e267c440eeb6547c7ddbd961fb9a`,
+  [CI40441018076](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40441018076)
+  PASS1365backend/857isolated PostgreSQL, Ruff PASS. Frontend SKIPPED vì không thay Web.
+  Có24 oracle regression mới,6domain×2adapters×predicate có/không; filters/WHERE/HAVING,
+  COUNT/Decimal/NULL, negative/security/coverage/follow-up/fallback regressions giữ PASS.
+- Live chọn16 SQL Knowledge sau1 amendment minh bạch:15 PASS oracle (13production
+  pipeline trong API container +2Computer Use8080),1 UNKNOWN do private recorder không
+  serialize được SQLGlot Count AST, mất response/rows. Không gọi pipeline là browser,
+  không retry câu gốc hoặc đổi UNKNOWN thành PASS bằng câu diễn đạt độc lập.
+- Mọi ca chấm được đúng số liệu: Xe điện360/33066538.03,12trạm/5gói/60cặp; Khách sạn
+  >100phòng16IDs,4trạng thái,24khách sạn,12nhóm category/2400/638885507.75; Logistics
+  5kho/50đơn/2472500.00; AVG91851.494527777778. False refusal/conversion/binding/compiler/
+  execution failure quan sát ở15ca chấm được0. Không đủ bằng chứng cho k01 chưa chấm.
+- Gemini compatibility SQL1/1 PASS, Knowledge RAG1/1 và Hybrid1/1 PASS/citation23.
+  Hybrid đủ12totals Decimal, verified_classification,TS07–12đạt/TS01–06chưa đạt.
+  Không dùng Hybrid backend plan để chứng nhận direct SQL. Follow-up chỉ regression
+  offline/PG trong lượt này; bằng chứng live cũ không được đếm lại.
+- Đã đóng agent budget:34Knowledge stages quan sát +2debit bảo thủ UNKNOWN =36/40;
+  Gemini2/5,query2/8,document0/0. Reserved40/2/4/0 không hoàn lại; mỗi SDK1attempt,
+  không repair/fallback. Known SDK tokens118976; k01 tokens và tổng billed cost UNKNOWN.
+
+API source/application/test `a67242d1e6a1e267c440eeb6547c7ddbd961fb9a`, digest
+`sha256:069e7f67fb409ac3a587c6327104f509bf3182ca2d410e281f2f3cf90818c599`.
+Web source `02d5cbb445901f7eb63f82bee87e2e8785d35663`, digest
+`sha256:ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58` giữ nguyên.
+Strict87modules/no drift/Nginx/8080 PASS; chỉ recreate API, không DB/Web/migrate/BGE.
+DB container511c4f5a/volume/image/start time giữ nguyên. Schema/40table fingerprints
+PASS: chỉ quota/login metadata và2conversations/4messages mới; old history prefix,
+datasets/documents/vectors/relationships giữ nguyên. Google login/reload/history PASS.
+Immediate rollback API67a891b0 + private environment giữ local. Docs-only main commits
+sau application/test head không yêu cầu rebuild. Không xóa images/volumes trong lượt này.
+
+Giữ Gemini default, fallbackOFF, provider gateON/GuestOFF, embedding2/768/vector-only.
+Không chuyển Knowledge vì còn1 mẫu đã chọn UNKNOWN, không phải đã chứng minh model
+thất bại ở mẫu đó. Không mở thêm paid window/sửa prompt/schema để tìm PASS. Dừng phát
+triển sau bàn giao; chỉ sửa tiếp khi có evidence nghiêm trọng hoặc yêu cầu mới rõ ràng.
+
+## Nghiệm thu trước đợt ổn định cuối — bằng chứng lịch sử
 
 ## Architecture/reliability/security audit — deployed 26/10/2026 17:03, Gemini demo có giới hạn
 

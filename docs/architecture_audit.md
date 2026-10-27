@@ -2,8 +2,14 @@
 
 ## Ổn định Knowledge SQL lần cuối — 27/10/2026
 
-Trạng thái: đang kiểm chứng, chưa `KNOWLEDGE_ACCEPTED`. Đây là đợt hẹp cuối cùng,
-không mở lại audit toàn hệ thống. Baseline mainb6565d4/API67a891b0/Webae181335,
+Kết luận: **KNOWLEDGE_NOT_ACCEPTED — GEMINI_PRODUCTION_READY**. Đợt sửa cuối đã triển
+khai trên8080 và đóng cửa sổ agent tests. Có15/15 mẫu SQL Knowledge chấm được đúng
+oracle, nhưng1 mẫu đã chọn ban đầu mất bằng chứng do lỗi bộ ghi của agent, nên chưa
+đạt điều kiện mọi mẫu đã chọn đều PASS. Đây không phải một model failure đã xác nhận;
+không loại mẫu UNKNOWN để tuyên bố Knowledge ổn định. Gemini default/fallbackOFF giữ
+nguyên. Dừng cải tiến sau bàn giao, không mở cửa sổ thử khác hoặc release tag.
+
+Đây là đợt hẹp cuối cùng, không mở lại audit toàn hệ thống. Baseline mainb6565d4/API67a891b0/Webae181335,
 strict87modules PASS; Gemini default/fallbackOFF/gateON/GuestOFF/embedding2/768 giữ nguyên.
 AGENTS.md gốc đã đọc, không có AGENTS.md con. Ba script fixture bảo trì untracked
 được giữ nguyên; không dùng fixture bảo trì production chưa hoàn tất.
@@ -23,7 +29,9 @@ Việc14 trường bắt buộc/unused sentinel gây lỗi, decoder có thực s
 và giới hạn token phía server vẫn là giả thuyết. Không có quyền/log quản trị Knowledge
 để kết luận. Client không đặt max_tokens; diagnostic cũ có JSON đầy đủ nên không có bằng
 chứng truncation. Probe mới1stage synthetic chấp nhận đúng schema thêm pattern, parser/
-domain PASS, finish_reason=stop,38873.42ms. Đây là compatibility evidence, không phải
+domain PASS, finish_reason=stop,38873.42ms. Projection deployed có cùng type/required/
+pattern constraints với probe; khác root description metadata, không byte-identical
+toàn schema. Đây là compatibility evidence, không phải
 chứng minh cơ chế decoder hoặc SQL acceptance. Không thay endpoint/model, không trả rawSQL.
 
 ### So sánh phương án và lựa chọn
@@ -52,19 +60,120 @@ nhất khóa ấy nên không chia thêm entity; không thêm measure/count/filt
 FK grain, category, fact attribute hoặc biểu thức không xác minh vẫn refusal như trước.
 Compiler gọi trực tiếp vẫn từ chối projection_grain; execution guard vẫn recheck quan hệ.
 
-### Before/after và kế hoạch nghiệm thu
+### Before/after và regression
 
 Ba regression mới FAIL trước sửa:2 predicate wire constraints thiếu,1 selected dimension
 attribute thiếuGROUP BY. Negative counterparts không được đổi thành query đoán mò.
 Tests đã thêm cả server-bypass/local refusal, Gemini schema isolation và24 PostgreSQL
 oracle cases trên6 domain/hai adapters, có filters+WHERE+HAVING phân biệt nhau.
-Chưa dùng mock/compile PASS để tuyên bố live PASS. CI/deploy/live và quyết định cuối sẽ
-được ghi tiếp trong chính mục này, không tạo report mới.
+Missing/conflicting outcome, issued IDs/relations, expressions/forward refs, literals,
+aggregate/type/grain/COUNT provenance, category/entity, missing data, two-fact/fanout,
+cross-owner/injection, coverage/context/follow-up và error taxonomy vẫn bị kiểm đúng.
+Không biến SQL validation refusal thành fallback. Các tests fallback giữ attribution,
+503/timeout, schema/conversion category, no-loop và chỉ reuse embedding trong cùng turn.
+Không tạo provider outage thật để kiểm fallback trả phí.
 
-Budget MỚI toàn nhiệm vụ: Knowledge40/Gemini5 generation,8query/0document embeddings;
-đã dùng1Knowledge contract probe, không dùng số dư audit cũ. Mỗi SDK1attempt, không repair
-loop/fallback trong isolated acceptance. Chỉ datasets13/15/16 synthetic đã xác minh;
-mọi SQL so với PostgreSQL oracle READ ONLY, không lấy Gemini làm đáp án Knowledge.
+Targeted217 PASS, Ruff PASS. Exact application/test main
+`a67242d1e6a1e267c440eeb6547c7ddbd961fb9a`,
+[CI40441018076](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40441018076)
+PASS hai job được yêu cầu:1365 backend và857 PostgreSQL isolated. Frontend job SKIPPED
+vì không đổi Web; không dùng lịch sử85frontend làm kết quả mới. Lượt CI đầu833PG PASS,
+24 test mới lỗi StopIteration do fixture cố ý đảo thứ tự upload; sửa resolver test theo
+registered display names, không đổi code/guards/oracle để làm xanh. CI cuối24/24 mới PASS.
+
+Production chỉ sửa `ai/inetcloud.py::_predicate_schema`, `KnowledgeGenerationDecision`,
+`InetCloudGateway.generate_structured` và `text_to_sql/plan_binding.py::bind_approved_grain`.
+Regression chính thức trong test_plan_providers, test_plan_binding,
+test_plan_binding_integration, test_compiler_diagnostics và test_planning_outcomes.
+Không đổi Gemini adapter, shared generation DTO, prompt, Compiler/Executor, RAG/Hybrid,
+embedding hoặc auth. Compiled SQL vẫn qua AST/read-only/owner/revision/timeout/row cap;
+WHERE/HAVING/filters giữ nguyên, NULL không biến thành0. Không raw SQL/JSON repair.
+
+### Knowledge scorecard live và giới hạn bằng chứng
+
+Chốt18 mẫu trước SQL dispatch:15 Knowledge SQL,1 Gemini compatibility,1 RAG,1 Hybrid.
+Sau sự cố ghi bằng chứng ở COUNT, thêm đúng1 biến thể COUNT độc lập trước khi thấy bất
+kỳ kết quả SQL chấm được; không thay/xóa câu gốc. Selection hashes và amendment giữ trong
+private evidence. Tổng19 mẫu, trong đó16 Knowledge SQL;15 PASS và1 UNKNOWN. Mỗi câu chỉ
+gửi một lần.13 SQL Knowledge dùng production pipeline thực trong API container;2 câu
+SQL qua Computer Use/UI8080. Không gọi pipeline là browser test. Router tự chọn route,
+Knowledge attribution được kiểm, không Gemini fallback. Oracle PostgreSQL READ ONLY
+độc lập đã tính trước dispatch, không đưa expected rows vào model prompt.
+
+| Mẫu | Kết quả so với oracle |
+| --- | --- |
+| k01 COUNT Xe điện, câu gốc | UNKNOWN_INSTRUMENTATION; không chấm PASS/FAIL model |
+| k02 SUM Xe điện | PASS33066538.03 |
+| k03 COUNT+SUM | PASS360 /33066538.03 |
+| k04 theo trạm, lỗi lịch sử | PASS12 trạm,1JOIN, đúng từng count/total |
+| k05 theo gói | PASS5 gói,1JOIN, đúng tên/count/total |
+| k06 SUM Khách sạn | PASS638885507.75 |
+| k07 số phòng>100 | PASS16 mã/tên; không mất WHERE |
+| k08 nhóm trạng thái | PASS4 nhóm, tổng2400 lượt |
+| k09 theo khách sạn | PASS24 khách sạn,1JOIN, count/Decimal totals đúng |
+| k10 khu vực × nhóm phòng | PASS12 nhóm,2JOIN;2400 /638885507.75 |
+| k11 trạm × gói | PASS60 cặp mã/tên,2JOIN, count/total đúng |
+| k12 Logistics qua tài xế/kho | PASS5 kho,2JOIN;50 đơn /2472500.00 |
+| k13 AVG | PASS91851.494527777778 |
+| ui-k14 biến thể trạm | PASS12 trạm qua8080; SQL/rows/attribution persisted |
+| ui-k15 biến thể phòng>100 | PASS16 khách sạn qua8080; reload/history PASS |
+| k01b COUNT diễn đạt độc lập | PASS360; không thay thế kết quả UNKNOWN của k01 |
+| Gemini compatibility | PASS12 trạm/1JOIN, đúng count/SUM,2 stages |
+| Knowledge RAG smoke | PASS1 query embedding, citation23,2800000VND/mọi trạng thái/mã trạm |
+| Knowledge Hybrid smoke | PASS1 query embedding,12 Decimal totals, verified_classification, citation23; TS07–12 đạt/TS01–06 chưa đạt |
+
+Ở15 SQL Knowledge chấm được: false refusal0, wire/domain/binding/compiler/execution
+failure0, wrong accepted rows0, unsafe/cross-owner acceptance quan sát được0. Mẫu k01
+không có dữ liệu đủ để điền các chỉ số đó; không suy từ HTTP200/compile thành correctness.
+Live plans chấm được đã tự group đủ; số thuộc tính Binder thêm trong các mẫu này là0.
+Lợi ích completion được chứng minh bằng failing reproduction và PostgreSQL regression,
+không nhận toàn bộ improvement live là do Binder. Latency end-to-end SQL Knowledge
+n=15: min5362.53ms, median8519.85ms, max15297.43ms; không phải load/SLA/p95 benchmark.
+Follow-up không gọi lại live trong đợt hẹp; regression offline/PG PASS, bằng chứng UI
+26/10 vẫn là lịch sử, không cộng vào score mới.
+
+Sự cố k01 thuộc private audit recorder: `dataclasses.asdict(CountMetric)` giữ SQLGlot
+`Count` AST nên `json.dumps(report)` lỗi sau capture compiler; raw rows/response không
+được lưu. Không có bằng chứng sản phẩm/provider lỗi ở lượt đó. Sửa riêng recorder thành
+primitive count metadata; không sửa model payload, không gửi lại câu gốc, không hoàn trả
+budget. Phiên nghiệm thu kết thúc với1 UNKNOWN nên không chuyển Knowledge default.
+Không kết luận phải thay server/model chỉ từ sự cố này. Phía server vẫn UNKNOWN về
+decoder/nguồn delimiter lịch sử; cần serving logs mới nếu người vận hành mở nhiệm vụ khác.
+
+Budget MỚI Knowledge40/Gemini5 generation,8query/0document embeddings. Đã quan sát
+34 Knowledge stages và2 Gemini stages; giữ thêm2 Knowledge debit bảo thủ cho k01 chưa
+đủ log, tổng tính36/40 và2/5. Query2/8, document0/0. Reservation không hoàn lại40/2/4/0;
+ledger đã đóng, không dùng dư hay gọi thêm. Không cộng token chưa biết của k01 và
+không suy số tiền từ token.
+Token SDK ghi nhận101956input/15772output cho các ca hoàn tất, thêm probe228/1020:
+**102184input +16792output =118976total**; k01 token UNKNOWN, billed cost UNKNOWN.
+
+### Runtime cuối và đóng băng
+
+API-only cutover27/10/2026 10:00:55–10:01:11 Asia/Saigon, source/test maina67242d ở
+trên, immutable image
+`sha256:069e7f67fb409ac3a587c6327104f509bf3182ca2d410e281f2f3cf90818c599`.
+API container3ce1af0d; Webc6f1f591/source02d5cbb/image
+`sha256:ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58`
+không rebuild/recreate. Strict87modules PASS cuối, no source/config drift, Nginx syntax/
+graceful reload/health8080 PASS. Documentation-only commits sau đó không đổi application
+bytes nên không rebuild/redeploy. Main DB511c4f5a/protected volume/image/start time giữ
+nguyên trong nhiệm vụ này; không migrate/reset. Không xóa image/volume/prune/project khác.
+
+Final fingerprints40tables/schema PASS; chỉ thay resource_limits,users,user_sessions
+do đăng nhập/quota và thêm2conversations/4messages UI. Old history prefix giữ nguyên;
+datasets/tables/documents/chunks/vectors/approved relationships không đổi. Google login,
+workspace/history/reload được kiểm qua8080. Không xác nhận uptime liên tục trước nhiệm vụ.
+Rollback API67a891b0/sourcef6f44ae và `.env.release.before` giữ ngoài Git tại private
+backups/shopquery-ai/knowledge-final-20261027. Ba script fixture bảo trì của operator
+vẫn untracked; không xóa/commit. Private harness/logs ngoài repository không phải source
+production; không tạo thử nghiệm tạm còn sót trong repo.
+
+Final: Gemini default `gemini-3.5-flash-lite`, fallbackOFF, gateON, GuestOFF,
+`gemini-embedding-2`/768, vector-only/noBGE. Knowledge `knowledge` vẫn chọn thủ công được;
+không hứa ổn định mọi SQL hoặc mọi dataset. Không cần sửa code tiếp khi chưa có failing
+test/evidence mới. **KNOWLEDGE_NOT_ACCEPTED — GEMINI_PRODUCTION_READY**, phạm vi demo
+Gemini đã công bố giữ nguyên; không Full Stage2/BGE PASS, không tag, dừng phát triển.
 
 Nguồn kỹ thuật: [Pydantic JSON Schema](https://pydantic.dev/docs/validation/latest/concepts/json_schema/),
 [LangChain structured output](https://reference.langchain.com/python/langchain-openai/chat_models/base/ChatOpenAI/with_structured_output),

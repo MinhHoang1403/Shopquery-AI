@@ -1,5 +1,13 @@
 # Khả năng và giới hạn
 
+Trạng thái chốt27/10/2026: **KNOWLEDGE_NOT_ACCEPTED — GEMINI_PRODUCTION_READY**.
+Gemini mặc định/fallbackOFF, provider gateON/GuestOFF; embedding2/768/vector-only giữ
+nguyên. Knowledge chọn thủ công:15 SQL live đúng oracle trên3domain và1 mẫu UNKNOWN
+do mất bằng chứng đo; không đủ tiêu chí chuyển mặc định. Schema predicate Knowledge và
+approved dimension grouping đã sửa/triển khai; không bảo đảm mọi câu SQL. RAG/Hybrid
+smoke PASS/citation23, Gemini compatibility PASS. Chi tiết/budget/giới hạn tại
+[acceptance hiện hành](v2_final_acceptance.md); phát triển đã đóng băng sau nhiệm vụ.
+
 ## SQL
 
 Production hỗ trợ authorized SELECT, filters, arithmetic, aggregates, GROUP BY,
