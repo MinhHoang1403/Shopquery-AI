@@ -44,7 +44,31 @@ Immediate rollback API67a891b0/sourcef6f44ae + `.env.release.before` tại priva
 backups/shopquery-ai/knowledge-final-20261027. Không xóa images/volumes/prune trong lượt
 này. Xem [acceptance hiện hành](v2_final_acceptance.md) trước các đoạn lịch sử bên dưới.
 
-## Langfuse: preflight dừng do thiếu tài nguyên — 27/10/2026
+## Langfuse sau restart — cấu hình VM chưa triển khai, 27/10/2026
+
+**BLOCKED_INSUFFICIENT_RESOURCES — CONFIG_ONLY — LIVE_PENDING.** Windows boot11:45:57,
+đo11:52:57 Asia/Saigon: RAM15.31GiB, khả dụng1.47GiB, commit20.65GiB/pagefile1199MiB,
+CPU4%, disk135.52GiB. Docker vẫn7.415GiB/12CPU, Linux available6.29GiB gồm cache có
+thể thu hồi. Không có bằng chứng peak/headroom đủ cho sáu service; không thay WSL,
+swap hoặc dừng ứng dụng operator. Cổng3000/3030/9000/9090 chưa có listener; chưa start
+Langfuse, không pull layers, tạo volumes hay mua/triển khai VM.
+
+Nhánh `codex/langfuse-observability` từ maina6d337d chuẩn bị
+[Compose/runbook VM](../ops/langfuse/README.md): đúng6service/5volumes riêng,
+digest pins được registry xác nhận, template secrets trống bắt buộc, loopback3000/9090,
+datastores không publish, Docker log rotation.9offline config tests PASS; không thay
+backend/app/dependencies hoặc Compose ShopQuery. Không merge main hay deploy
+instrumentation khi chưa nghiệm thu hạ tầng. Chi tiết images/sizing, kết nối private
+TLS, retention/backup/restore và các gates còn lại nằm trong runbook đó.
+
+Strict87modules PASS sau restart, API069e7f67/sourcea67242d và Webae181335/source02d5cbb
+vẫn đúng immutable images;3ShopQuery container IDs/protected volume giữ nguyên,
+chỉ start times thay do Windows reboot.8080/API/main PostgreSQL healthy. Giữ default
+Gemini/fallbackOFF/gateON/GuestOFF/embedding2/768/vector-only. Không gọi provider, chưa
+có trace/token/cost/fail-open/live acceptance mới. UI Google reload sau reboot chưa
+được kiểm trong lượt cấu hình; không dùng kết quả lịch sử thay verification hiện tại.
+
+## Langfuse trước restart: preflight dừng do thiếu tài nguyên — 27/10/2026
 
 **BLOCKED_INSUFFICIENT_RESOURCES**. Chưa pull/start Langfuse, chưa tạo Compose project,
 network, volumes, credentials, SDK dependency hoặc instrumentation. Không sửa/rebuild/

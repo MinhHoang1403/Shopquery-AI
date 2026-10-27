@@ -1,0 +1,157 @@
+# Based on langfuse/langfuse v4.70.1/docker-compose.yml; resource gate is in README.md.
+name: shopquery-observability
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-dependencies: &dependencies
+  postgres: {condition: service_healthy}
+  clickhouse: {condition: service_healthy}
+  redis: {condition: service_healthy}
+  minio: {condition: service_healthy}
+
+x-environment: &environment
+  DATABASE_URL: postgresql://langfuse:${LF_POSTGRES_PASSWORD:?Set a private random password}@postgres:5432/langfuse
+  NEXTAUTH_URL: ${LF_PUBLIC_URL:-http://127.0.0.1:3000}
+  SALT: ${LF_SALT:?Set a private random salt}
+  ENCRYPTION_KEY: ${LF_ENCRYPTION_KEY:?Set 32 random bytes as 64 hexadecimal characters}
+  TELEMETRY_ENABLED: "false"
+  LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_USER: langfuse
+  CLICKHOUSE_PASSWORD: ${LF_CLICKHOUSE_PASSWORD:?Set a private random password}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: ${LF_REDIS_PASSWORD:?Set a private random password}
+  REDIS_TLS_ENABLED: "false"
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LF_MINIO_USER:?Set a private random access ID}
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LF_MINIO_PASSWORD:?Set a private random secret}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${LF_MINIO_USER:?Set a private random access ID}
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${LF_MINIO_PASSWORD:?Set a private random secret}
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+  LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
+
+services:
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:4.70.1@sha256:71b04842ecff8fe0dd15c7bbb1acd6e0555735e393a8108c43feb4b8d0adf9e6
+    restart: unless-stopped
+    logging: *logging
+    depends_on: *dependencies
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      <<: *environment
+      NEXTAUTH_SECRET: ${LF_NEXTAUTH_SECRET:?Set a private random secret}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LF_MEDIA_URL:-http://127.0.0.1:9090}
+      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
+    healthcheck:
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, "http://127.0.0.1:3000/api/public/health?failIfDatabaseUnavailable=true"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.70.1@sha256:3976a73de84a29999ff4573398e240127b8a92012421ce5eec61cd57f087d8ca
+    restart: unless-stopped
+    logging: *logging
+    depends_on: *dependencies
+    environment: *environment
+    healthcheck:
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, "http://127.0.0.1:3030/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  postgres:
+    image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_DB: langfuse
+      POSTGRES_PASSWORD: ${LF_POSTGRES_PASSWORD:?Set a private random password}
+      TZ: UTC
+      PGTZ: UTC
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.12@sha256:8a790dd3468db22b1d4e7b18a176f378ff5ff6053b9c48dd4ea1fa71a24c5ba6
+    restart: unless-stopped
+    logging: *logging
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${LF_CLICKHOUSE_PASSWORD:?Set a private random password}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: [CMD-SHELL, "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7@sha256:bd28fff4b665fdf1b73e8b5b73ec05d2f858f4fa3c8ea0d7c9bc09f7f6bf7039
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      REDIS_PASSWORD: ${LF_REDIS_PASSWORD:?Set a private random password}
+    command:
+      - sh
+      - -ec
+      - 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory-policy noeviction'
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    # The upstream Compose uses Chainguard MinIO. Resolve once, never use a moving tag.
+    image: cgr.dev/chainguard/minio@sha256:a1d2b3516a41296510f7fb49184c18b88287fa8f35cf3ce5c047289053b94964
+    restart: unless-stopped
+    logging: *logging
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: ${LF_MINIO_USER:?Set a private random access ID}
+      MINIO_ROOT_PASSWORD: ${LF_MINIO_PASSWORD:?Set a private random secret}
+    ports: ["127.0.0.1:9090:9000"]
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: [CMD, mc, ready, local]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  postgres-data:
+  clickhouse-data:
+  clickhouse-logs:
+  redis-data:
+  minio-data:

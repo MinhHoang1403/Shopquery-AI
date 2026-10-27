@@ -1,0 +1,25 @@
+name: Observability configuration
+
+on:
+  push:
+    branches: [codex/langfuse-observability]
+    paths: [ops/langfuse/**, .github/workflows/observability.yml]
+  pull_request:
+    branches: [main]
+    paths: [ops/langfuse/**, .github/workflows/observability.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Validate offline configuration and isolation
+        run: python ops/langfuse/test_compose.py -v
