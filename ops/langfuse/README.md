@@ -2,8 +2,10 @@
 
 **LANGFUSE_READY_WITH_LIMITATIONS — 27/10/2026.** Dashboard tại
 [localhost:3000](http://127.0.0.1:3000). Sáu service healthy, Web/Worker ready,
-project/keys thật đã tạo; API8080 đã gửi trace. Không có provider call trả phí trong
-đợt tích hợp. Reload8080 xác nhận session, workspace và lịch sử cũ vẫn tải được;
+project/keys thật đã tạo; API8080 đã gửi trace. Đợt nghiệm thu tiếp theo chạy6câu UI
+trong ngân sách mới:10generation/3query/0document embeddings; tất cả đúng oracle.
+[Ma trận và báo cáo đầy đủ](../../docs/observability_acceptance.md). Reload8080 xác nhận
+session, workspace và lịch sử cũ vẫn tải được;
 không thử lại luồng Google sign-in mới.
 
 ## Runtime và bằng chứng
@@ -20,7 +22,7 @@ PostgreSQL riêng. Không tạo sandbox, test containers hoặc clone source.
 | Redis | 7 / bd28fff4 |
 | MinIO | Chainguard / a1d2b351, digest-only |
 | Python SDK | langfuse==5.0.4, uv.lock |
-| ShopQuery API | source8a2c6aa / image52701da8a2d0fb40f5825647ef955936148271cad47c0838dcbaeaca41983285 |
+| ShopQuery API | source3fe4cc2 / imaged8ad8aa5e3425b803bcec9c61a5e84dd5e950a2e07dc978d70c64d7c33dcbbb2 |
 
 Startup14:11:50 Asia/Saigon bằng containers/images có sẵn. Operator đã tự đăng ký
 và đăng nhập, project ShopQuery AI đã tạo qua UI, SDK auth_check=True. Organization
@@ -28,7 +30,7 @@ AI-powered features OFF; không cấu hình model provider trong Langfuse. Keys 
 nằm trong ignored `ops/langfuse/.env` và private `.env.release`; không in resolved
 Compose environment hoặc SDK responses chứa credentials ra console/Git.
 
-Operator duyệt cutover API và recreate LF Web. Runtime cuối14:59:26: main Web/DB
+Operator duyệt cutover API và recreate LF Web. Runtime instrumentation đầu14:59:26: main Web/DB
 không recreate, Nginx graceful reload; strict88modules PASS/no source hoặc env drift.
 Gemini default/fallbackOFF/gateON/GuestOFF/embedding2/768/vector-only giữ nguyên.
 Main volume `shopquery-ai_postgres_auth_20261019` không đổi; không migrate/ghi fixture.
@@ -67,8 +69,9 @@ metadata nội bộ; không dump toàn bộ response hoặc ảnh cột metadata
 
 Usage lấy trực tiếp từ SDK, phân biệt measured/partial/unknown. Cached input và
 reasoning là chi tiết, không cộng hai lần vào totals. Không tự suy token từ độ dài.
-Failed call thiếu usage giữ UNKNOWN. Cost chưa có bảng giá được cấu hình/kiểm chứng
-cho exact models; không coi null/UNKNOWN là miễn phí hoặc bịa giá Knowledge.
+Failed call thiếu usage giữ UNKNOWN. Application không cung cấp billed cost; server
+đã có managed Gemini3.5 Flash-Lite pricing khớp nguồn Google, auto-inferred estimate
+được kiểm trong nghiệm thu. Embedding token/Knowledge price UNKNOWN, không miễn phí.
 
 Feature flag mặc định OFF trong source; runtime8080 hiện ON theo cutover đã duyệt.
 Export bất đồng bộ: queue512, batch64, interval5s, timeout1s. Queue đầy bỏ telemetry,
@@ -111,19 +114,20 @@ lệnh có mutation sau khi có immutable image/config, rollback và cutover đ�
 ./scripts/release.ps1 -Deploy -Service api -Observability
 ```
 
-Rollback image API069e7f67/sourcea67242d và `.env.release.before` được giữ tại private
-`C:\Users\admin\.codex\backups\shopquery-ai\langfuse-20261027-1450`. Khôi phục config
+Rollback hiện hành API52701da8/source8a2c6aa và `.env.release.before` tại private
+`C:\Users\admin\.codex\backups\shopquery-ai\langfuse-acceptance-20261027`;
+rollback069e7f67/sourcea67242d trước instrumentation cũng được giữ. Khôi phục config
 và API-only deploy trong maintenance window được duyệt; không main Web/DB recreate.
 Không ghi đè secrets LF nếu volumes đã tồn tại. Không xóa năm volumes datastore.
 
 ## Kiểm thử và giới hạn
 
-123 targeted backend tests và10 Compose tests PASS trên CI main; observability.py
-có17 parametrized test cases với SDK thật/InMemorySpanExporter, không provider/network.
+Targeted telemetry/provider/error/auth/context/binding và10 Compose tests PASS trên CI main; observability.py
+có26 parametrized test cases với SDK thật/InMemorySpanExporter, không provider/network.
 Phủ correlation/nesting/single-dispatch, usage/cache/reasoning/missing, privacy/raw
 exception, OFF, SDK errors, bounded queue overflow. Compose resolver thật kiểm pins,
 loopback ports, credentials required, storage/network isolation, probes và queue512.
-CI application source8a2c6aa cũng PASS3jobs. Không tự chạy lại full regression/golden.
+CI application source3fe4cc2 PASS3jobs. Không tự chạy lại full regression/golden.
 
 Lệnh targeted khi source liên quan thay đổi:
 
@@ -132,10 +136,12 @@ Lệnh targeted khi source liên quan thay đổi:
 ./scripts/invoke-python.ps1 -PythonArguments @('ops/langfuse/test_compose.py', '-v')
 ```
 
-**Chưa kiểm:** telemetry của generation/embedding trả phí thực, cost với giá exact
-models, persistence qua restart toàn bộ datastore, retention và backup/restore drill.
-Không dùng synthetic token test làm live SQL/RAG/Hybrid acceptance. Không có ngân sách
-provider mới cho nhiệm vụ này; generation/query/document embeddings thực đều0.
+**Còn giới hạn:** embedding token usage upstream không có, Knowledge price UNKNOWN,
+persistence qua restart toàn bộ datastore, retention và backup/restore drill.
+Generation Gemini/Knowledge và query embeddings đã nghiệm thu live trong6câu UI;
+SDK totals khớp32601generation tokens. Gemini managed pricing auto-infers estimate,
+không phải hóa đơn hoặc tổng chi phí mọi provider.
+Không dùng synthetic token test làm live SQL/RAG/Hybrid acceptance. Cửa sổ ngân sách agent mới đã đóng10generation/3query/0document; không dùng dư.
 
 Retention chưa được cấu hình hoặc nghiệm thu. Theo dõi dung lượng trace/storage;
 không tự đặt TTL/xóa blobs vì có thể phá ingestion. Backup phải bảo vệ PostgreSQL

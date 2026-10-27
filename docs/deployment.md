@@ -22,8 +22,8 @@ kiểm/deploy runtime này. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-Current API source `8a2c6aa905944c5d7235193d09f1432d97d8ba9c`.
-API digest `52701da8a2d0fb40f5825647ef955936148271cad47c0838dcbaeaca41983285`.
+Current API source `3fe4cc22bc4769dfa6318541bf26bd50109ffb29`.
+API digest `d8ad8aa5e3425b803bcec9c61a5e84dd5e950a2e07dc978d70c64d7c33dcbbb2`.
 Web source `02d5cbb445901f7eb63f82bee87e2e8785d35663`.
 Web digest `ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
@@ -45,6 +45,27 @@ instrumentation failure. Agent budget đã đóng36Knowledge(debit gồm2unknown
 Immediate rollback API67a891b0/sourcef6f44ae + `.env.release.before` tại private
 backups/shopquery-ai/knowledge-final-20261027. Không xóa images/volumes/prune trong lượt
 này. Xem [acceptance hiện hành](v2_final_acceptance.md) trước các đoạn lịch sử bên dưới.
+
+## Langfuse nghiệm thu live — 27/10/2026 15:38–15:46
+
+**LANGFUSE_READY_WITH_LIMITATIONS**. API-only image d8ad8aa5/source3fe4cc2 sau
+CI40474177836(3jobs)/40474178023 PASS, operator duyệt cửa sổ conditional CI. Strict88
+PASS/no drift; APIbb40a2e7, main Web/DB không recreate. Rollback52701da8 và private
+.env.release.before tại backups/shopquery-ai/langfuse-acceptance-20261027 giữ nguyên.
+
+Sáu câu UI SQL/Knowledge JOIN/RAG/Hybrid/follow-up/hotel đều đúng oracle/citation23.
+6root/đầy đủ nested spans/10generation observations/3query embeddings, không raw I/O
+hoặc orphan/duplicate.32601generation tokens khớp diagnostics; embedding usageUNKNOWN.
+Gemini generation auto-inferred estimate0.0087665USD; Knowledge và embedding costUNKNOWN.
+Budget đóng10/20generation,3/8query,0document; không retry/fallback; normal gateON.
+Fingerprint33data objects +238old messages giữ nguyên, thêm12messages. UI reload/session/
+workspace/history PASS, không thử lại Google sign-in. Sáu LFservices healthy/no OOM/restart.
+
+Chỉ xóa candidateffa4ef39 bị CI loại, chưa deploy/không còn references;49images còn lại,
+không prune, không xóa volumes/cache hoặc projects khác. Byte reclaimedUNKNOWN (CLI cùng
+55.9GB sau làm tròn). Retention Enterprise chưa có; BACKUP_RESTORE_NOT_VERIFIED.
+[Ma trận và nghiệm thu chi tiết](observability_acceptance.md). Các mục phía dưới ghi
+những bước trước cutover này, không thay image/config hiện hành ở đầu tài liệu.
 
 ## Langfuse đang hoạt động — 27/10/2026
 

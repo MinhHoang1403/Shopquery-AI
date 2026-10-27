@@ -1,5 +1,11 @@
 # ShopQuery AI V2 — current acceptance
 
+Runtime27/10 sau tích hợp Langfuse: API source3fe4cc2/imaged8ad8aa5, Webae181335
+giữ nguyên. [Nghiệm thu observability](observability_acceptance.md) có6câu live
+đúng oracle và trace/usage, không thay AI business logic hoặc promote Knowledge
+như một đợt ổn định toàn diện. Các source/image bên dưới là baseline lịch sử của
+đợt SQL; runtime hiện hành xem [deployment](deployment.md).
+
 **MAIN CONSOLIDATED — 8080 ACTIVE — GEMINI DEFAULT — ACCEPTANCE PARTIAL — PROVIDER GATE ON**
 
 Updated 2026-10-27 (Asia/Saigon). No release tag or full Stage 2 acceptance.

@@ -34,8 +34,10 @@ Tích hợp công nghệ mới/nhiều file/rủi ro runtime dùng một branch 
 merge main, theo [AGENTS.md](AGENTS.md). Không build image khi chỉ sửa docs/config-only,
 không tạo candidate/sandbox app stack. Langfuse đã chạy đủ sáu service tại
 [Dashboard localhost:3000](http://127.0.0.1:3000), có trace từ API8080 và SDK5.0.4
-metadata-only. [Runbook và giới hạn kiểm chứng](ops/langfuse/README.md): token đã
-kiểm bằng synthetic usage; chưa gọi provider thật trong đợt tích hợp, chi phí UNKNOWN.
+metadata-only. [Nghiệm thu telemetry](docs/observability_acceptance.md):6câu UI
+SQL/JOIN/RAG/Hybrid/follow-up PASS,10generation/3query embeddings;32601generation
+tokens khớp diagnostics. Embedding token và Knowledge cost UNKNOWN; Gemini cost là
+ước tính theo bảng giá. [Runbook](ops/langfuse/README.md) ghi retention/backup limits.
 Runtime hiện bật override observability; kiểm bằng `./scripts/release.ps1 -Observability`.
 
 Cần Docker Desktop/Compose hỗ trợ `!override`, PowerShell, Git, Python 3.11/uv;
@@ -50,8 +52,8 @@ git add -p
 git commit -m "Describe the verified change"
 git push origin main
 # Build/pin riêng API hoặc Web theo docs/deployment.md, rồi:
-./scripts/release.ps1 -Deploy -Service api
-./scripts/release.ps1
+./scripts/release.ps1 -Deploy -Service api -Observability
+./scripts/release.ps1 -Observability
 Invoke-RestMethod http://127.0.0.1:8080/api/health
 ```
 

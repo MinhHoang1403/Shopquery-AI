@@ -1,5 +1,11 @@
 # ShopQuery AI — architecture, reliability and security audit
 
+Runtime27/10 sau tích hợp Langfuse: API source3fe4cc2/imaged8ad8aa5, Webae181335
+giữ nguyên. [Nghiệm thu observability](observability_acceptance.md) có6câu live
+đúng oracle và trace/usage, không thay AI business logic hoặc promote Knowledge
+như một đợt ổn định toàn diện. Các source/image bên dưới là baseline lịch sử của
+đợt SQL; runtime hiện hành xem [deployment](deployment.md).
+
 ## Ổn định Knowledge SQL lần cuối — 27/10/2026
 
 Kết luận: **KNOWLEDGE_NOT_ACCEPTED — GEMINI_PRODUCTION_READY**. Đợt sửa cuối đã triển
