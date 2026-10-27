@@ -128,6 +128,7 @@ class ComposeSafetyTests(unittest.TestCase):
         self.assertEqual(
             web["LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT"], "http://minio:9000"
         )
+        self.assertEqual(web["HOSTNAME"], "0.0.0.0")
 
     def test_all_services_have_bounded_docker_logs(self):
         for service in self.config["services"].values():
@@ -150,9 +151,13 @@ class ComposeSafetyTests(unittest.TestCase):
     def test_api_override_is_opt_in_and_never_connects_main_database(self):
         base = {
             "services": {
-                name: {"image": "example.invalid/never-pulled:configuration-only"}
+                name: {
+                    "image": "example.invalid/never-pulled:configuration-only",
+                    "networks": ["backend"],
+                }
                 for name in ("api", "web", "db")
-            }
+            },
+            "networks": {"backend": {}},
         }
         env = {k: v for k, v in os.environ.items() if not k.startswith("LANGFUSE_")}
         result = subprocess.run(
@@ -166,6 +171,7 @@ class ComposeSafetyTests(unittest.TestCase):
         )
         config = json.loads(result.stdout)
         self.assertEqual(set(config["services"]), {"api", "web", "db"})
+        self.assertEqual(set(config["networks"]), {"backend", "observability"})
         for name, service in config["services"].items():
             self.assertEqual("observability" in service["networks"], name == "api")
         self.assertTrue(config["networks"]["observability"]["external"])

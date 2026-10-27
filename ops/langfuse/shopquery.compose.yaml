@@ -9,7 +9,7 @@ services:
       LANGFUSE_MEDIA_UPLOAD_ENABLED: "false"
       # SDK BatchSpanProcessor drops excess spans instead of blocking the chatbot.
       OTEL_BSP_MAX_QUEUE_SIZE: "512"
-    networks: [default, observability]
+    networks: [backend, observability]
 
 networks:
   observability:
