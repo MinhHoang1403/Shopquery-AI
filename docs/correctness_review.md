@@ -40,6 +40,10 @@ Không thêm SQL generator, provider, queue/service hoặc answer-rewrite model 
   kỳ/trạng thái, không dùng model-extracted rule làm authority. Entity, field/key, ngày,
   status, threshold và currency lấy từ tài liệu; mọi câu được consume. Chỉ hỗ trợ cấu trúc
   điều khoản đã kiểm; ngoại lệ/quy tắc thứ hai/unknown text bị từ chối.
+  `regulation_title_supported` kiểm cả section headings và kỳ trong tiêu đề: không bỏ
+  điều kiện chỉ dành tập con hoặc mâu thuẫn tháng/năm. Hai negative tests mới từng chứng
+  minh SQL chạy trước khi nhận thiếu bằng chứng, nay phải dừng trước execution. Positive
+  fixtures dùng tiêu đề thuộc vocabulary được công bố; tên/heading tùy ý chưa được hỗ trợ.
 - `DocumentRepository.retrieve`/`complete_policy_evidence`/`policy_content`: lấy sibling chunks
   đã đăng ký của các tài liệu được truy xuất, giữ ID/title/hash/owner/workspace; bỏ đúng
   overlap tối đa 30 từ của chunker. Tối đa 20 chunks/60.000 ký tự, không embedding lần hai.

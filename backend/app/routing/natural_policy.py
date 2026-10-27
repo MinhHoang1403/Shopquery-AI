@@ -52,6 +52,67 @@ def normalized(value: str) -> str:
     return "".join(c for c in value if c.isalnum() and not unicodedata.combining(c))
 
 
+def regulation_title_supported(title: str, prose: "ProseRule") -> bool:
+    """Section headings are policy evidence too, not decoration to discard."""
+    if prose.period is None:
+        return False
+    start, end = (date.fromisoformat(value) for value in prose.period)
+    title = "".join(
+        c
+        for c in unicodedata.normalize("NFKD", title.casefold().replace("đ", "d"))
+        if not unicodedata.combining(c)
+    ).replace("_", " ")
+    title = re.sub(r"^\d+[ -]*", "", title)
+    title = re.sub(r"\btrang\s+\d+\b", "", title)
+    for match in re.finditer(r"\b(?:thang|month)\s+(\d{1,2})\b", title):
+        if int(match[1]) != start.month or start.month != end.month:
+            return False
+    for match in re.finditer(r"\b(?:nam|year)?\s*(\d{4})\b", title):
+        if int(match[1]) != start.year or start.year != end.year:
+            return False
+    title = re.sub(r"\b(?:thang|month)\s+\d{1,2}\b", "", title)
+    title = re.sub(r"\b(?:nam|year)?\s*\d{4}\b", "", title)
+    words = re.findall(r"[^\W_]+", title)
+    vocabulary = re.findall(
+        r"[^\W_]+", prose.subject + " " + prose.metric_reference + " " + prose.identity_reference
+    )
+    vocabulary += [
+        "quy",
+        "định",
+        "KPI",
+        "tổng",
+        "theo",
+        "chính",
+        "sách",
+        "policy",
+        "rule",
+        "phạm",
+        "vi",
+        "số",
+        "liệu",
+        "cần",
+        "dùng",
+        "ngưỡng",
+        "đánh",
+        "giá",
+        "trường",
+        "hợp",
+        "bằng",
+        "tắc",
+        "kết",
+        "luận",
+        "phân",
+        "biệt",
+        "tài",
+        "liệu",
+        "vận",
+        "hành",
+        "hiệu",
+        "lực",
+    ]
+    return {normalized(w) for w in words} <= {normalized(w) for w in vocabulary}
+
+
 @dataclass(frozen=True)
 class ProseRule:
     subject: str

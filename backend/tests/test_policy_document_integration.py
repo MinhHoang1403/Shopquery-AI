@@ -97,7 +97,7 @@ def test_complete_regulation_and_full_row_scope_have_independent_pg_evidence(
         info = documents.add_document(
             dataset.dataset_id,
             parse_document_file(
-                "scoped-policy.txt", regulation(entity, metric, identity, threshold).encode()
+                "policy.txt", regulation(entity, metric, identity, threshold).encode()
             ),
             embedder,
         )

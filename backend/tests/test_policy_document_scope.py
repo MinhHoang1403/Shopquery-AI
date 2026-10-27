@@ -82,9 +82,10 @@ def evidence(entity="cơ sở", metric="value_amount", identity="site_key", thre
     )
     words = regulation(entity, metric, identity, threshold).split()
     split = len(words) // 2
+    title = f"01_quy_dinh_kpi_{entity.replace(' ', '_')}_thang_04_2032 > Trang 1"
     parts = (
-        (71, "KPI > Trang 1", " ".join(words[:split])),
-        (72, "KPI > Trang 1", " ".join(words[split - 30 :])),
+        (71, title, " ".join(words[:split])),
+        (72, title, " ".join(words[split - 30 :])),
     )
     scope = DocumentScope(
         11,
@@ -140,6 +141,8 @@ def test_renamed_schema_threshold_boundaries_and_complete_citations(
         "exception",
         "second_rule",
         "header_condition",
+        "section_condition",
+        "section_period",
     ],
 )
 def test_incomplete_or_conditional_evidence_never_gains_authority(mutation):
@@ -172,6 +175,10 @@ def test_incomplete_or_conditional_evidence_never_gains_authority(mutation):
     elif mutation == "missing_part":
         scope = replace(chunks[0].document_scope, document_parts=())
         chunks = [replace(chunks[0], document_scope=scope)]
+    elif mutation == "section_condition":
+        chunks = [replace(c, section_title="KPI > Chỉ áp dụng cho nhóm đặc biệt") for c in chunks]
+    elif mutation == "section_period":
+        chunks = [replace(c, section_title="KPI tháng 05 năm 2032") for c in chunks]
     elif mutation in {"exception", "second_rule", "header_condition"}:
         content = policy_content(chunks[0], chunks)
         if mutation == "header_condition":

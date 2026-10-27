@@ -12,7 +12,7 @@ from app.core.errors import ErrorContext, ModelResponseError, VerificationReason
 from app.datasets.context import DatasetSqlContext
 from app.rag.repository import RetrievedChunk
 from app.routing.hybrid_policy import NumericPolicy, numeric_policies, policy_content
-from app.routing.natural_policy import normalized, parse_prose
+from app.routing.natural_policy import normalized, parse_prose, regulation_title_supported
 from app.text_to_sql.count_contract import output_field_name
 from app.text_to_sql.pipeline import SqlResult
 
@@ -365,6 +365,16 @@ def verified_policies(
         ):
             return reject("policy_document_scope_invalid", len(candidates))
         whole_prose = parse_prose(content)
+        if (
+            whole_prose is not None
+            and whole_prose.declared_unit
+            and any(
+                not regulation_title_supported(c.section_title, whole_prose)
+                for c in chunks
+                if c.chunk_id in scope.chunk_ids
+            )
+        ):
+            return reject("policy_unsupported_qualifier", len(candidates))
         if not (whole_prose and whole_prose.declared_unit) and re.search(
             r"\b(except|unless|exceptions|only|if|not|ngoại lệ|trừ|chỉ|nếu|không|"
             r"tháng|năm)\b|[0-9<>=]",
