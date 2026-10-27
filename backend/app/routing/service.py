@@ -70,7 +70,8 @@ class ChatService:
         self._hybrid_pipeline = hybrid_pipeline
 
     def chat(self, question: str, *, current_question: str | None = None) -> ChatResult:
-        route = self._router.route(question).route
+        decision = self._router.route(question)
+        route = decision.route
         if route == RouteLabel.SQL:
             result = self._sql_pipeline.run(question)
             return ChatResult(
@@ -82,6 +83,11 @@ class ChatService:
         if route == RouteLabel.HYBRID:
             result = self._hybrid_pipeline.run(
                 question,
+                **(
+                    {"classification": decision.policy_intent}
+                    if decision.policy_scope == "all_entities" and decision.policy_intent != "none"
+                    else {}
+                ),
                 **({"current_question": current_question} if current_question is not None else {}),
             )
             return ChatResult(
@@ -132,7 +138,8 @@ class DatasetChatService:
                 RouteLabel.UNSUPPORTED,
                 requested_model=self._requested_model,
             )
-        route = self._router.route(question, frozenset(allowed)).route
+        decision = self._router.route(question, frozenset(allowed))
+        route = decision.route
         if route == RouteLabel.SQL and self._sql_pipeline is not None:
             try:
                 result = self._sql_pipeline.run(question)
@@ -148,6 +155,12 @@ class DatasetChatService:
             try:
                 result = self._hybrid_pipeline.run(
                     question,
+                    **(
+                        {"classification": decision.policy_intent}
+                        if decision.policy_scope == "all_entities"
+                        and decision.policy_intent != "none"
+                        else {}
+                    ),
                     **(
                         {"current_question": current_question}
                         if current_question is not None

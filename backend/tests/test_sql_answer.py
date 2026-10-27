@@ -32,8 +32,9 @@ def test_compiled_count_provenance_and_exact_rows_need_no_answer_generation():
         Mock(generate=Mock(return_value=plan)), compiler, executor, gateway
     ).run("Tổng?")
     assert result.rows == values
-    assert "Rows: **3**" in result.answer and "Total: **0,00**" in result.answer
-    assert "Average: **Chưa có dữ liệu**" in result.answer
+    assert "**3 bản ghi**" in result.answer and "**Tổng Đã đóng** là **0,00**" in result.answer
+    assert "**2 giá trị có dữ liệu**" in result.answer
+    assert "**Trung bình Đã đóng** chưa có giá trị được ghi nhận" in result.answer
     assert "VND" not in result.answer
     gateway.generate_text.assert_not_called()
 

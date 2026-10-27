@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
@@ -10,6 +11,58 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.core.errors import ModelResponseError
 from app.rag.repository import RetrievedChunk
 from app.routing.natural_policy import parse_prose
+
+
+def complete_policy_evidence(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Expand only registered sibling chunks, without a second embedding/search call."""
+    selected = {c.chunk_id: c for c in chunks}
+    for chunk in chunks:
+        scope = chunk.document_scope
+        if scope is None or not scope.document_parts:
+            continue
+        parts = scope.document_parts
+        if tuple(i for i, _, _ in parts) != scope.chunk_ids or len(parts) > 20:
+            continue
+        hashes = dict(scope.text_hashes)
+        if any(
+            hashes.get(i) != hashlib.sha256(content.encode()).hexdigest() for i, _, content in parts
+        ):
+            continue
+        for identifier, title, content in parts:
+            if identifier not in selected:
+                selected[identifier] = replace(
+                    chunk, chunk_id=identifier, section_title=title, content=content
+                )
+    if len(selected) > 20 or sum(len(c.content) for c in selected.values()) > 60000:
+        raise ModelResponseError("Complete policy evidence exceeds supported bounds")
+    return list(selected.values())
+
+
+def policy_content(chunk: RetrievedChunk, chunks: list[RetrievedChunk]) -> str | None:
+    scope = chunk.document_scope
+    if scope is None or scope.chunk_ids == (chunk.chunk_id,):
+        return chunk.content
+    by_id = {c.chunk_id: c for c in chunks}
+    if len(scope.chunk_ids) > 20 or any(i not in by_id for i in scope.chunk_ids):
+        return None
+    words: list[str] = []
+    previous_title = None
+    for identifier in scope.chunk_ids:
+        part = by_id[identifier]
+        if part.document_scope != scope or hashlib.sha256(
+            part.content.encode()
+        ).hexdigest() != dict(scope.text_hashes).get(identifier):
+            return None
+        incoming = part.content.split()
+        overlap = 0
+        if previous_title == part.section_title:
+            for size in range(min(30, len(words), len(incoming)), 0, -1):
+                if words[-size:] == incoming[:size]:
+                    overlap = size
+                    break
+        words.extend(incoming[overlap:])
+        previous_title = part.section_title
+    return " ".join(words)
 
 
 class NumericPolicy(BaseModel):
@@ -51,6 +104,29 @@ def numeric_policies(chunks: list[RetrievedChunk]) -> dict[str, tuple[NumericPol
     """Parse candidates only; source completeness, bindings and verdict need verification."""
     policies: dict[str, tuple[NumericPolicy, int]] = {}
     for chunk in chunks:
+        scope = chunk.document_scope
+        if scope is not None and len(scope.chunk_ids) > 1:
+            if chunk.chunk_id != scope.chunk_ids[0]:
+                continue
+            whole = policy_content(chunk, chunks)
+            prose = parse_prose(whole) if whole is not None else None
+            if prose is not None:
+                rule_id = "prose-" + hashlib.sha256(whole.encode()).hexdigest()[:20]
+                policies[rule_id] = (
+                    NumericPolicy(
+                        version=1,
+                        rule_id=rule_id,
+                        entity_column=prose.identity_reference,
+                        metric_column=prose.metric_reference,
+                        aggregate=prose.aggregate,
+                        operator=prose.operator,
+                        threshold=prose.threshold,
+                        unit="source",
+                        scope="all_rows",
+                    ),
+                    chunk.chunk_id,
+                )
+            continue
         lines = chunk.content.splitlines()
         index = 0
         while index < len(lines):

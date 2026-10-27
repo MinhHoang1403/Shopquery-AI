@@ -416,12 +416,12 @@ describe("ShopQuery workspace", () => {
 
     expect(await screen.findByText("Đây là câu trả lời.")).toBeInTheDocument();
     expect(screen.getByText("SQL")).toBeInTheDocument();
-    const sqlControl = screen.getByRole("button", { name: "Xem SQL" });
-    const tableControl = screen.getByRole("button", { name: "Bảng dữ liệu · 1" });
+    const sqlControl = screen.getByRole("button", { name: "Xem truy vấn SQL" });
+    const tableControl = screen.getByRole("button", { name: "Xem bảng dữ liệu · 1 dòng" });
     expect(sqlControl).toHaveAttribute("aria-expanded", "false");
     expect(tableControl).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText(/SELECT name, quantity/)).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
 
     await user.click(tableControl);
     expect(tableControl).toHaveAttribute("aria-expanded", "true");
@@ -430,7 +430,7 @@ describe("ShopQuery workspace", () => {
     await user.click(sqlControl);
     expect(tableControl).toHaveAttribute("aria-expanded", "false");
     expect(sqlControl).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
     expect(screen.getByText(/SELECT name, quantity/)).toBeVisible();
     const clipboardWrite = vi.spyOn(navigator.clipboard, "writeText");
     await user.click(screen.getByRole("button", { name: "Sao chép SQL" }));
@@ -463,7 +463,7 @@ describe("ShopQuery workspace", () => {
 
     expect(await screen.findByText("120 triệu đồng.")).toBeInTheDocument();
     expect(screen.getAllByText("Doanh thu tháng 9").length).toBeGreaterThan(0);
-    const tableControls = screen.getAllByRole("button", { name: "Bảng dữ liệu · 1" });
+    const tableControls = screen.getAllByRole("button", { name: "Xem bảng dữ liệu · 1 dòng" });
     expect(tableControls).toHaveLength(2);
     expect(tableControls[0]).toHaveAttribute("aria-expanded", "false");
     expect(tableControls[1]).toHaveAttribute("aria-expanded", "false");
@@ -581,8 +581,8 @@ describe("ShopQuery workspace", () => {
     const ragSources = await screen.findByRole("button", { name: "Nguồn · 1" });
     expect(ragSources).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("return.md")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Bảng dữ liệu/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Xem SQL" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Xem bảng dữ liệu/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xem truy vấn SQL" })).not.toBeInTheDocument();
     await user.click(ragSources);
     expect(screen.getByText("return.md")).toBeVisible();
     expect(screen.getByText("Đổi trả")).toBeVisible();
@@ -595,8 +595,8 @@ describe("ShopQuery workspace", () => {
     const second = render(<App />);
     await user.click(await screen.findByRole("button", { name: /Kết hợp dữ liệu/ }));
     expect(await screen.findByText("SQL + Tài liệu")).toBeInTheDocument();
-    const hybridRows = screen.getByRole("button", { name: "Bảng dữ liệu · 1" });
-    const hybridSql = screen.getByRole("button", { name: "Xem SQL" });
+    const hybridRows = screen.getByRole("button", { name: "Xem bảng dữ liệu · 1 dòng" });
+    const hybridSql = screen.getByRole("button", { name: "Xem truy vấn SQL" });
     const hybridSources = screen.getByRole("button", { name: "Nguồn · 1" });
     expect(hybridRows).toHaveAttribute("aria-expanded", "false");
     expect(hybridSql).toHaveAttribute("aria-expanded", "false");
@@ -604,7 +604,7 @@ describe("ShopQuery workspace", () => {
     await user.click(hybridRows);
     expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
     await user.click(hybridSql);
-    expect(screen.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Kết quả truy vấn" })).not.toBeInTheDocument();
     expect(screen.getByText(/SELECT name, quantity/)).toBeVisible();
     await user.click(hybridSources);
     expect(screen.queryByText(/SELECT name, quantity/)).not.toBeInTheDocument();

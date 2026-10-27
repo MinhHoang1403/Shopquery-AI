@@ -37,7 +37,7 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
         const response = page.locator(".message--assistant").last();
         const table = response.getByRole("region", { name: "Kết quả truy vấn" });
         await expect(table).toHaveCount(0);
-        await response.getByRole("button", { name: /Bảng dữ liệu/ }).click();
+        await response.getByRole("button", { name: /Xem bảng dữ liệu/ }).click();
         await expect(table).toBeVisible();
       },
     },
@@ -58,7 +58,7 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
         const response = page.locator(".message--assistant").last();
         const table = response.getByRole("region", { name: "Kết quả truy vấn" });
         await expect(table).toHaveCount(0);
-        await response.getByRole("button", { name: /Bảng dữ liệu/ }).click();
+        await response.getByRole("button", { name: /Xem bảng dữ liệu/ }).click();
         await expect(table).toBeVisible();
         await response.getByRole("button", { name: /Nguồn/ }).click();
         await expect(table).toHaveCount(0);

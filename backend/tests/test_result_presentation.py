@@ -29,7 +29,10 @@ def test_presentation_metadata_comes_from_compiler_not_alias_or_value():
         )
     )
     assert total.result_columns[0].numeric
-    assert total.result_columns[0].label == "Anything"
+    assert total.result_columns[0].label == "Tổng Đã đóng"
+    assert total.result_columns[0].data_type == "NUMERIC"
+    assert total.result_columns[0].provenance == "aggregate"
+    assert total.result_columns[0].aggregate == "sum"
     context = replace(context, column_headers={"tuition_fixture": {"da_dong": "Số tiền đã đóng"}})
     registered = QueryCompiler(context).compile(
         QueryPlan(source="t0", fields=[PlanField(reference=amount, alias="x")])
@@ -38,11 +41,11 @@ def test_presentation_metadata_comes_from_compiler_not_alias_or_value():
 
 
 @pytest.mark.parametrize("size", [12, 16, 24, 200])
-def test_multirow_summary_does_not_fabricate_totals_or_require_opening_detail(size):
+def test_multirow_summary_does_not_fabricate_totals_and_links_to_explicit_detail(size):
     rows = [{"name": f"Mục {i}", "value": "0.00"} for i in range(size)]
     answer = compose_sql_answer(rows, ())
     assert f"{size} kết quả" in answer
-    assert "bảng dữ liệu" not in answer and "tổng" not in answer
+    assert "Mở bảng dữ liệu" in answer and "tổng" not in answer
 
 
 def test_scalar_metadata_preserves_identifiers_precision_null_and_safe_markdown():

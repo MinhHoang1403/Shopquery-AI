@@ -11,7 +11,7 @@ from app.core.diagnostics import diagnostic_stage, record_facts
 from app.core.errors import ErrorContext, ModelResponseError
 from app.datasets.context import DatasetSqlContext
 from app.rag.pipeline import RagPipeline, Source
-from app.routing.hybrid_coverage import resolve_coverage
+from app.routing.hybrid_coverage import Selection, resolve_coverage
 from app.routing.hybrid_evidence import (
     HybridAnswerDraft,
     VerificationStatus,
@@ -19,7 +19,7 @@ from app.routing.hybrid_evidence import (
     decision_prompt,
     verified_classification,
 )
-from app.routing.hybrid_policy import numeric_policies
+from app.routing.hybrid_policy import complete_policy_evidence, numeric_policies
 from app.routing.hybrid_policy_binding import policy_evidence, verification_error
 from app.text_to_sql.answer import ResultColumn
 from app.text_to_sql.count_contract import count_evidence
@@ -67,13 +67,25 @@ class HybridPipeline:
         self._context = context
 
     @diagnostic_stage("hybrid_pipeline")
-    def run(self, question: str, *, current_question: str | None = None) -> HybridResult:
+    def run(
+        self,
+        question: str,
+        *,
+        current_question: str | None = None,
+        classification: Selection | None = None,
+    ) -> HybridResult:
         chunks = self._rag_pipeline.retrieve(question)
+        chunks = complete_policy_evidence(chunks)
+        record_facts(retrieved_chunks=len(chunks), selected_chunks=len(chunks))
         with diagnostic_stage("policy_requirements"):
             try:
                 requirements = [p.model_dump() for p, _ in numeric_policies(chunks).values()]
             except ModelResponseError as exc:
                 raise verification_error("policy_parse_failed") from exc
+            # A typed intent is not a policy. Unknown prose must not trigger
+            # speculative SQL or become a verified conversational premise.
+            if classification is not None and not requirements:
+                raise verification_error("policy_parse_failed")
         planning_evidence = json.dumps(
             {
                 "policy_candidates_not_verified": requirements,
@@ -86,7 +98,14 @@ class HybridPipeline:
         )
         if len(planning_evidence) > 60000:
             raise _evidence_error()
-        coverage = resolve_coverage(current_question or question, chunks, self._context)
+        coverage = resolve_coverage(
+            current_question or question,
+            chunks,
+            self._context,
+            classification=classification,
+        )
+        if classification is not None and coverage is None:
+            raise verification_error("policy_not_verified")
         sql_options = {"coverage": coverage} if coverage is not None else {}
         sql_result = self._sql_pipeline.run(
             question,

@@ -116,7 +116,7 @@ test("two approved synthetic SQL JOIN questions, one per live provider", async (
       await info.attach(`${model}-visible-answer`, { body: await answer.innerText(), contentType: "text/plain" });
       await answer.screenshot({ path: info.outputPath(`${model}-answer.png`) });
       if (body.response?.route === "SQL") {
-        await answer.getByRole("button", { name: "Bảng dữ liệu · 3", exact: true }).click();
+        await answer.getByRole("button", { name: "Xem bảng dữ liệu · 3 dòng", exact: true }).click();
         await answer.getByRole("region", { name: "Kết quả truy vấn" }).scrollIntoViewIfNeeded();
       }
       await page.screenshot({ path: info.outputPath(`${model}.png`), fullPage: true });

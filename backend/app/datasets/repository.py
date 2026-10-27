@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Table,
     delete,
+    func,
     insert,
     select,
     text,
@@ -327,6 +328,42 @@ class DatasetRepository:
         if len(result) == 1:
             return next(iter(result.values()))
         return result
+
+    def column_profiles(
+        self, dataset: DatasetInfo
+    ) -> dict[str, dict[str, tuple[int, int, str | None, str | None]]]:
+        """Full-column bounds prove a policy restriction covers every current row.
+
+        These are backend evidence, never model estimates or a sample. Resolve the
+        owner-scoped registry again; one bounded aggregate query per table.
+        """
+        dataset = self.get(dataset.dataset_id)
+        profiles = {}
+        with self._readonly_engine.connect() as connection:
+            connection.execute(text("SET TRANSACTION READ ONLY"))
+            connection.execute(text("SET LOCAL statement_timeout='3000ms'"))
+            for info in dataset.tables or (() if dataset.table is None else (dataset.table,)):
+                table = self._table(info.physical_table_name, info.columns)
+                columns = [
+                    c
+                    for c in info.columns
+                    if c.data_type in {"TEXT", "DATE", "TIMESTAMP", "TIMESTAMPTZ"}
+                ]
+                expressions = [func.count()]
+                for spec in columns:
+                    column = table.c[spec.name]
+                    expressions.extend((func.count(column), func.min(column), func.max(column)))
+                row = connection.execute(select(*expressions).select_from(table)).one()
+                profiles[info.physical_table_name] = {
+                    spec.name: (
+                        row[0],
+                        row[i * 3 + 1],
+                        str(row[i * 3 + 2]) if row[i * 3 + 2] is not None else None,
+                        str(row[i * 3 + 3]) if row[i * 3 + 3] is not None else None,
+                    )
+                    for i, spec in enumerate(columns)
+                }
+        return profiles
 
     def _insert_table(
         self,

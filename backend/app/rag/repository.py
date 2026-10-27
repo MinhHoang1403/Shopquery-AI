@@ -31,6 +31,7 @@ class DocumentScope:
     dataset_id: int
     owner_user_id: UUID | None
     text_hashes: tuple[tuple[int, str], ...] = ()
+    document_parts: tuple[tuple[int, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -257,11 +258,20 @@ class DocumentRepository:
                 select(
                     DocumentChunk.dataset_document_id,
                     DocumentChunk.chunk_id,
+                    DocumentChunk.section_title,
+                    DocumentChunk.content,
                 ).where(DocumentChunk.dataset_document_id.in_(document_ids), scope)
             ).all()
             scopes = {}
             for document in documents:
-                ids = tuple(sorted(i for d, i in registered if d == document.document_id))
+                parts = tuple(
+                    sorted(
+                        (i, title, content)
+                        for d, i, title, content in registered
+                        if d == document.document_id
+                    )
+                )
+                ids = tuple(i for i, _, _ in parts)
                 if len(ids) == document.chunk_count:
                     scopes[document.document_id] = DocumentScope(
                         document.document_id,
@@ -270,10 +280,13 @@ class DocumentRepository:
                         dataset_id,
                         self._owner_user_id,
                         tuple(
-                            (c.chunk_id, hashlib.sha256(c.content.encode()).hexdigest())
-                            for c, _ in results
-                            if c.dataset_document_id == document.document_id
+                            (i, hashlib.sha256(content.encode()).hexdigest())
+                            for i, _, content in parts
                         ),
+                        parts
+                        if len(parts) <= 20
+                        and sum(len(content) for _, _, content in parts) <= 60000
+                        else (),
                     )
         return [
             RetrievedChunk(

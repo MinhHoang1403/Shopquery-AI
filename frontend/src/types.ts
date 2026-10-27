@@ -3,7 +3,13 @@ export type ModelId = "inetcloud-knowledge" | "gemini";
 
 // NUMERIC and browser-unsafe integers are exact strings; never coerce cells to Number().
 export type ResultRow = Record<string, unknown>;
-export interface ResultColumn { key: string; label: string; numeric: boolean }
+export interface ResultColumn {
+  key: string; label: string; numeric: boolean;
+  data_type?: "TEXT" | "BIGINT" | "NUMERIC" | "BOOLEAN" | "DATE" | "TIMESTAMP" | "TIMESTAMPTZ" | null;
+  provenance?: "column" | "aggregate" | "expression" | "literal" | "unknown";
+  aggregate?: "sum" | "avg" | "min" | "max" | "row_count" | "value_count" | null;
+  source_label?: string | null;
+}
 
 export interface RelationshipInput {
   source_table_id: string; source_column: string; target_table_id: string; target_column: string;
@@ -52,6 +58,7 @@ export interface ChatResponse {
   rows: ResultRow[];
   result_columns?: ResultColumn[];
   answer_row_indices?: number[] | null;
+  verification_status?: "verified_classification" | "unverified" | "explanation" | "refused" | null;
   sources: SourceReference[];
   error: string | null;
   requested_model?: ModelId | null;
