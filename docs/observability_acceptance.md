@@ -32,6 +32,33 @@ Mọi metadata qua allowlist và export masking; không raw content/identity.
 | Errors/refusals | fixed category/phase/origin_stage/verification reason, root failure/unsupported | failed consumption nếu SDK cung cấp; khác UNKNOWN | PASS với giới hạn provider |
 | UI render/reload | API không thể đo browser render bằng backend span | NOT_APPLICABLE; kiểm UI riêng | NOT_APPLICABLE |
 
+### Kiểm trực tiếp các cột telemetry
+
+Mọi stage backend có duration từ SDK start/end và safe error metadata khi exception;
+error path được kiểm bằng tests, không tạo lỗi provider trả phí. Success span không cần
+error_category giả. Tất cả input/output content của226observations live đều null.
+
+| Nhóm | Trace/duration live | Model/token live | Error metadata | Privacy | Trạng thái |
+| --- | --- | --- | --- | --- | --- |
+| Request/response | Có/6root | Subtotal metadata, không usage_details | Category/phase khi lỗi; tests | PASS | PASS |
+| Authentication | Có/6success | NOT_APPLICABLE |401/403 testPASS | PASS | PASS; failure liveNOT_RUN |
+| Context/follow-up | Có/context_used | NOT_APPLICABLE | Tests | PASS | PASS |
+| Router | Có | Đúng actual provider/generation | Tests | PASS | PASS |
+| Planner/contract/binder | Có | Generation khi model; deterministic không token | Tests và error contract regression | PASS | PASS |
+| JOIN/compiler/AST/guards/executor | Có | NOT_APPLICABLE | Tests | PASS | PASS |
+| Query embedding | Có/3calls | Model đúng, token UNKNOWN upstream | Tests | PASS | PARTIAL: token không được cung cấp |
+| Document embedding | Không dispatch | Offline SDK test | Tests | Offline PASS | NOT_RUN live, quota0 |
+| Retrieval/RAG answer | Có/counts/citation_count | Embedding + generation phân biệt | Tests | PASS | PASS |
+| Hybrid/coverage/policy | Có/đủ phases | Router generation; backend deterministic | Tests | PASS | PASS |
+| Persistence | Có/6saved responses + reload | NOT_APPLICABLE | Tests | PASS | PASS |
+| Provider attribution | Có/requested/used/actual model |10generation đúng usage | Tests | PASS | PASS |
+| Fallback | OFF; không span/call giả | NOT_APPLICABLE live | Category được test | Offline PASS | NOT_RUN live |
+| Refusal/failure | Không xảy ra trong6câu | Không consumption giả | Negative CI PASS, runtime timeout trước đó | Tests PASS | PARTIAL: không gây lỗi live mới |
+| Browser render duration | Không phải backend stage | NOT_APPLICABLE | NOT_APPLICABLE | Không export browser data | NOT_APPLICABLE |
+
+approved_edges là số quan hệ được phê duyệt trong workspace, không phải số JOIN của
+mỗi query. Các stage AST lặp phản ánh revalidation thực; không cộng chúng vào LLM calls.
+
 Không mở rộng authentication trace sang Google callbacks/GET hoặc tạo root mới cho
 mỗi dependency. Stage không có diagnostic request không export orphan span. Không
 thêm conversation/user IDs thô; chỉ correlation ngẫu nhiên nối diagnostics với trace.
@@ -204,7 +231,9 @@ khớp runtime; năm LFvolumes riêng giữ nguyên. Rollback tức thời API52
 private .env.release.before tại backups/shopquery-ai/langfuse-acceptance-20261027;
 069e7f67 và các rollback cũ đang được lịch sử runbook tham chiếu cũng được giữ.
 
-Inventory toàn máy:50unique images trước cleanup; chỉ xóa candidateffa4ef39 chưa từng
+Inventory sau cleanup:9ACTIVE,14REQUIRED_FOR_DEPLOYMENT (stopped containers còn
+references),7ROLLBACK/historical runbook,19UNKNOWN thuộc projects khác. UNKNOWN
+không có nghĩa rác. Inventory toàn máy:50unique images trước cleanup; chỉ xóa candidateffa4ef39 chưa từng
 triển khai, không container/effective config/rollback/model references, exact tag, không
 force. Sau49images. Docker report image size55.9GB cả trước/sau do làm tròn/shared/cache;
 **dung lượng byte thực thu hồi UNKNOWN**, không báo đã giải phóng525MB theo virtual size.
