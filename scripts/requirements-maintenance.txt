@@ -1,0 +1,4 @@
+# Offline synthetic document tools only; never installed into the API image.
+python-docx==1.2.0
+pypdf==6.21.2
+reportlab==4.4.9
