@@ -32,9 +32,11 @@ Thay đổi nhỏ theo GitHub `main` → local `main` → targeted tests → com
 service thay đổi → pin digest trong private `.env.release` → deploy8080 → verify.
 Tích hợp công nghệ mới/nhiều file/rủi ro runtime dùng một branch ngắn hạn, CI trước
 merge main, theo [AGENTS.md](AGENTS.md). Không build image khi chỉ sửa docs/config-only,
-không tạo candidate/sandbox app stack. Langfuse đủ sáu service vận hành được phép;
-[preflight27/10](docs/deployment.md#langfuse-preflight-dừng-do-thiếu-tài-nguyên--27102026)
-hiện chặn triển khai cùng máy vì thiếu RAM; chưa có monitoring được nghiệm thu.
+không tạo candidate/sandbox app stack. Langfuse đã chạy đủ sáu service tại
+[Dashboard localhost:3000](http://127.0.0.1:3000), có trace từ API8080 và SDK5.0.4
+metadata-only. [Runbook và giới hạn kiểm chứng](ops/langfuse/README.md): token đã
+kiểm bằng synthetic usage; chưa gọi provider thật trong đợt tích hợp, chi phí UNKNOWN.
+Runtime hiện bật override observability; kiểm bằng `./scripts/release.ps1 -Observability`.
 
 Cần Docker Desktop/Compose hỗ trợ `!override`, PowerShell, Git, Python 3.11/uv;
 Node 24 nếu chạy frontend tests native. Đọc [AGENTS.md](AGENTS.md) trước khi sửa source.

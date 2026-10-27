@@ -5,7 +5,9 @@ Một source chính `C:\Work\ShopQuery AI` trên `main`, một Compose project
 `shopquery-ai_postgres_auth_20261019`; không recreate hoặc xóa volume này.
 Archived/test volumes được giữ, không dùng làm main. Exact release order:
 `compose.yaml`, `.env.compose-ui.yaml`, `.env.join-v1.yaml`, `compose.release.yaml`;
-env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
+env files `.env` trước, `.env.release` sau. Hiện thêm override opt-in
+`ops/langfuse/shopquery.compose.yaml` cuối danh sách, dùng `-Observability` khi
+kiểm/deploy runtime này. Local overrides bị Git ignore.
 
 | File | Vai trò hiện hành |
 | --- | --- |
@@ -20,14 +22,14 @@ env files `.env` trước, `.env.release` sau. Local overrides bị Git ignore.
 Không xóa/đổi tên hai local YAML overrides khi scripts và Compose labels còn
 tham chiếu chúng. Không in resolved environment hoặc đưa file private vào Git.
 
-Current API source `a67242d1e6a1e267c440eeb6547c7ddbd961fb9a`.
-API digest `069e7f67fb409ac3a587c6327104f509bf3182ca2d410e281f2f3cf90818c599`.
+Current API source `8a2c6aa905944c5d7235193d09f1432d97d8ba9c`.
+API digest `52701da8a2d0fb40f5825647ef955936148271cad47c0838dcbaeaca41983285`.
 Web source `02d5cbb445901f7eb63f82bee87e2e8785d35663`.
 Web digest `ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58`.
 Docs-only commits sau đó không yêu cầu rebuild. Kiểm digest, OCI revision và bytes,
 không chỉ tin tên tag. Các nhãn candidate/development cũ không xác định runtime.
 
-27/10/2026 10:00:55–10:01:11 API-only cutover cho Knowledge predicate wire constraints
+Đợt trước, 27/10/2026 10:00:55–10:01:11 API-only cutover cho Knowledge predicate wire constraints
 và approved identity grouping completion. CI40441018076 exact main/testa67242d PASS
 1365backend/857isolated PostgreSQL; Web không thay nên frontend job SKIPPED, không build.
 API3ce1af0d/Webc6f1f591/DB511c4f5a, strict87modules/no drift/health8080/Nginx PASS.
@@ -44,28 +46,57 @@ Immediate rollback API67a891b0/sourcef6f44ae + `.env.release.before` tại priva
 backups/shopquery-ai/knowledge-final-20261027. Không xóa images/volumes/prune trong lượt
 này. Xem [acceptance hiện hành](v2_final_acceptance.md) trước các đoạn lịch sử bên dưới.
 
-## Langfuse sau restart tiếp theo — Dashboard hoạt động, integration đang kiểm, 27/10/2026
+## Langfuse đang hoạt động — 27/10/2026
 
-Chỉ thị mới cho phép startup lại, bỏ điều kiện dừng theo256MiB.14:11:50 Asia/Saigon
-khởi động6containers có sẵn, không pull/build/recreate lúc startup. Web/Worker thực
-trảHTTP200 nhưng probe127.0.0.1 sai vì hai process listen IP container. Sửa đúng2URL
-probe sang service hostname,9tests PASS và operator duyệt recreate riêng2app services.
-Cả6service đã healthy, Web health kiểmDB/readiness và Worker health200. Dashboard,
-operator signup/login, organization/project ShopQuery AI, SDK auth_check=True đã xác
-minh; real keys ở private config, không commit. Organization AI features OFF.
+**LANGFUSE_READY_WITH_LIMITATIONS.** Startup14:11:50 Asia/Saigon trên sáu container
+có sẵn, không pull/build Langfuse. Cả sáu healthy; Web health kiểm DB và ready200,
+Worker health200. Operator tự signup/login; project và keys thật đã tạo, lưu private.
+Organization AI features OFF, không cấu hình model provider trong Langfuse.
 
-Không OOM/crash/restart,8080vẫnHTTP200; ShopQuery API/Web/main DB IDs/images/start
-times sau Windows reboot giữ nguyên. Không thay default/provider gates hoặc dữ liệu.
-Instrumentation SDK5.0.4 đang trên branch, chưa deployAPI hoặc gửi production trace.
-Giữ trạng thái `LANGFUSE_DASHBOARD_READY — INSTRUMENTATION_PENDING` đến khi ingestion
-và cutover hoàn tất. Runbook [ops/langfuse](../ops/langfuse/README.md).
+Application source8a2c6aa, config2516162, đã push/main. CI instrumentation123 tests
+và Compose10 tests PASS; CI application của8a2c6aa PASS3jobs. Chỉ build API image
+52701da8 ở trên. Operator duyệt API-only cutover và recreate LF Web; hoàn tất sửa
+cấu hình14:59:26. Nginx graceful reload, strict88modules PASS/no source/env drift.
+APIa98a6cc9 healthy; main Webc6f1f591/DB511c4f5a giữ nguyên ID/image/start time,
+protected volume không đổi. Không migrate hoặc thay dữ liệu/embedding/model/gates.
+Gemini default/fallbackOFF/gateON/GuestOFF/vector-only giữ nguyên. Không kiểm lại
+Google sign-in mới trong lượt này. Reload8080 giữ session, workspace và lịch sử cũ;
+UI báo API sẵn sàng, không gửi câu hỏi hoặc provider call mới.
 
-Opt-in runtime override `ops/langfuse/shopquery.compose.yaml`, dùng
-`scripts/release.ps1 -Observability` và thêm `-Deploy -Service api` chỉ ở cửa sổ được
-duyệt. SDK flag mặc địnhOFF; queue512, async5s/64spans/export timeout1s, metadata-only.
-Mạng `shopquery-observability_ingestion` chỉ LangfuseWeb/API, không main DB hoặc
-Langfuse datastores. Web network attachment và API instrumentation còn chờ cutover;
-không coi file Compose đã viết là network đã có hiệu lực.
+Hai lỗi network đã xác nhận và sửa: loopback health probes Connection refused khi
+process chỉ listen IP container → dùng service hostname; sau khi thêm ingestion
+interface, Web chỉ bind IP mạng cũ → đặt HOSTNAME=0.0.0.0 bên trong container. Host
+port vẫn chỉ127.0.0.1:3000. API dùng mạng backend hiện hữu và ingestion, không mạng
+default dư. Ingestion bridge chỉ LF Web/API; main DB/Web không nối Langfuse. Đã xóa
+đúng bridge shopquery-ai_default rỗng do lần cấu hình đầu tạo, không prune hoặc xóa
+image/container/volume/cache dữ liệu. Sáu images pin và năm LF volumes giữ nguyên.
+
+SDK5.0.4 manual metadata-only từ diagnostics; một root/correlation, mỗi provider call
+một observation, không raw I/O/SQL/rows/documents/identities. Queue512, batch64/5s,
+export timeout1s, không flush từng request. Missing usage/cost UNKNOWN; cached và
+reasoning không cộng lại vào totals. SDK lỗi/queue đầy không thay output nghiệp vụ.
+Trong lỗi kết nối thực trước sửa binding, HTTP401 và API health200 vẫn trả bình thường,
+trace không lưu được; không coi đó là ingestion PASS. Không stop Langfuse để lặp lại.
+
+Bằng chứng ingestion sau sửa:
+- Synthetic host trace b618a9aeeb6c41cb9f949bd02a8cbd2f: một root + một generation;
+  input7/output3/total10 được lưu, synthetic=true, không model/provider attribution,
+  input/output content null, cost null. Đây là mô phỏng usage, không token tính phí.
+- Request thật qua8080 lúc15:02:17: trace239f68d5a87948a99e879f83f60960b7, HTTP401
+  vì không đăng nhập; Langfuse lưu đúng một root, correlation khớp/final_status=failure,
+  input/output null. Dashboard thấy trace. Không có generation/embedding dispatch.
+- Không OOMKilled hoặc container tự restart trong cửa sổ kiểm. Không RAM audit/tuning,
+  benchmark hoặc paid Gemini/Knowledge calls. Không nghiệm thu lại SQL/RAG/Hybrid.
+
+Runbook [ops/langfuse](../ops/langfuse/README.md). Giới hạn: chưa live usage của model
+thật, chưa bảng giá model được cấu hình, chưa retention/backup-restore drill. Không
+coi chi phí UNKNOWN là0 hoặc synthetic ingestion là full model acceptance. Rollback
+API069e7f67/sourcea67242d và private .env.release.before tại
+`C:\Users\admin\.codex\backups\shopquery-ai\langfuse-20261027-1450` được giữ.
+Chuyển rollback vẫn cần cửa sổ operator duyệt, chỉ API, không main Web/DB.
+
+Các mục Langfuse bên dưới là lịch sử đã được chỉ thị mới thay thế, không phải blocker
+hoặc cấu hình hiện hành.
 
 ## Langfuse localhost — lịch sử lần đầu dừng an toàn, 27/10/2026
 
