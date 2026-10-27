@@ -1,6 +1,31 @@
 # Langfuse trên Docker Desktop
 
-**BLOCKED_RUNTIME_RESOURCES — một lần khởi động đã dùng, không thử lại.**
+**LANGFUSE_DASHBOARD_READY — INSTRUMENTATION_PENDING.** Chỉ thị mới sau restart
+đã cho phép startup lại, thay hạn chế không thử lại và ngưỡng256MiB trước đó.
+
+## Startup sau lần restart tiếp theo, 27/10/2026
+
+Dùng6images/6containers/5volumes và secrets đã có; không pull/build hoặc tạo stack
+khác. Startup14:11:50 Asia/Saigon bằng `up -d --no-build --no-recreate --pull never`.
+Cả6service vận hành, Web/Worker endpoints thực HTTP200 và Dashboard/signup/login
+đã dùng được. Operator tự đăng ký; organization/project ShopQuery AI đã tạo qua
+luồng chính thức, keys thật lưu private `.env`, SDK auth_check=True. Tắt tính năng
+AI tự động của organization, không cấu hình provider cho Langfuse.
+
+Phát hiện probe127.0.0.1 sai với2images đã pin: `/proc/net/tcp` chứng minh Web/Worker
+listen IP container, probe loopback Connection refused trong khi service-hostname
+trảHTTP200. Sửa đúng2URL healthcheck và9config tests PASS. Operator duyệt recreate
+riêng Web/Worker; sau áp dụng cả6Docker healthchecks healthy. Datastores và ShopQuery
+không recreate. Không OOM/restart/failure8080; không dừng theo availableRAM.
+
+Instrumentation đang được kiểm trên branch, chưa triển khai8080. SDK5.0.4, manual
+metadata-only observations từ diagnostics, không callbacks/raw content. Production
+mặc địnhOFF. Mạng ingestion opt-in chỉ Web/API; `shopquery.compose.yaml` là override
+của deployment8080 hiện hữu, dùng `scripts/release.ps1 -Observability` để kiểm/deploy
+plan đó. Không phải stack ShopQuery thứ hai; không nối main DB vào mạng Langfuse.
+Chưa có synthetic ingestion/production trace nên không tuyên bố LANGFUSE_READY.
+
+## Lịch sử trước chỉ thị khởi động mới
 
 ## Kết quả lần thử localhost, 27/10/2026
 
@@ -26,7 +51,7 @@
   Không nối network ShopQuery hoặc bật flag instrumentation. Không merge nhánh chỉ
   có cấu hình này vào main như một integration hoàn tất.
 
-Chỉ thị mới ngày27/10 cho phép **một lần khởi động có kiểm soát** trên Docker Desktop
+Chỉ thị trước ngày27/10 cho phép **một lần khởi động có kiểm soát** trên Docker Desktop
 hiện tại, thay điều kiện dừng theo sizing khuyến nghị trước đó. Dùng lại cấu hình này,
 không đổi giới hạn7.415GiB, Windows/WSL hoặc dừng ShopQuery/ứng dụng khác. Kết quả
 runtime phải ghi riêng sau lần thử; Compose config PASS chưa chứng minh ingestion.

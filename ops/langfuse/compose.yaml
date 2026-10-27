@@ -50,6 +50,7 @@ services:
     image: docker.langfuse.com/langfuse/langfuse:4.70.1@sha256:71b04842ecff8fe0dd15c7bbb1acd6e0555735e393a8108c43feb4b8d0adf9e6
     restart: unless-stopped
     logging: *logging
+    networks: [default, ingestion]
     depends_on: *dependencies
     ports: ["127.0.0.1:3000:3000"]
     environment:
@@ -58,7 +59,7 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LF_MEDIA_URL:-http://127.0.0.1:9090}
       LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
     healthcheck:
-      test: [CMD, wget, --no-verbose, --tries=1, --spider, "http://127.0.0.1:3000/api/public/health?failIfDatabaseUnavailable=true"]
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, "http://langfuse-web:3000/api/public/health?failIfDatabaseUnavailable=true"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -71,7 +72,7 @@ services:
     depends_on: *dependencies
     environment: *environment
     healthcheck:
-      test: [CMD, wget, --no-verbose, --tries=1, --spider, "http://127.0.0.1:3030/api/health"]
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, "http://langfuse-worker:3030/api/health"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -155,3 +156,6 @@ volumes:
   clickhouse-logs:
   redis-data:
   minio-data:
+
+networks:
+  ingestion:

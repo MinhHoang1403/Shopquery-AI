@@ -2,7 +2,8 @@ param(
     [switch]$Deploy,
     [ValidateSet('all', 'api', 'web')][string]$Service = 'all',
     [string]$ConfigPath = '.env.release',
-    [switch]$Gpu
+    [switch]$Gpu,
+    [switch]$Observability
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
@@ -13,6 +14,7 @@ try {
     }
     $taskFiles = @('compose.yaml', '.env.compose-ui.yaml', '.env.join-v1.yaml', 'compose.release.yaml')
     if ($Gpu) { $taskFiles += 'compose.release.gpu.yaml' }
+    if ($Observability) { $taskFiles += 'ops/langfuse/shopquery.compose.yaml' }
     $taskCompose = @('compose', '-p', 'shopquery-ai', '--env-file', '.env', '--env-file', $ConfigPath)
     foreach ($taskFile in $taskFiles) { $taskCompose += @('-f', $taskFile) }
     $taskText = & docker @taskCompose config --format json

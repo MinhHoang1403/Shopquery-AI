@@ -134,5 +134,6 @@ Evidence:
         ]
         return RagResult(draft.answer, sources, chunks)
 
+    @diagnostic_stage("rag_pipeline")
     def run(self, question: str) -> RagResult:
         return self.answer_from_chunks(question, self.retrieve(question))

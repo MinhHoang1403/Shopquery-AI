@@ -1,0 +1,17 @@
+# Optional override of the existing shopquery-ai release, never a second application stack.
+services:
+  api:
+    environment:
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-http://langfuse-web:3000}
+      LANGFUSE_MEDIA_UPLOAD_ENABLED: "false"
+      # SDK BatchSpanProcessor drops excess spans instead of blocking the chatbot.
+      OTEL_BSP_MAX_QUEUE_SIZE: "512"
+    networks: [default, observability]
+
+networks:
+  observability:
+    external: true
+    name: shopquery-observability_ingestion

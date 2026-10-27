@@ -24,6 +24,7 @@ from app.core.errors import (
     provider_category,
     validation_context,
 )
+from app.core.observability import provider_observation
 from app.text_to_sql.generation_contract import GENERATION_INSTRUCTIONS, GenerationDecision
 from app.text_to_sql.query_plan import PlanDecision
 
@@ -182,41 +183,52 @@ class GeminiGateway:
             ),
         )
 
-    def _request(self, operation: str, action: Callable[[], Any]) -> Any:
+    def _request(
+        self, operation: str, action: Callable[[], Any], *, embedding_kind: str = "query_embedding"
+    ) -> Any:
         if operation in {"generation", "answer generation"}:
             record_provider_call("generation_calls")
-        try:
-            response = action()
-            record_provider_tokens(getattr(response, "usage_metadata", None))
-            return response
-        except errors.APIError as exc:
-            self._raise_api_error(operation, exc)
-        except httpx.TimeoutException as exc:
-            raise ProviderError(
-                "Gemini request timed out",
-                error_context=self._context(operation, phase="request", error_category="timeout"),
-            ) from exc
-        except httpx.RequestError as exc:
-            raise ProviderError(
-                "Gemini connection failed",
-                error_context=self._context(
-                    operation, phase="request", error_category="connection_failure"
-                ),
-            ) from exc
-        except (ValidationError, ValueError, TypeError) as exc:
-            raise ProviderError(
-                "Gemini SDK request preparation failed",
-                error_context=self._context(
-                    operation, phase="request", error_category="sdk_preparation"
-                ),
-            ) from exc
-        except Exception as exc:
-            raise ModelResponseError(
-                "Gemini request failed",
-                error_context=self._context(
-                    operation, phase="request", error_category="internal_failure"
-                ),
-            ) from exc
+        with provider_observation(
+            "gemini",
+            self._settings.gemini_embedding_model
+            if operation == "embedding"
+            else self._settings.gemini_generation_model,
+            embedding_kind if operation == "embedding" else operation,
+        ):
+            try:
+                response = action()
+                record_provider_tokens(getattr(response, "usage_metadata", None))
+                return response
+            except errors.APIError as exc:
+                self._raise_api_error(operation, exc)
+            except httpx.TimeoutException as exc:
+                raise ProviderError(
+                    "Gemini request timed out",
+                    error_context=self._context(
+                        operation, phase="request", error_category="timeout"
+                    ),
+                ) from exc
+            except httpx.RequestError as exc:
+                raise ProviderError(
+                    "Gemini connection failed",
+                    error_context=self._context(
+                        operation, phase="request", error_category="connection_failure"
+                    ),
+                ) from exc
+            except (ValidationError, ValueError, TypeError) as exc:
+                raise ProviderError(
+                    "Gemini SDK request preparation failed",
+                    error_context=self._context(
+                        operation, phase="request", error_category="sdk_preparation"
+                    ),
+                ) from exc
+            except Exception as exc:
+                raise ModelResponseError(
+                    "Gemini request failed",
+                    error_context=self._context(
+                        operation, phase="request", error_category="internal_failure"
+                    ),
+                ) from exc
 
     def generate_text(self, prompt: str) -> str:
         response = self._request(
@@ -261,6 +273,7 @@ class GeminiGateway:
                     output_dimensionality=self._settings.embedding_dimensions
                 ),
             ),
+            embedding_kind="document_embedding" if document else "query_embedding",
         )
         try:
             if len(response.embeddings) != 1:

@@ -46,6 +46,7 @@ class TextToSqlPipeline:
         self._gateway = gateway
         self._execution_guard = execution_guard
 
+    @diagnostic_stage("sql_pipeline")
     def run(
         self,
         question: str,

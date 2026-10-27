@@ -80,9 +80,9 @@ class ComposeSafetyTests(unittest.TestCase):
         for name, url in (
             (
                 "langfuse-web",
-                "http://127.0.0.1:3000/api/public/health?failIfDatabaseUnavailable=true",
+                "http://langfuse-web:3000/api/public/health?failIfDatabaseUnavailable=true",
             ),
-            ("langfuse-worker", "http://127.0.0.1:3030/api/health"),
+            ("langfuse-worker", "http://langfuse-worker:3030/api/health"),
         ):
             self.assertIn(url, self.config["services"][name]["healthcheck"]["test"])
 
@@ -107,8 +107,12 @@ class ComposeSafetyTests(unittest.TestCase):
         for service in self.config["services"].values():
             for mount in service.get("volumes", []):
                 self.assertEqual(mount["type"], "volume")
-        self.assertEqual(set(self.config["networks"]), {"default"})
+        self.assertEqual(set(self.config["networks"]), {"default", "ingestion"})
         self.assertFalse(self.config["networks"]["default"].get("external", False))
+        for name, service in self.config["services"].items():
+            self.assertEqual(
+                "ingestion" in service["networks"], name == "langfuse-web"
+            )
 
     def test_shared_environment_reaches_only_local_dependencies(self):
         for name in ("langfuse-web", "langfuse-worker"):
@@ -142,6 +146,31 @@ class ComposeSafetyTests(unittest.TestCase):
         template = (ROOT / ".env.example").read_text(encoding="utf-8")
         for key in REQUIRED:
             self.assertIsNotNone(re.search(rf"^{key}=$", template, re.MULTILINE))
+
+    def test_api_override_is_opt_in_and_never_connects_main_database(self):
+        base = {
+            "services": {
+                name: {"image": "example.invalid/never-pulled:configuration-only"}
+                for name in ("api", "web", "db")
+            }
+        }
+        env = {k: v for k, v in os.environ.items() if not k.startswith("LANGFUSE_")}
+        result = subprocess.run(
+            [
+                "docker", "compose", "--env-file", str(ROOT / ".env.example"),
+                "-f", "-", "-f", str(ROOT / "shopquery.compose.yaml"),
+                "config", "--format", "json",
+            ],
+            input=json.dumps(base), env=env, text=True, capture_output=True, timeout=30,
+            check=True,
+        )
+        config = json.loads(result.stdout)
+        self.assertEqual(set(config["services"]), {"api", "web", "db"})
+        for name, service in config["services"].items():
+            self.assertEqual("observability" in service["networks"], name == "api")
+        self.assertTrue(config["networks"]["observability"]["external"])
+        self.assertEqual(config["services"]["api"]["environment"]["LANGFUSE_ENABLED"], "false")
+        self.assertEqual(config["services"]["api"]["environment"]["OTEL_BSP_MAX_QUEUE_SIZE"], "512")
 
 
 if __name__ == "__main__":

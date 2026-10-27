@@ -66,6 +66,7 @@ class HybridPipeline:
         self._gateway = gateway
         self._context = context
 
+    @diagnostic_stage("hybrid_pipeline")
     def run(self, question: str, *, current_question: str | None = None) -> HybridResult:
         chunks = self._rag_pipeline.retrieve(question)
         with diagnostic_stage("policy_requirements"):

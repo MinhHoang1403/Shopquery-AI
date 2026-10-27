@@ -251,9 +251,10 @@ def _persist_chat_turn(
                 settings,
                 build_workspace_context(settings, dataset, dataset_repository),
             )
-        question = contextual_question(
-            request.message, conversation, user_id, conversation.dataset_id
-        )
+        with diagnostic_stage("conversation_context"):
+            question = contextual_question(
+                request.message, conversation, user_id, conversation.dataset_id
+            )
         response = _chat_response(
             service.chat(
                 _routed_question(request, question),
@@ -262,12 +263,13 @@ def _persist_chat_turn(
         )
     except ShopQueryError as exc:
         response = _chat_error(exc, selected_model)
-    assistant_message = repository.add_response_message(
-        conversation_id,
-        content=response.answer,
-        response_metadata=response.model_dump(mode="json"),
-        is_error=response.error is not None,
-    )
+    with diagnostic_stage("response_persistence"):
+        assistant_message = repository.add_response_message(
+            conversation_id,
+            content=response.answer,
+            response_metadata=response.model_dump(mode="json"),
+            is_error=response.error is not None,
+        )
     return ConversationSendResponse(
         conversation=_conversation_summary(repository.get(conversation_id)),
         user_message=_message_response(user_message),

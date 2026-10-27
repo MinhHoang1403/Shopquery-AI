@@ -44,7 +44,30 @@ Immediate rollback API67a891b0/sourcef6f44ae + `.env.release.before` tại priva
 backups/shopquery-ai/knowledge-final-20261027. Không xóa images/volumes/prune trong lượt
 này. Xem [acceptance hiện hành](v2_final_acceptance.md) trước các đoạn lịch sử bên dưới.
 
-## Langfuse localhost — đã thử một lần và dừng an toàn, 27/10/2026
+## Langfuse sau restart tiếp theo — Dashboard hoạt động, integration đang kiểm, 27/10/2026
+
+Chỉ thị mới cho phép startup lại, bỏ điều kiện dừng theo256MiB.14:11:50 Asia/Saigon
+khởi động6containers có sẵn, không pull/build/recreate lúc startup. Web/Worker thực
+trảHTTP200 nhưng probe127.0.0.1 sai vì hai process listen IP container. Sửa đúng2URL
+probe sang service hostname,9tests PASS và operator duyệt recreate riêng2app services.
+Cả6service đã healthy, Web health kiểmDB/readiness và Worker health200. Dashboard,
+operator signup/login, organization/project ShopQuery AI, SDK auth_check=True đã xác
+minh; real keys ở private config, không commit. Organization AI features OFF.
+
+Không OOM/crash/restart,8080vẫnHTTP200; ShopQuery API/Web/main DB IDs/images/start
+times sau Windows reboot giữ nguyên. Không thay default/provider gates hoặc dữ liệu.
+Instrumentation SDK5.0.4 đang trên branch, chưa deployAPI hoặc gửi production trace.
+Giữ trạng thái `LANGFUSE_DASHBOARD_READY — INSTRUMENTATION_PENDING` đến khi ingestion
+và cutover hoàn tất. Runbook [ops/langfuse](../ops/langfuse/README.md).
+
+Opt-in runtime override `ops/langfuse/shopquery.compose.yaml`, dùng
+`scripts/release.ps1 -Observability` và thêm `-Deploy -Service api` chỉ ở cửa sổ được
+duyệt. SDK flag mặc địnhOFF; queue512, async5s/64spans/export timeout1s, metadata-only.
+Mạng `shopquery-observability_ingestion` chỉ LangfuseWeb/API, không main DB hoặc
+Langfuse datastores. Web network attachment và API instrumentation còn chờ cutover;
+không coi file Compose đã viết là network đã có hiệu lực.
+
+## Langfuse localhost — lịch sử lần đầu dừng an toàn, 27/10/2026
 
 **BLOCKED_RUNTIME_RESOURCES.** Chỉ thị mới cho phép đúng một lần trên Docker7.415GiB.
 Pull6pinned images thành công; `up -d`12:09:41 Asia/Saigon tạo đủ6containers/5volumes

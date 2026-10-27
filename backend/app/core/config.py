@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, HttpUrl, field_validator, model_validator
+from pydantic import Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     app_name: str = "ShopQuery AI"
     app_environment: Literal["development", "test", "production"] = "development"
     app_origin: str = "http://127.0.0.1:8080"
+    langfuse_enabled: bool = False
+    langfuse_public_key: SecretStr | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_base_url: HttpUrl | None = None
     google_client_id: str | None = None
     google_client_secret: str | None = None
     auth_invited_emails: list[str] = Field(default_factory=list)

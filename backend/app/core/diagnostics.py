@@ -11,6 +11,7 @@ from time import perf_counter
 from typing import Any, ParamSpec, TypeVar
 from uuid import uuid4
 
+from app.core import observability
 from app.core.errors import (
     ConfigurationError,
     ErrorContext,
@@ -55,6 +56,11 @@ STAGES = frozenset(
         "frontend_rendering",
         "document_retrieval",
         "request",
+        "sql_pipeline",
+        "rag_pipeline",
+        "hybrid_pipeline",
+        "conversation_context",
+        "response_persistence",
     }
 )
 REASONS = STAGES | frozenset(
@@ -162,6 +168,8 @@ def record_provider_call(kind: str) -> None:
 
 
 def record_provider_tokens(usage: object) -> None:
+    with suppress(Exception):
+        observability.record_usage(usage)
     trace = _trace.get()
     if trace is None or usage is None:
         return
@@ -218,6 +226,17 @@ def record_facts(**facts: Any) -> None:
     if trace is None:
         return
     for key, value in facts.items():
+        if key == "fallback_used" and type(value) is bool:
+            trace.facts[key] = value
+            continue
+        if key == "verification_status" and value in {
+            "verified_classification",
+            "unverified",
+            "explanation",
+            "refused",
+        }:
+            trace.facts[key] = value
+            continue
         if key in {"catalog_table_count", "catalog_column_count", "approved_relationship_count"}:
             if type(value) is int:
                 trace.facts[key] = min(100000, max(0, value))
@@ -302,6 +321,15 @@ def _event(stage: str, status: str, reason: str, duration: float) -> None:
     if len(trace.events) < 64:
         trace.events.append(event)
         publish_events([event])
+    error = trace.facts.get("error_context", {})
+    observability.update(
+        **{
+            **trace.facts,
+            **error,
+            "status": status,
+            "correlation_id": trace.correlation_id,
+        }
+    )
 
 
 @contextmanager
@@ -320,45 +348,47 @@ def diagnostic_request(correlation_id: str | None = None) -> Iterator[Diagnostic
     trace = DiagnosticTrace(identifier)
     token = _trace.set(trace)
     start = perf_counter()
-    try:
-        yield trace
-    except BaseException:
-        _event("request", "failure", "failed", perf_counter() - start)
-        raise
-    else:
-        unsupported = trace.facts["route"] == "UNSUPPORTED"
-        status = trace.facts["final_status"] or ("unsupported" if unsupported else "success")
-        _event(
-            "request",
-            status,
-            "failed" if status == "failure" else "unsupported" if unsupported else "ok",
-            perf_counter() - start,
-        )
-    finally:
-        _trace.reset(token)
+    with observability.observation("request", trace_id=identifier):
+        try:
+            yield trace
+        except BaseException:
+            _event("request", "failure", "failed", perf_counter() - start)
+            raise
+        else:
+            unsupported = trace.facts["route"] == "UNSUPPORTED"
+            status = trace.facts["final_status"] or ("unsupported" if unsupported else "success")
+            _event(
+                "request",
+                status,
+                "failed" if status == "failure" else "unsupported" if unsupported else "ok",
+                perf_counter() - start,
+            )
+        finally:
+            _trace.reset(token)
 
 
 @contextmanager
 def diagnostic_stage(stage: str) -> Iterator[None]:
     start = perf_counter()
-    try:
-        yield
-    except BaseException as exc:
-        if isinstance(exc, ShopQueryError):
-            attach_error_context(exc, stage)
-        code = getattr(exc, "code", None)
-        failed_stage = code if isinstance(code, str) and code in STAGES else stage
-        if getattr(exc, "structured_output_invalid", False):
-            failed_stage = "structured_output_invalid"
-        reason = (
-            getattr(exc, "grain_reason", None)
-            or getattr(exc, "aggregate_reason", None)
-            or failed_stage
-        )
-        _event(failed_stage, "failure", reason, perf_counter() - start)
-        raise
-    else:
-        _event(stage, "success", "ok", perf_counter() - start)
+    with observability.observation(stage if stage in STAGES else "request"):
+        try:
+            yield
+        except BaseException as exc:
+            if isinstance(exc, ShopQueryError):
+                attach_error_context(exc, stage)
+            code = getattr(exc, "code", None)
+            failed_stage = code if isinstance(code, str) and code in STAGES else stage
+            if getattr(exc, "structured_output_invalid", False):
+                failed_stage = "structured_output_invalid"
+            reason = (
+                getattr(exc, "grain_reason", None)
+                or getattr(exc, "aggregate_reason", None)
+                or failed_stage
+            )
+            _event(failed_stage, "failure", reason, perf_counter() - start)
+            raise
+        else:
+            _event(stage, "success", "ok", perf_counter() - start)
 
 
 def diagnosed(function: Callable[P, T]) -> Callable[P, T]:

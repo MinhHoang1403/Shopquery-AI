@@ -11,8 +11,9 @@ from fastapi.responses import JSONResponse
 from app.api.relationship_routes import router as relationship_router
 from app.api.routes import router
 from app.auth.routes import router as auth_router
+from app.core import observability
 from app.core.config import get_settings
-from app.core.diagnostics import diagnostic_request, record_facts
+from app.core.diagnostics import STAGES, diagnostic_request, record_facts
 from app.core.logging import configure_logging
 from app.guest.middleware import GuestBodyLimit
 from app.guest.relationship_routes import router as guest_relationship_router
@@ -22,6 +23,8 @@ from app.guest.store import guest_store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    observability.configure(get_settings(), STAGES)
+
     async def cleanup_guests():
         while True:
             await asyncio.sleep(get_settings().guest_cleanup_seconds)
@@ -35,6 +38,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        await asyncio.to_thread(observability.shutdown)
 
 
 settings = get_settings()

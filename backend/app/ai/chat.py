@@ -81,4 +81,5 @@ class ModelChatService:
         result.fallback_used = fallback
         result.fallback_reason = fallback_reason
         result.fallback_error_context = fallback_context
+        record_facts(fallback_used=fallback, verification_status=result.verification_status)
         return result
