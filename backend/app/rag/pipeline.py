@@ -6,7 +6,7 @@ from typing import Protocol
 from pydantic import BaseModel, Field
 
 from app.ai.gemini import EmbeddingGateway, GenerationGateway
-from app.core.diagnostics import diagnostic_stage
+from app.core.diagnostics import diagnostic_stage, record_facts
 from app.core.errors import ErrorContext, ModelResponseError, RetrievalError
 from app.rag.repository import RetrievedChunk
 
@@ -79,9 +79,11 @@ class RagPipeline:
             chunks = self._repository.retrieve(
                 vector, top_k=candidate_count, dataset_id=self._dataset_id
             )
+        record_facts(retrieved_chunks=len(chunks))
         if not chunks:
             raise RetrievalError("No policy evidence is available")
         if self._reranker is None:
+            record_facts(selected_chunks=len(chunks[:selected_count]))
             return chunks[:selected_count]
         ranked = self._reranker.rerank(question, chunks, selected_count)
         original = {id(chunk) for chunk in chunks}
@@ -92,6 +94,7 @@ class RagPipeline:
             or any(id(chunk) not in original for chunk in ranked)
         ):
             raise RetrievalError("Reranker changed the retrieved evidence scope")
+        record_facts(selected_chunks=len(ranked))
         return ranked
 
     @diagnostic_stage("answer_grounding")
@@ -132,6 +135,7 @@ Evidence:
             )
             for chunk in used
         ]
+        record_facts(citation_count=len(sources))
         return RagResult(draft.answer, sources, chunks)
 
     @diagnostic_stage("rag_pipeline")

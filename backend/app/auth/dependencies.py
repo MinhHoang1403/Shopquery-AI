@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Request
 
 from app.auth.repository import AuthRepository, Principal
 from app.core.config import get_settings
+from app.core.diagnostics import diagnostic_stage
 from app.database.session import get_setup_engine
 
 
@@ -14,6 +15,7 @@ def auth_repository() -> AuthRepository:
     return AuthRepository(get_setup_engine())
 
 
+@diagnostic_stage("authentication")
 def require_session(request: Request) -> Principal:
     settings = get_settings()
     raw = request.cookies.get(settings.session_cookie_name)

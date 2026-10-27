@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.ai.gemini import GenerationGateway
-from app.core.diagnostics import diagnostic_stage
+from app.core.diagnostics import diagnostic_stage, record_facts
 from app.core.errors import ErrorContext, ModelResponseError
 from app.datasets.context import DatasetSqlContext
 from app.rag.pipeline import RagPipeline, Source
@@ -211,6 +211,7 @@ Document evidence:
                     }
                 )
                 answer = compose_answer(subset, chunks, subset_draft, self._context)
+        record_facts(citation_count=len(sources), verification_status=status)
         return HybridResult(
             answer,
             sql_result.sql,

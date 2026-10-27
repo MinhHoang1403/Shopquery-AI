@@ -255,6 +255,7 @@ def _persist_chat_turn(
             question = contextual_question(
                 request.message, conversation, user_id, conversation.dataset_id
             )
+            record_facts(context_used=question != request.message)
         response = _chat_response(
             service.chat(
                 _routed_question(request, question),

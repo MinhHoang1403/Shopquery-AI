@@ -10,7 +10,7 @@ from pydantic import ConfigDict, ValidationError
 
 from app.ai.gemini import StructuredModel
 from app.core.config import Settings
-from app.core.diagnostics import record_provider_call, record_provider_tokens
+from app.core.diagnostics import diagnostic_stage, record_provider_call, record_provider_tokens
 from app.core.errors import (
     TRANSIENT_PROVIDER_STATUSES,
     ConfigurationError,
@@ -69,6 +69,7 @@ class InetCloudGateway:
             raise self._failure("response", "invalid_response", operation="answer generation")
         return response.content.strip()
 
+    @diagnostic_stage("generation_contract")
     def generate_structured(
         self, prompt: str, response_model: type[StructuredModel]
     ) -> StructuredModel:

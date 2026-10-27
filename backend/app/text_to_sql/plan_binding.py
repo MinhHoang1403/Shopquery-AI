@@ -4,6 +4,7 @@ from itertools import combinations
 
 from pydantic import ValidationError
 
+from app.core.diagnostics import diagnostic_stage
 from app.core.errors import ErrorContext, SqlUnsupportedError, SqlValidationError
 from app.text_to_sql.compiler import SchemaReferences
 from app.text_to_sql.join_policy import resolve_join_tree
@@ -12,6 +13,7 @@ from app.text_to_sql.query_plan import PlanField, QueryPlan
 AGGREGATES = {"sum", "avg", "min", "max", "row_count", "value_count"}
 
 
+@diagnostic_stage("plan_binding")
 def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryPlan:
     def context(branch: str) -> ErrorContext:
         return ErrorContext(

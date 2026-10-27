@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from typing import Any, get_args
 
 from app.core.config import Settings
-from app.core.errors import ErrorCategory, ErrorPhase
+from app.core.errors import ErrorCategory, ErrorPhase, VerificationReason
 
 logger = logging.getLogger(__name__)
 _client: Any = None
@@ -24,6 +24,9 @@ _strings = {
     "model": _models,
     "route": frozenset({"SQL", "RAG", "HYBRID", "UNSUPPORTED"}),
     "model_id": frozenset({"gemini", "inetcloud-knowledge"}),
+    "requested_model": frozenset({"gemini", "inetcloud-knowledge"}),
+    "used_model": frozenset({"gemini", "inetcloud-knowledge"}),
+    "fallback_error_category": frozenset(get_args(ErrorCategory)),
     "operation": _operations,
     "status": frozenset({"success", "failure", "unsupported"}),
     "final_status": frozenset({"success", "failure", "unsupported"}),
@@ -34,6 +37,7 @@ _strings = {
     ),
     "error_category": frozenset(get_args(ErrorCategory)),
     "phase": frozenset(get_args(ErrorPhase)),
+    "reason_code": frozenset(get_args(VerificationReason)),
 }
 _counts = frozenset(
     {
@@ -45,9 +49,18 @@ _counts = frozenset(
         "document_embedding_calls",
         "cached_input_tokens",
         "reasoning_tokens",
+        "retrieved_chunks",
+        "selected_chunks",
+        "citation_count",
+        "billable_character_count",
+        "request_input_tokens",
+        "request_output_tokens",
+        "request_total_tokens",
     }
 )
-_flags = frozenset({"sql_validated", "execution_reached", "fallback_used", "synthetic"})
+_flags = frozenset(
+    {"sql_validated", "execution_reached", "fallback_used", "synthetic", "context_used"}
+)
 
 
 def safe_metadata(facts: Mapping[str, Any]) -> dict[str, Any]:
@@ -201,7 +214,10 @@ def observation(name: str, *, trace_id: str | None = None, **options: Any) -> It
         yield span
     except BaseException as exc:
         context = getattr(exc, "error_context", None)
-        category = getattr(context, "error_category", None) or "internal_failure"
+        http_status = getattr(context, "http_status", None) or getattr(exc, "status_code", None)
+        category = getattr(context, "error_category", None) or (
+            "authentication_or_permission" if http_status in {401, 403} else "internal_failure"
+        )
         if span is not None:
             with suppress(Exception):
                 span.update(
@@ -213,7 +229,7 @@ def observation(name: str, *, trace_id: str | None = None, **options: Any) -> It
                         {
                             "status": "failure",
                             "error_category": category,
-                            "http_status": getattr(context, "http_status", None),
+                            "http_status": http_status,
                             "phase": getattr(context, "phase", None),
                         }
                     ),

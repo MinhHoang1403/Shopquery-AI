@@ -56,6 +56,9 @@ STAGES = frozenset(
         "frontend_rendering",
         "document_retrieval",
         "request",
+        "authentication",
+        "generation_contract",
+        "sql_validation",
         "sql_pipeline",
         "rag_pipeline",
         "hybrid_pipeline",
@@ -146,6 +149,8 @@ class DiagnosticTrace:
         }
     )
     events: list[dict[str, Any]] = field(default_factory=list)
+    reported_usage_calls: int = 0
+    complete_usage_calls: int = 0
 
 
 _trace: ContextVar[DiagnosticTrace | None] = ContextVar("diagnostic_trace", default=None)
@@ -173,6 +178,7 @@ def record_provider_tokens(usage: object) -> None:
     trace = _trace.get()
     if trace is None or usage is None:
         return
+    supplied = 0
     for key, google_name, chat_name in (
         ("input_tokens", "prompt_token_count", "input_tokens"),
         ("output_tokens", "candidates_token_count", "output_tokens"),
@@ -182,7 +188,10 @@ def record_provider_tokens(usage: object) -> None:
             usage.get(chat_name) if isinstance(usage, dict) else getattr(usage, google_name, None)
         )
         if type(value) is int and 0 <= value <= 10000000:
+            supplied += 1
             trace.facts[key] = min(100000000, trace.facts.get(key, 0) + value)
+    trace.reported_usage_calls += bool(supplied)
+    trace.complete_usage_calls += supplied == 3
 
 
 def attach_error_context(exc: ShopQueryError, stage: str = "request") -> ErrorContext:
@@ -225,6 +234,8 @@ def record_facts(**facts: Any) -> None:
     trace = _trace.get()
     if trace is None:
         return
+    # Telemetry-only allowlist; these facts never enter model prompts or API output.
+    trace.facts.update(observability.safe_metadata(facts))
     for key, value in facts.items():
         if key == "fallback_used" and type(value) is bool:
             trace.facts[key] = value
@@ -322,9 +333,27 @@ def _event(stage: str, status: str, reason: str, duration: float) -> None:
         trace.events.append(event)
         publish_events([event])
     error = trace.facts.get("error_context", {})
+    calls = sum(
+        trace.facts.get(key, 0)
+        for key in ("generation_calls", "query_embedding_calls", "document_embedding_calls")
+    )
+    usage_status = (
+        "measured"
+        if calls and trace.complete_usage_calls == calls
+        else "partial"
+        if trace.reported_usage_calls
+        else "unknown"
+    )
+    totals = {
+        f"request_{key}": trace.facts[key]
+        for key in ("input_tokens", "output_tokens", "total_tokens")
+        if stage == "request" and key in trace.facts
+    }
     observability.update(
         **{
             **trace.facts,
+            **totals,
+            **({"usage_status": usage_status} if stage == "request" else {}),
             **error,
             "status": status,
             "correlation_id": trace.correlation_id,
@@ -369,6 +398,9 @@ def diagnostic_request(correlation_id: str | None = None) -> Iterator[Diagnostic
 
 @contextmanager
 def diagnostic_stage(stage: str) -> Iterator[None]:
+    if _trace.get() is None:
+        yield
+        return
     start = perf_counter()
     with observability.observation(stage if stage in STAGES else "request"):
         try:

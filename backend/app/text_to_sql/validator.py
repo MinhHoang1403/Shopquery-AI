@@ -92,6 +92,7 @@ class SqlValidator:
         self._column_types = column_types or {}
         self._join_v1_enabled = join_v1_enabled
 
+    @diagnostic_stage("sql_validation")
     def validate(
         self, sql: str, *, grouping: Literal["entity", "category"] = "entity"
     ) -> ValidatedSql:

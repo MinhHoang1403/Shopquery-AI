@@ -28,7 +28,7 @@ class ModelChatService:
         question: str,
         current_question: str | None = None,
     ) -> ChatResult:
-        record_facts(model_id=model_id)
+        record_facts(model_id=model_id, used_model=model_id)
         gateway = build_generation_gateway(self._settings, model_id)
         try:
             return self._build_pipeline(gateway).chat(
@@ -44,7 +44,7 @@ class ModelChatService:
     @query_embedding_scope()
     def chat(self, question: str, *, current_question: str | None = None) -> ChatResult:
         requested = self._settings.ai_default_model
-        record_facts(model=requested)
+        record_facts(model=requested, requested_model=requested, fallback_used=False)
         fallback = False
         fallback_reason = None
         fallback_context = None
@@ -65,7 +65,11 @@ class ModelChatService:
                 fallback_reason = (
                     f"primary_provider_{category}" if category else "primary_provider_unavailable"
                 )
-                record_facts(fallback_error_context=fallback_context)
+                record_facts(
+                    fallback_error_context=fallback_context,
+                    fallback_used=True,
+                    fallback_error_category=category,
+                )
                 result = self._attempt("gemini", question, current_question)
         except ShopQueryError as exc:
             attach_error_context(exc)

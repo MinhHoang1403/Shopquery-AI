@@ -12,7 +12,7 @@ from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import Settings
-from app.core.diagnostics import record_provider_call, record_provider_tokens
+from app.core.diagnostics import diagnostic_stage, record_provider_call, record_provider_tokens
 from app.core.errors import (
     TRANSIENT_PROVIDER_STATUSES,
     ConfigurationError,
@@ -24,7 +24,7 @@ from app.core.errors import (
     provider_category,
     validation_context,
 )
-from app.core.observability import provider_observation
+from app.core.observability import provider_observation, update
 from app.text_to_sql.generation_contract import GENERATION_INSTRUCTIONS, GenerationDecision
 from app.text_to_sql.query_plan import PlanDecision
 
@@ -105,6 +105,7 @@ class GeminiGateway:
             ),
         )
 
+    @diagnostic_stage("generation_contract")
     def generate_structured(
         self, prompt: str, response_model: type[StructuredModel]
     ) -> StructuredModel:
@@ -198,6 +199,13 @@ class GeminiGateway:
             try:
                 response = action()
                 record_provider_tokens(getattr(response, "usage_metadata", None))
+                if operation == "embedding":
+                    # SDK1.75 exposes billable characters, not a token usage counter.
+                    update(
+                        billable_character_count=getattr(
+                            getattr(response, "metadata", None), "billable_character_count", None
+                        )
+                    )
                 return response
             except errors.APIError as exc:
                 self._raise_api_error(operation, exc)
