@@ -300,3 +300,159 @@ def test_allowlist_rejects_arbitrary_strings_and_invalid_counts():
         }
     )
     assert result == {"sql_validated": True}
+
+
+def test_untraced_dependency_does_not_export_orphan_span(export):
+    _, collect = export
+    with diagnostic_stage("authentication"):
+        pass
+    assert collect() == ()
+
+
+def test_authentication_failure_has_safe_http_category(export):
+    from fastapi import HTTPException
+
+    _, collect = export
+    with pytest.raises(HTTPException), diagnostic_request(), diagnostic_stage("authentication"):
+        raise HTTPException(401, "SENSITIVE session detail")
+    auth = next(s for s in collect() if s.name == "authentication")
+    assert metadata(auth)["error_category"] == "authentication_or_permission"
+    assert metadata(auth)["http_status"] == 401
+    assert "SENSITIVE" not in str(dict(auth.attributes))
+
+
+def test_request_summarizes_measured_usage_without_duplicate_usage_details(export):
+    _, collect = export
+    with diagnostic_request():
+        record_facts(
+            requested_model="inetcloud-knowledge",
+            used_model="gemini",
+            fallback_used=True,
+            fallback_error_category="timeout",
+            context_used=True,
+        )
+        with telemetry.provider_observation("knowledge", "knowledge", "generation"):
+            record_provider_tokens({"input_tokens": 7, "output_tokens": 2, "total_tokens": 9})
+        with telemetry.provider_observation("gemini", "gemini-3.5-flash-lite", "generation"):
+            record_provider_tokens(
+                SimpleNamespace(prompt_token_count=4, candidates_token_count=1, total_token_count=5)
+            )
+    root = next(s for s in collect() if s.name == "request")
+    facts = metadata(root)
+    assert (
+        facts["request_input_tokens"],
+        facts["request_output_tokens"],
+        facts["request_total_tokens"],
+    ) == (11, 3, 14)
+    assert facts["requested_model"] == "inetcloud-knowledge"
+    assert facts["used_model"] == "gemini"
+    assert facts["fallback_used"] and facts["context_used"]
+    assert "langfuse.observation.usage_details" not in root.attributes
+
+
+def test_generation_contract_failure_preserves_measured_consumption(export):
+    from pydantic import BaseModel
+
+    from app.core.errors import StructuredResponseError
+
+    class Draft(BaseModel):
+        answer: str
+
+    _, collect = export
+    gateway = object.__new__(GeminiGateway)
+    gateway._settings = Settings(_env_file=None)
+    gateway._client = SimpleNamespace(
+        models=SimpleNamespace(
+            generate_content=lambda **kw: SimpleNamespace(
+                text='{"answer": []}',
+                candidates=[],
+                usage_metadata=SimpleNamespace(
+                    prompt_token_count=11, candidates_token_count=3, total_token_count=14
+                ),
+            )
+        )
+    )
+    with pytest.raises(StructuredResponseError), diagnostic_request():
+        gateway.generate_structured("SENSITIVE", Draft)
+    spans = collect()
+    call = next(s for s in spans if s.name == "generation")
+    contract = next(s for s in spans if s.name == "generation_contract")
+    assert metadata(contract)["status"] == "failure"
+    assert metadata(contract)["error_category"] == "wire_validation"
+    assert json.loads(call.attributes["langfuse.observation.usage_details"])["total"] == 14
+    assert call.parent.span_id == contract.context.span_id
+    assert len([s for s in spans if s.name == "generation"]) == 1
+
+
+def test_rag_retrieval_and_citations_export_counts_only(export):
+    from app.rag.pipeline import RagAnswerDraft, RagPipeline
+
+    _, collect = export
+    chunk = SimpleNamespace(
+        chunk_id=1, source_file="SENSITIVE", section_title="SENSITIVE", content="SENSITIVE"
+    )
+    pipeline = RagPipeline(
+        SimpleNamespace(embed_query=lambda _: [0.1]),
+        SimpleNamespace(
+            generate_structured=lambda *args: RagAnswerDraft(answer="SENSITIVE", used_chunk_ids=[1])
+        ),
+        SimpleNamespace(retrieve=lambda *args, **kwargs: [chunk]),
+    )
+    with diagnostic_request():
+        pipeline.run("SENSITIVE")
+    spans = collect()
+    root = next(s for s in spans if s.name == "request")
+    assert metadata(root)["retrieved_chunks"] == 1
+    assert metadata(root)["selected_chunks"] == 1
+    assert metadata(root)["citation_count"] == 1
+    assert "SENSITIVE" not in str([dict(s.attributes) for s in spans])
+
+
+def test_embedding_characters_are_not_mislabeled_as_tokens(export):
+    from google.genai import types
+
+    _, collect = export
+    gateway = object.__new__(GeminiGateway)
+    gateway._settings = Settings(_env_file=None)
+    response = types.EmbedContentResponse(
+        metadata=types.EmbedContentMetadata(billable_character_count=20)
+    )
+    with diagnostic_request():
+        gateway._request("embedding", lambda: response)
+    call = next(s for s in collect() if s.name == "query_embedding")
+    assert metadata(call)["billable_character_count"] == 20
+    assert metadata(call)["usage_status"] == "unknown"
+    assert "langfuse.observation.usage_details" not in call.attributes
+
+
+def test_request_partial_usage_does_not_claim_total_consumption(export):
+    from app.core.diagnostics import record_provider_call
+
+    _, collect = export
+    with diagnostic_request():
+        record_provider_call("generation_calls")
+        with telemetry.provider_observation("knowledge", "knowledge", "generation"):
+            record_provider_tokens({"input_tokens": 7, "output_tokens": 2, "total_tokens": 9})
+        record_provider_call("generation_calls")  # Failed dispatch without usage.
+    root = next(s for s in collect() if s.name == "request")
+    assert metadata(root)["usage_status"] == "partial"
+    assert metadata(root)["request_total_tokens"] == 9  # Measured subtotal only.
+
+
+def test_missing_credentials_disable_export_without_business_failure(monkeypatch):
+    monkeypatch.setattr(
+        "langfuse.Langfuse", lambda **kwargs: pytest.fail("SDK must not initialize")
+    )
+    telemetry.configure(
+        Settings(
+            _env_file=None,
+            langfuse_enabled=True,
+            langfuse_public_key=None,
+            langfuse_secret_key=None,
+        ),
+        STAGES,
+    )
+    with diagnostic_request(), diagnostic_stage("sql_execution"):
+        result = "unchanged"
+    assert result == "unchanged"
+    assert telemetry._client is None
