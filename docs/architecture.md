@@ -28,6 +28,7 @@ Generator SQL tự do đã được gỡ; không có fallback sang SQL do model 
 | `routing/hybrid*.py`, `natural_policy.py` | Binding, complete evidence, exact Decimal, authoritative decisions |
 | `ai` | Adapters, structured response/error handling, existing retry/fallback policy |
 | `guest` | TTL/quota, RAM chunks, disposable workers, PostgreSQL TEMP |
+| `core/diagnostics.py`, `observability.py` | Request/stage correlation và optional metadata-only Langfuse export |
 | `dependencies.py` | Request object graph; không DDL lúc chat |
 
 Hybrid lấy candidate policy trước SQL; rule chỉ verified sau SQL/registry/source
@@ -76,3 +77,17 @@ mất columns/relationships: catalog chỉ gồm workspace đã được authori
 AND/OR, SUM HAVING, date grouping/formatting và typed ranges compile thành bound SQL.
 Literal evidence SQL được render an toàn và validate riêng cho Hybrid/public response;
 executor chỉ chạy statement có bind parameters. Hai AST phải giữ cùng provenance.
+
+## Observability
+
+Langfuse là project riêng gồm Web/Worker/PostgreSQL/ClickHouse/Redis/MinIO. Chỉ API
+nối Web qua ingestion network; main PostgreSQL không nối datastore network Langfuse.
+Manual observations từ diagnostics: một root/request, nested stages thực chạy,
+mỗi provider SDK dispatch một generation/embedding observation. Queue bounded512,
+batch64/5 s/export timeout1s, không synchronous flush từng request. OFF/export lỗi
+không đổi business output. Error-origin contract không bị telemetry-only stages sửa.
+
+Raw prompts/questions/answers/SQL/rows/documents/identities không export. Token từ
+SDK; missing/partial không coi0; cached/reasoning không cộng hai lần. Root chỉ ghi
+subtotal metadata, không duplicate child usage_details. Chi phí server có thể inferred,
+không phải hóa đơn. [Privacy/usage/live proof](observability_acceptance.md).

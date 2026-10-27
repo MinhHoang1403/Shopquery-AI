@@ -2,7 +2,7 @@
 
 ## Phạm vi hướng dẫn
 
-Tài liệu này mô tả authentication và migration hiện hữu. Trạng thái MVP/runtime hiện tại nằm trong [nghiệm thu V2](v2_final_acceptance.md), [architecture](architecture.md) và [deployment](deployment.md). Các mốc triển khai/nghiệm thu cũ không chứng nhận runtime development mới.
+Tài liệu này mô tả authentication và migration hiện hữu. Trạng thái MVP/runtime hiện tại nằm trong [nghiệm thu V2](v2_final_acceptance.md), [architecture](architecture.md) và [deployment](deployment.md). Không chạy lại setup/migration trên main đã vận hành; release hiện tại có session/history được bảo toàn.
 
 Google OIDC invite-only, PostgreSQL opaque sessions, CSRF, owner-scoped repositories, optional login và quota beta được giữ. Logout thành công về Guest trống. Không suy ra callback/logout live PASS từ browser mock.
 
@@ -37,10 +37,10 @@ BETA_PROVIDER_DATA_ENABLED=false
 2. Vào Google Auth Platform → Get started/Branding, đặt tên ShopQuery AI và support/contact email.
 3. Audience: chọn External nếu dùng Gmail cá nhân, giữ Testing. Có thể thêm tài khoản kiểm thử trong Test users; ứng dụng vẫn bắt buộc allowlist backend, không dựa vào Google test-user list để cấp quyền. Với chỉ openid/email/profile, Google có ngoại lệ đối với hạn chế testing, nên allowlist backend là lớp bắt buộc.
 4. Clients → Create client → Web application. Không chọn Desktop app hoặc service account.
-5. Authorized redirect URIs phải khớp chính xác `${APP_ORIGIN}/api/auth/callback`, không thêm dấu `/` cuối. Chỉ thêm origin thực sự được dùng; development Giai đoạn 1 hiện tắt Google credentials. Không cần Google Drive/Gmail scopes; chỉ openid/email/profile.
+5. Authorized redirect URIs phải khớp chính xác `${APP_ORIGIN}/api/auth/callback`, không thêm dấu `/` cuối. Chỉ thêm origin thực sự được dùng; đây là hướng dẫn cài mới, không đổi credentials runtime 8080. Không cần Google Drive/Gmail scopes; chỉ openid/email/profile.
 6. Lưu Client ID và Client secret vào file private .env, điền AUTH_INVITED_EMAILS bằng JSON list email được phép. Secret không phải Gemini API key. Không gửi secret hoặc file download OAuth vào chat/Git.
-7. Báo đã cấu hình để operator đưa các giá trị vào backend test và restart đúng test container. Không tự restart stack chính, không trỏ test backend vào database chính. Cấu hình .env không tự cập nhật environment của container đang chạy.
-8. Đăng nhập Google bằng browser thông thường trên bản test. Kiểm tra /auth/me, logout và tài khoản ngoài allowlist, xác nhận issuer/sub của owner thật. Chỉ sau đó mới xin phép migration chính.
+7. Xác minh cấu hình và exact image, rồi controlled cutover theo deployment runbook trong maintenance window được duyệt. Không tạo test container hoặc đổi database chỉ để thử login. Cấu hình .env không tự cập nhật environment container đang chạy.
+8. Operator đăng nhập Google qua UI hợp lệ; không đưa mật khẩu/cookie/OAuth code vào chat. Kiểm session/history và dùng CI/mock/isolated integration cho A/B negatives. Migration là thao tác riêng cần quyền và backup, không phải bước tự chạy sau login.
 
 Google Console reference: [Get started](https://support.google.com/cloud/answer/15544987?hl=en), [Web server credentials](https://developers.google.com/identity/protocols/oauth2/web-server), [Audience/testing exceptions](https://support.google.com/cloud/answer/15549945?hl=en).
 
@@ -66,7 +66,7 @@ Demo commerce và chunks `dataset_id IS NULL` dùng chung read-only cho authenti
 
 ## Frontend
 
-AuthBoundary kiểm tra `/auth/me` trước khi mount App. Guest chỉ thấy login screen. Account/logout ở sidebar. 401 hoặc session-policy-invalid unmount private UI, xoá CSRF, abort requests; request epoch loại bỏ response cũ kể cả transport bỏ qua abort. Focus tab revalidates session, ngăn tiếp tục hiển thị state tài khoản trước sau đổi phiên. Đổi user remount App, xoá messages/evidence/datasets/history/dialogs/model context. Không persist private data/token trong browser storage.
+AuthBoundary kiểm tra `/auth/me` trước khi mount App. Guest có giao diện/dữ liệu tạm theo policy riêng; Guest AI đang OFF. Account/logout ở sidebar. 401 hoặc session-policy-invalid unmount private UI, xoá CSRF, abort requests; request epoch loại bỏ response cũ kể cả transport bỏ qua abort. Focus tab revalidates session, ngăn tiếp tục hiển thị state tài khoản trước sau đổi phiên. Đổi user remount App, xoá messages/evidence/datasets/history/dialogs/model context. Không persist private data/token trong browser storage.
 
 ## Giới hạn beta và privacy
 
@@ -88,6 +88,9 @@ Counters theo fixed hour, lease hết hạn sau 30 phút nếu process chết. Q
 `BETA_PROVIDER_DATA_ENABLED=false` mặc định chặn chat và document embeddings trước provider call. Chỉ bật sau khi quản trị xác nhận dữ liệu beta được phép gửi providers. Knowledge generation nhận câu hỏi/schema/rows/evidence; Gemini generation nhận tương tự nếu chọn hoặc fallback được phép. Query embedding và document ingestion vẫn gửi text tới Google kể cả chọn Knowledge. Không hứa xử lý hoàn toàn nội bộ. Không tự bật Gemini fallback; model preference/attribution giữ nguyên. Đây là gate vận hành, không thay thế policy pháp lý/consent theo loại dữ liệu.
 
 ## Migration an toàn — không tự áp dụng DB chính
+
+Các lệnh Python `scripts/...` trong mục này chạy từ thư mục `backend` sau `uv sync --locked`.
+Chỉ dành fresh install/recovery có target/backup được duyệt; không chạy khi chỉ cleanup docs.
 
 ### Fresh installation (database sạch)
 
@@ -117,7 +120,7 @@ Không tự đổi physical tables, IDs, embeddings 768 chiều, source relation
 
 ## Test safety và CI
 
-Integration chỉ chạy khi RUN_DATABASE_TESTS=1, target có tên `shopquery_ci` hoặc `shopquery_test_<suffix>`, và SHOPQUERY_TEST_DATABASE_URL bằng setup URL; target trùng application DB trong .env bị từ chối. Default/dev/production names bị chặn. Dùng container PostgreSQL test riêng và disposable credentials; không trỏ tests vào DB chính. Fixture cũ vẫn có seed/delete, nên đây là guard bắt buộc trước fixtures.
+Integration chỉ chạy khi RUN_DATABASE_TESTS=1, target có tên `shopquery_ci` hoặc `shopquery_test_<suffix>`, và SHOPQUERY_TEST_DATABASE_URL bằng setup URL; target trùng application DB trong .env bị từ chối. Default/dev/production names bị chặn. Ưu tiên PostgreSQL service cô lập của CI hoặc test DB hiện hữu đã được duyệt; không tạo stack mới theo thói quen, không trỏ tests vào DB chính. Fixture cũ vẫn có seed/delete, nên đây là guard bắt buộc trước fixtures.
 
 ```powershell
 # Chỉ trong shell test, URL trỏ DB/container cô lập do bạn tạo.

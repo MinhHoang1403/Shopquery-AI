@@ -73,5 +73,5 @@ một model diagnostic mỗi lần; không giữ thêm GPU copy khi worker API �
 | Release | Build service thay đổi từ main, pin digest, controlled deploy8080 theo runbook |
 
 Dependency manifests chính là `backend/pyproject.toml` và `backend/uv.lock`;
-không có `requirements.txt` riêng. Native dùng `uv sync --locked --extra reranker`.
+maintenance tools có requirements riêng dưới scripts/ và không dùng trong API. Native dùng `uv sync --locked --extra reranker`.
 Không commit `.env`/weights. Các báo cáo smoke lịch sử có trong Git tại `87cdf40`.

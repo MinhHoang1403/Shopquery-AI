@@ -28,8 +28,8 @@ DDL. Không dùng dev application DB hoặc main DB làm fixture target.
 Test DB `shopquery_test_stage1` nằm trên devdb:15433, tạo cùng volume dev mới. Tests
 có thể tạo/drop fixtures ở đó; không reset/re-ingest main hoặc xóa volumes.
 
-CI: Ruff/unit, PostgreSQL service `shopquery_ci` + reader riêng, frontend quality/
-mock browser. Push main và PR vào main kích hoạt workflow; feature push đơn thuần
+CI thống nhất: Ruff/unit (gồm Langfuse), PostgreSQL service `shopquery_ci` + reader riêng,
+frontend quality/mock browser, Compose isolation và maintenance tools. Push main và PR vào main kích hoạt workflow; feature push đơn thuần
 không chạy workflow hiện hữu. Docs-only commit có thể dùng `[skip ci]`.
 CI regression không phải Stage 2 live acceptance.
 
@@ -55,3 +55,14 @@ benchmark/regression, retrieval quality/latency, live providers và release gate
 validator/execution/grounding; chúng không được tính là provider-planning proof.
 `plan_fixtures.py` chỉ chuyển static regression SQL sang mocked PlanDecision, giữ
 nguyên expected rows; helper này không được import từ production.
+
+## Maintenance utilities
+
+```powershell
+uv run --no-project --with-requirements scripts/requirements-maintenance.txt python scripts/test_maintenance_tools.py
+```
+
+Chạy từ repository root.10 unittests chỉ dùng temporary synthetic files, không DB/provider.
+Không cài dependency document tools vào API image. [Hướng dẫn](maintenance_tools.md).
+Workflow observability riêng trước đây chạy lại subset tests đã có trong backend suite;
+đã gộp Compose checks vào CI chính để tránh chạy trùng, không mất telemetry assertions.

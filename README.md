@@ -2,84 +2,169 @@
 
 [![CI](https://github.com/MinhHoang1403/Shopquery-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/MinhHoang1403/Shopquery-AI/actions/workflows/ci.yml)
 
-Trợ lý phân tích bảng và tài liệu bằng FastAPI, React/TypeScript, PostgreSQL/pgvector.
-Hỗ trợ SQL, RAG, Hybrid, Google OIDC, không gian cá nhân và Guest tạm thời.
+Trợ lý phân tích bảng dữ liệu và tài liệu bằng tiếng Việt. Người dùng tải dữ liệu vào
+workspace, đặt câu hỏi và đối chiếu câu trả lời với bảng kết quả, SQL hoặc nguồn trích dẫn.
+Phù hợp cho phân tích nội bộ trong các phạm vi dữ liệu và quy tắc đã được kiểm chứng;
+không thay thế kiểm tra nghiệp vụ hoặc hỗ trợ mọi loại truy vấn SQL.
 
-**MVP demo chính: [http://127.0.0.1:8080](http://127.0.0.1:8080).** Một Compose project
-`shopquery-ai` chạy API, Nginx Web và main PostgreSQL. Google login/history hoạt động;
-operator đã bật Knowledge, Gemini và document embeddings cho tài khoản đăng nhập.
-Giữ provider gate ON cho sử dụng thường ngày, cùng authentication, quota và rate limit.
-Guest preview hoạt động; Guest AI chưa được duyệt. Fallback OFF là lựa chọn cấu hình.
-SQL/RAG/Hybrid và follow-up đã có bằng chứng live trong phạm vi KPI synthetic;
-không coi đó là bảo đảm cho mọi dữ liệu. Auto-JOIN dùng tên khóa, metadata và kiểm
-toàn bộ dữ liệu; hỗ trợ cả `ma_*`/camelCase. Bảng mới tự kiểm chứng liên kết khi upload;
-UI chỉ hiển thị các liên kết hợp lệ. Cặp khóa mơ hồ không tự kích hoạt.
-Chat dùng Auto Routing; từng bảng có preview dữ liệu đã nhập, tải khi mở chevron.
-BGE tạm hoãn, retrieval dùng vector-only. Chưa tag hoặc tuyên bố nghiệm thu V2 đầy đủ.
-Nguồn trạng thái hiện tại: [nghiệm thu V2](docs/v2_final_acceptance.md).
-Các báo cáo lịch sử đã bỏ khỏi checkout; có thể tra tại Git commit `87cdf40`.
+**Đã chuyển sang giai đoạn sử dụng và bảo trì trong phạm vi khả năng đã nghiệm thu.**
 
-## Tài liệu hiện hành
+- Ứng dụng chính: [http://127.0.0.1:8080](http://127.0.0.1:8080).
+- Langfuse: [http://127.0.0.1:3000](http://127.0.0.1:3000).
+- Một source trên `main`, một deployment `shopquery-ai`, một project giám sát
+  `shopquery-observability`. Phạm vi hiện tại là localhost, chưa nghiệm thu public/VPS.
 
-- [Kiến trúc](docs/architecture.md) và [khả năng/giới hạn](docs/capabilities.md).
-- [Development](docs/development.md), [kiểm thử](docs/testing.md).
-- [Runtime/deployment](docs/deployment.md), [bảo mật](docs/security.md).
-- [Authentication/migration](docs/authentication.md), [nguồn kỹ thuật](docs/technical_references.md).
+## Khả năng chính
 
-## Quy trình làm việc trên bản chính
+| Nhóm | Hành vi và giới hạn |
+| --- | --- |
+| Quản lý dữ liệu | Workspace riêng; CSV/XLSX thành bảng, PDF có text layer/DOCX/TXT/MD thành tài liệu. Có preview bảng; không OCR hoặc DOC cũ. File tối đa10 MB, bảng tối đa5000 dòng/30 cột theo cấu hình hiện hành. |
+| Liên kết bảng | Tự phát hiện ứng viên theo khóa/metadata và kiểm toàn bộ dữ liệu trước khi kích hoạt N:1. Cặp mơ hồ không tự duyệt; UI hiển thị liên kết đã kiểm chứng. |
+| SQL | Câu hỏi → typed QueryPlan → compiler → kiểm AST/quyền/grain → SELECT read-only. Bảng kết quả giữ Decimal/NULL và nguồn COUNT; có thể xem SQL. |
+| RAG | Truy xuất đoạn tài liệu đúng workspace, trả lời dựa trên bằng chứng và citation. Không dùng tài liệu workspace khác. |
+| Hybrid | Kết hợp dữ liệu SQL với chính sách tài liệu. Quy tắc đơn giản đủ bằng chứng được backend tính bằng Decimal; thiếu/mâu thuẫn bằng chứng phải từ chối kết luận. |
+| Hội thoại | Google login, model selection, lịch sử và follow-up cùng owner/conversation/workspace; chỉ dùng tiền đề thành công, Hybrid phải verified. |
+| Guest | Xem/thử dữ liệu tạm trong RAM với TTL/quota; Guest AI hiện OFF. Reload/restart không bảo toàn Guest RAM. |
+| Giám sát | Langfuse ghi stages, duration, model, usage và lỗi an toàn; metadata-only, export bất đồng bộ và fail-open. |
 
-Thay đổi nhỏ theo GitHub `main` → local `main` → targeted tests → commit/push → build
-service thay đổi → pin digest trong private `.env.release` → deploy8080 → verify.
-Tích hợp công nghệ mới/nhiều file/rủi ro runtime dùng một branch ngắn hạn, CI trước
-merge main, theo [AGENTS.md](AGENTS.md). Không build image khi chỉ sửa docs/config-only,
-không tạo candidate/sandbox app stack. Langfuse đã chạy đủ sáu service tại
-[Dashboard localhost:3000](http://127.0.0.1:3000), có trace từ API8080 và SDK5.0.4
-metadata-only. [Nghiệm thu telemetry](docs/observability_acceptance.md):6câu UI
-SQL/JOIN/RAG/Hybrid/follow-up PASS,10generation/3query embeddings;32601generation
-tokens khớp diagnostics. Embedding token và Knowledge cost UNKNOWN; Gemini cost là
-ước tính theo bảng giá. [Runbook](ops/langfuse/README.md) ghi retention/backup limits.
-Runtime hiện bật override observability; kiểm bằng `./scripts/release.ps1 -Observability`.
+JOIN uploaded hỗ trợ tối đa ba bảng trên cây N:1 đã duyệt; không many-to-many,
+outer/self/composite joins hoặc hai fact tables. Hybrid không phải rules engine tổng quát.
+Không có chức năng tải lại original document binaries hoặc export kết quả chuyên biệt
+được công bố. Chi tiết: [khả năng/giới hạn](docs/capabilities.md).
 
-Cần Docker Desktop/Compose hỗ trợ `!override`, PowerShell, Git, Python 3.11/uv;
-Node 24 nếu chạy frontend tests native. Đọc [AGENTS.md](AGENTS.md) trước khi sửa source.
+## Kiến trúc
+
+```mermaid
+flowchart LR
+    UI[React / TypeScript] --> Web[Nginx :8080]
+    Web --> API[FastAPI / Google session / Owner scope]
+    API --> Router[Auto Routing]
+    Router --> SQL[QueryPlan / Compiler / Validator]
+    Router --> RAG[RAG / Citation]
+    Router --> Hybrid[Hybrid / Evidence verification]
+    SQL --> DB[(PostgreSQL / pgvector)]
+    RAG --> DB
+    Hybrid --> SQL
+    Hybrid --> RAG
+    Router --> Providers[Gemini / Knowledge]
+    RAG --> Embedding[Gemini Embedding 2]
+    API --> History[Conversation persistence]
+    History --> DB
+    API -. metadata / async .-> LF[Langfuse Web / Worker / Storage riêng]
+```
+
+Mô tả module và các ranh giới bảo mật nằm trong [kiến trúc](docs/architecture.md).
+Không có generator SQL tự do, pipeline thứ hai hoặc fallback bỏ qua guards.
+
+## Model và cấu hình vận hành
+
+| Cấu hình | Runtime đã nghiệm thu |
+| --- | --- |
+| Generation mặc định | Gemini `gemini-3.5-flash-lite` |
+| Lựa chọn thủ công | iNetCloud Knowledge, model `knowledge` |
+| Gemini fallback | OFF |
+| Provider data gate | ON cho sử dụng thường ngày đã được operator cho phép |
+| Guest AI | OFF |
+| Embedding | `gemini-embedding-2`,768 chiều |
+| Retrieval | Vector-only; BGE GPU chưa được nghiệm thu/bật production |
+| Langfuse | Instrumentation ON, SDK 5.0.4/server 4.70.1 |
+
+Knowledge đã có SQL JOIN/RAG/Hybrid live passes trong phạm vi synthetic, nhưng đợt
+đánh giá rộng hơn còn một mẫu UNKNOWN; chưa đủ căn cứ chuyển thành mặc định.
+Generation/embedding gửi dữ liệu tới provider đã chọn; chọn Knowledge không ngăn
+query/document embeddings gửi text tới Google. Không tự bật fallback hoặc Guest AI.
+
+## Cài đặt và vận hành
+
+Công cụ phát triển: Git, PowerShell, Python 3.11/uv, Node 24/npm; Docker Desktop dùng
+Linux containers và Compose hỗ trợ `!override`. Runtime đã có dùng release images
+pin digest; không cần cài Node/Python mới để sử dụng giao diện.
+
+Với checkout đang vận hành, giữ private `.env`, `.env.release`, hai local YAML overrides,
+credentials Google/provider/Langfuse và các volumes. **Không copy template đè lên cấu hình
+hiện hành.** `.env.example` là mẫu cho cài đặt mới, không có secrets và giữ paid gate OFF.
+Cài mới/migration cần làm theo [authentication](docs/authentication.md) và
+[deployment runbook](docs/deployment.md), không chạy seed/reset trên DB hiện có.
+
+Kiểm tra không thay runtime, tại repository root:
 
 ```powershell
-git switch main
-git pull --ff-only
-# Sửa source; chọn tests đúng phần thay đổi, ví dụ:
-./scripts/test.ps1 -Tests tests/test_plan_binding.py
-git add -p
-git commit -m "Describe the verified change"
-git push origin main
-# Build/pin riêng API hoặc Web theo docs/deployment.md, rồi:
-./scripts/release.ps1 -Deploy -Service api -Observability
 ./scripts/release.ps1 -Observability
 Invoke-RestMethod http://127.0.0.1:8080/api/health
+docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml ps
 ```
 
-Private `.env`, `.env.release` và local overrides phải được giữ, không commit.
-Không chạy base Compose một mình trên máy đã có overrides riêng. Chuyển API/Web
-sang development là thao tác maintenance có gián đoạn; `scripts/dev.ps1` và Compose
-dev vẫn là công cụ source, không phải deployment thứ hai cần chạy thường trực.
-Test DB dùng volume riêng được giữ lại. Ưu tiên CI; các lệnh DevDB dưới đây chỉ dùng
-khi cần môi trường isolated đã có và không có cách kiểm chứng phù hợp hơn, không
-tạo thêm local test stack. Langfuse không cần containers riêng cho tests.
+Thứ tự Compose đang dùng: `compose.yaml` → `.env.compose-ui.yaml` → `.env.join-v1.yaml`
+→ `compose.release.yaml` → `ops/langfuse/shopquery.compose.yaml`, đọc `.env` rồi `.env.release`.
+Không chạy base Compose một mình. Tên local override có `v1` là identifier tương thích,
+không phải deployment cũ có thể xóa.
+
+Cập nhật: sửa đúng phần cần thiết → targeted tests → commit/push/CI → build riêng
+service đổi application inputs → pin immutable digest/giữ rollback → operator duyệt
+thời điểm gián đoạn → deploy → strict verifier và kiểm 8080. Docs/scripts không dùng
+trong image không yêu cầu rebuild/redeploy. Ví dụ **chỉ sau cutover được duyệt**:
+
+```powershell
+./scripts/release.ps1 -Deploy -Service api -Observability
+```
+
+Restart an toàn phải kiểm công việc đang chạy và dùng đúng project/service trong
+[runbook](docs/deployment.md#restart-và-khôi-phục); không recreate PostgreSQL/volumes.
+Development/GPU là chế độ maintenance opt-in, không phải stack cần chạy thêm;
+xem [development](docs/development.md).
+
+## Bảo mật và dữ liệu
+
+Google OIDC invite-only; sessions lưu PostgreSQL, CSRF cho mutations, repository gắn
+owner/workspace trước truy cập bảng/tài liệu. SQL executor dùng reader, read-only
+transaction, timeout và row cap; identifiers từ registry, values dùng bind parameters.
+Giữ fact/grouping grain, COUNT provenance, Decimal/NULL và evidence coverage guards.
+
+Không commit `.env`, keys, cookies, uploads, vectors, database dumps, weights hoặc
+private logs. Langfuse không nhận raw questions/prompts/answers/SQL/rows/documents;
+telemetry lỗi không được làm chatbot lỗi. DB/Redis/ClickHouse Langfuse không publish;
+UI cần thiết chỉ bind loopback. [Security](docs/security.md) ghi các giới hạn trước public hosting.
+
+## Kiểm thử và nghiệm thu
 
 ```powershell
 ./scripts/test.ps1 -Tests tests/test_plan_binding.py
-# Chỉ khởi động isolated DevDB khi cần integration; không đổi API/Web8080:
-docker compose -p shopquery-ai -f compose.yaml -f compose.dev.yaml up -d --no-deps --wait devdb
-./scripts/test.ps1 -Integration -Tests tests/test_hybrid_evidence_integration.py
-docker compose -p shopquery-ai -f compose.yaml -f compose.dev.yaml stop devdb
-cd frontend
-npm ci
-npm run lint
-npm run typecheck
-npm test -- --run src/components/DatasetUploadDialog.test.tsx
-npm run build
+uv run --no-project --with-requirements scripts/requirements-maintenance.txt python scripts/test_maintenance_tools.py
 ```
 
-Integration chỉ dùng `shopquery_test_stage1` trên dev PostgreSQL cổng 15433.
-Không reset main hoặc dùng provider keys. Benchmark/live acceptance thuộc Giai đoạn 2.
-Không commit secrets, `.env`, weights, cache, logs hoặc dữ liệu người dùng.
-Main là source chính; BGE/SQL/Hybrid chưa đạt không được ghi full acceptance hoặc tag V2.
+CI chính thống nhất backend lint/unit/contracts/golden/security, PostgreSQL isolated,
+frontend lint/typecheck/unit/build/mock E2E, maintenance utilities và Compose isolation.
+Integration test nặng chạy trên CI; không seed/reset main hoặc tạo thêm Docker test stack.
+
+Baseline đã kiểm:1391 backend unit,857 PostgreSQL integration,85 frontend và125mock E2E
+PASS tại source 3fe4cc2;10 Compose checks PASS. Đợt bàn giao thêm 10 maintenance tests.
+Kết quả exact-head cuối và kiểm runtime ghi trong [bàn giao vận hành](docs/operational_handoff.md).
+Tests mocks/schema/HTTP200 không tự chứng minh câu trả lời live đúng.
+
+Sáu câu UI gần nhất: Gemini SQL, Knowledge JOIN, RAG, Hybrid, follow-up và SQL Khách sạn
+đúng independent PostgreSQL oracle/tài liệu.10 generation stages và3 query embeddings,
+32601 generation tokens khớp diagnostics. Không gọi lại provider khi cleanup không đổi AI logic.
+Xem [nghiệm thu hệ thống](docs/v2_final_acceptance.md) và [telemetry](docs/observability_acceptance.md).
+
+## Langfuse
+
+Một root/correlation mỗi request, children phản ánh đúng giai đoạn thực chạy; mỗi
+SDK dispatch có một generation/embedding observation. Hybrid deterministic không tạo
+model call giả. Metadata an toàn ghi model, latency, trạng thái và token do SDK cung cấp.
+
+Embedding token usage/Knowledge cost có thể UNKNOWN. Gemini cost là ước tính theo
+managed list price, không phải hóa đơn. Retention tự động của edition self-host hiện tại
+chưa có cơ chế được nghiệm thu; backup/restore Langfuse chưa diễn tập. Không diễn giải
+UNKNOWN thành 0 hoặc synthetic trace thành full acceptance. [Runbook Langfuse](ops/langfuse/README.md).
+
+## Tài liệu
+
+- [Kiến trúc](docs/architecture.md), [khả năng](docs/capabilities.md), [bảo mật](docs/security.md).
+- [Deployment/recovery](docs/deployment.md), [authentication/migration](docs/authentication.md).
+- [Development](docs/development.md), [testing](docs/testing.md), [bộ synthetic bảo trì](docs/maintenance_tools.md).
+- [Nghiệm thu](docs/v2_final_acceptance.md), [bằng chứng kỹ thuật](docs/architecture_audit.md),
+  [Langfuse acceptance](docs/observability_acceptance.md), [nguồn kỹ thuật](docs/technical_references.md).
+- [Bàn giao và cleanup](docs/operational_handoff.md). Đọc [AGENTS.md](AGENTS.md) trước thay đổi source.
+
+Giữ chế độ bảo trì có kiểm soát; chưa tag/full Stage2, chưa enterprise/public-ready,
+không bảo đảm mọi schema, mọi câu hỏi hoặc mọi mức tải.

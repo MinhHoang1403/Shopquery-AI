@@ -1,18 +1,17 @@
 # Khả năng và giới hạn
 
-Trạng thái chốt27/10/2026: **KNOWLEDGE_NOT_ACCEPTED — GEMINI_PRODUCTION_READY**.
-Gemini mặc định/fallbackOFF, provider gateON/GuestOFF; embedding2/768/vector-only giữ
-nguyên. Knowledge chọn thủ công:15 SQL live đúng oracle trên3domain và1 mẫu UNKNOWN
-do mất bằng chứng đo; không đủ tiêu chí chuyển mặc định. Schema predicate Knowledge và
-approved dimension grouping đã sửa/triển khai; không bảo đảm mọi câu SQL. RAG/Hybrid
-smoke PASS/citation23, Gemini compatibility PASS. Chi tiết/budget/giới hạn tại
-[acceptance hiện hành](v2_final_acceptance.md); phát triển đã đóng băng sau nhiệm vụ.
+Runtime đang sử dụng: Gemini default, Knowledge manual, fallback OFF, provider gate ON,
+Guest AI OFF, embedding2/768/vector-only và Langfuse metadata-only ON. Đây là phạm vi
+localhost đã nghiệm thu, không phải mọi schema/public deployment. Knowledge có live
+passes nhưng đợt đánh giá rộng còn1 UNKNOWN nên chưa chuyển default. Kết quả hiện hành
+ở [system acceptance](v2_final_acceptance.md), [telemetry](observability_acceptance.md)
+và [deployment](deployment.md). Hệ thống chuyển sang sử dụng/bảo trì có kiểm soát.
 
 ## SQL
 
 Production hỗ trợ authorized SELECT, filters, arithmetic, aggregates, GROUP BY,
-sorting/top-N, thời gian và NULL/zero/Decimal. Uploaded workspace mặc định một
-bảng; JOIN opt-in giữ tên `SQL_JOIN_V1_ENABLED`.
+sorting/top-N, thời gian và NULL/zero/Decimal. Uploaded workspace không có quan hệ
+chỉ truy vấn một bảng; runtime bật approved JOIN bằng `SQL_JOIN_V1_ENABLED`.
 
 JOIN hai/ba bảng cần một/hai approved relations và revision/key proof hợp lệ.
 Backend kiểm exact ON, fact → dimension, uniqueness/no fanout. Mặc định GROUP BY
@@ -65,17 +64,12 @@ quy tắc này không áp dụng cho uploaded workspaces.
 
 CSV/XLSX tạo bảng; PDF text-layer, DOCX, TXT/MD tạo tài liệu. Không OCR, DOC cũ,
 macro, URL ingestion hoặc vector database mới. Original binaries không lưu để tải
-lại. Giai đoạn 1 không re-embed corpus main hoặc đổi embedding dimensions.
+lại. Không tự re-embed corpus main hoặc đổi embedding dimensions.
 
-Authenticated/default RAG có local `BAAI/bge-reranker-v2-m3` theo cấu hình. Default
-K=12/N=3; chỉ xếp original chunks. Chưa benchmark Recall/MRR/nDCG/production latency hoặc chứng
-minh tăng accuracy. Missing/error model dùng vector fallback với sanitized log;
-load thử một lần mỗi process/config, cần restart sau khi sửa artifact/device.
-Development CUDA override đã chạy FP32 trên RTX3050, batch2/max512; CPU/GPU synthetic
-orders khớp. Đây là bounded smoke, không phải production load/p95. Cold warmup/reload
-hiện khoảng105–109s và host RAM headroom thấp; xem báo cáo trước khi tăng concurrency.
-Guest giữ vector retrieval vì worker 768 MiB không chứa được weights BGE 2,27 GB;
-không nới resource isolation.
+Runtime hiện vector-only, top_n3. Local `BAAI/bge-reranker-v2-m3` là tùy chọn theo
+cấu hình/extra riêng, chưa bật production hoặc được chứng nhận tăng retrieval quality.
+Candidate K12 chỉ áp dụng khi reranker hoạt động; chỉ xếp original retrieved chunks.
+Guest giữ vector-only với isolation limits. Không chạy benchmark GPU để chốt bàn giao.
 
 Hybrid retrieval trước SQL. Verified scope gồm một numeric rule SUM/AVG/row count/
 non-NULL count, exact threshold/operator/source units/entity key, all rows và whole
