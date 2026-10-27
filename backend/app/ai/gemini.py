@@ -25,7 +25,11 @@ from app.core.errors import (
     validation_context,
 )
 from app.core.observability import provider_observation, update
-from app.text_to_sql.generation_contract import GENERATION_INSTRUCTIONS, GenerationDecision
+from app.text_to_sql.generation_contract import (
+    GENERATION_INSTRUCTIONS,
+    GenerationDecision,
+    generation_schema_constraints,
+)
 from app.text_to_sql.query_plan import PlanDecision
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
@@ -112,13 +116,18 @@ class GeminiGateway:
         wire_model = GenerationDecision if response_model is PlanDecision else response_model
         prompt_suffix = GENERATION_INSTRUCTIONS if wire_model is GenerationDecision else ""
         try:
+            # Keep the native Gemini grammar identical to the live-accepted contract.
+            # Catalog enums/conditional branches are Knowledge wire constraints;
+            # both providers still use the same Pydantic conversion and binder.
+            with generation_schema_constraints(enabled=False):
+                response_schema = wire_model.model_json_schema()
             config = types.GenerateContentConfig(
                 temperature=0,
                 response_mime_type="application/json",
                 response_schema=(
-                    _generation_schema(wire_model.model_json_schema())
+                    _generation_schema(response_schema)
                     if wire_model is GenerationDecision
-                    else _without_additional_properties(wire_model.model_json_schema())
+                    else _without_additional_properties(response_schema)
                 ),
             )
         except (ValidationError, ValueError, TypeError) as exc:

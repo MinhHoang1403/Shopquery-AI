@@ -1,0 +1,277 @@
+{
+  "properties": {
+    "outcome": {
+      "enum": [
+        "query",
+        "unsupported"
+      ],
+      "title": "Outcome",
+      "type": "STRING"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "STRING"
+    },
+    "source": {
+      "title": "Source",
+      "type": "STRING"
+    },
+    "grouping": {
+      "default": "entity",
+      "enum": [
+        "entity",
+        "category"
+      ],
+      "title": "Grouping",
+      "type": "STRING"
+    },
+    "fields": {
+      "items": {
+        "properties": {
+          "reference": {
+            "title": "Reference",
+            "type": "STRING"
+          },
+          "alias": {
+            "title": "Alias",
+            "type": "STRING"
+          }
+        },
+        "property_ordering": [
+          "reference",
+          "alias"
+        ],
+        "required": [
+          "reference",
+          "alias"
+        ],
+        "title": "GenerationField",
+        "type": "OBJECT"
+      },
+      "title": "Fields",
+      "type": "ARRAY"
+    },
+    "expressions": {
+      "items": {
+        "properties": {
+          "operation": {
+            "enum": [
+              "literal",
+              "add",
+              "subtract",
+              "multiply",
+              "divide",
+              "sum",
+              "avg",
+              "min",
+              "max",
+              "row_count",
+              "value_count",
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "and",
+              "or",
+              "is_null",
+              "is_not_null",
+              "in",
+              "day",
+              "month",
+              "year",
+              "month_label",
+              "date_label"
+            ],
+            "title": "Operation",
+            "type": "STRING"
+          },
+          "arguments": {
+            "items": {
+              "type": "STRING"
+            },
+            "title": "Arguments",
+            "type": "ARRAY"
+          },
+          "value": {
+            "title": "Value",
+            "type": "STRING"
+          },
+          "value_type": {
+            "enum": [
+              "none",
+              "TEXT",
+              "NUMERIC",
+              "BIGINT",
+              "BOOLEAN",
+              "DATE",
+              "TIMESTAMP",
+              "TIMESTAMPTZ"
+            ],
+            "title": "Value Type",
+            "type": "STRING"
+          }
+        },
+        "property_ordering": [
+          "operation",
+          "arguments",
+          "value",
+          "value_type"
+        ],
+        "required": [
+          "operation",
+          "arguments",
+          "value",
+          "value_type"
+        ],
+        "title": "GenerationExpression",
+        "type": "OBJECT"
+      },
+      "title": "Expressions",
+      "type": "ARRAY"
+    },
+    "filters": {
+      "items": {
+        "properties": {
+          "reference": {
+            "title": "Reference",
+            "type": "STRING"
+          },
+          "operator": {
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is_null",
+              "is_not_null"
+            ],
+            "title": "Operator",
+            "type": "STRING"
+          },
+          "values": {
+            "items": {
+              "type": "STRING"
+            },
+            "title": "Values",
+            "type": "ARRAY"
+          }
+        },
+        "property_ordering": [
+          "reference",
+          "operator",
+          "values"
+        ],
+        "required": [
+          "reference",
+          "operator"
+        ],
+        "title": "PlanFilter",
+        "type": "OBJECT"
+      },
+      "title": "Filters",
+      "type": "ARRAY"
+    },
+    "group_by": {
+      "items": {
+        "type": "STRING"
+      },
+      "title": "Group By",
+      "type": "ARRAY"
+    },
+    "sort": {
+      "items": {
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "STRING"
+          },
+          "direction": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Direction",
+            "type": "STRING"
+          },
+          "nulls": {
+            "default": "last",
+            "enum": [
+              "first",
+              "last"
+            ],
+            "title": "Nulls",
+            "type": "STRING"
+          }
+        },
+        "property_ordering": [
+          "field",
+          "direction",
+          "nulls"
+        ],
+        "required": [
+          "field"
+        ],
+        "title": "PlanSort",
+        "type": "OBJECT"
+      },
+      "title": "Sort",
+      "type": "ARRAY"
+    },
+    "limit": {
+      "title": "Limit",
+      "type": "INTEGER"
+    },
+    "relationships": {
+      "items": {
+        "type": "STRING"
+      },
+      "title": "Relationships",
+      "type": "ARRAY"
+    },
+    "where": {
+      "title": "Where",
+      "type": "STRING"
+    },
+    "having": {
+      "title": "Having",
+      "type": "STRING"
+    }
+  },
+  "property_ordering": [
+    "outcome",
+    "reason",
+    "source",
+    "grouping",
+    "fields",
+    "expressions",
+    "filters",
+    "group_by",
+    "sort",
+    "limit",
+    "relationships",
+    "where",
+    "having"
+  ],
+  "required": [
+    "outcome",
+    "reason",
+    "source",
+    "fields",
+    "expressions",
+    "filters",
+    "group_by",
+    "sort",
+    "limit",
+    "relationships",
+    "where",
+    "having"
+  ],
+  "title": "GenerationDecision",
+  "type": "OBJECT"
+}

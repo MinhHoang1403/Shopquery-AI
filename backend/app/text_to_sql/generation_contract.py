@@ -31,6 +31,17 @@ MAX_EXPRESSIONS = 80
 _catalog: ContextVar[dict[str, tuple[str, ...]] | None] = ContextVar(
     "generation_catalog", default=None
 )
+_wire_constraints: ContextVar[bool] = ContextVar("generation_wire_constraints", default=True)
+
+
+@contextmanager
+def generation_schema_constraints(*, enabled: bool) -> Iterator[None]:
+    """Select provider grammar enrichment without changing local plan validation."""
+    token = _wire_constraints.set(enabled)
+    try:
+        yield
+    finally:
+        _wire_constraints.reset(token)
 
 
 @contextmanager
@@ -52,6 +63,8 @@ def generation_catalog(
 
 
 def apply_catalog_schema(schema: dict[str, Any]) -> None:
+    if not _wire_constraints.get():
+        return
     catalog = _catalog.get()
     if catalog is not None:
         schema["properties"]["source"]["enum"] = ["", *catalog["tables"]]
@@ -61,6 +74,8 @@ def apply_catalog_schema(schema: dict[str, Any]) -> None:
 
 
 def _field_schema(schema: dict[str, Any]) -> None:
+    if not _wire_constraints.get():
+        return
     catalog = _catalog.get()
     if catalog is not None:
         schema["properties"]["reference"]["enum"] = list(catalog["references"])
@@ -72,6 +87,8 @@ def _expression_schema(schema: dict[str, Any]) -> None:
     The two disjoint operation enums make anyOf unambiguous. Local conversion
     remains authoritative if a compatible endpoint ignores schema constraints.
     """
+    if not _wire_constraints.get():
+        return
     catalog = _catalog.get()
     if catalog is not None:
         schema["properties"]["arguments"]["items"]["enum"] = list(catalog["references"])

@@ -1,5 +1,6 @@
 import json
 import re
+from pathlib import Path
 
 import httpx
 import httpx2
@@ -19,8 +20,38 @@ from tests.test_providers import completion, harness
 from tests.test_workspace_prompts import tuition_context
 
 
+def test_gemini_plan_wire_matches_previously_live_accepted_schema(monkeypatch):
+    from app.text_to_sql.generation_contract import generation_catalog
+
+    payload = {
+        "plan": {
+            "source": "t0",
+            "fields": [{"reference": "e0", "alias": "n"}],
+            "expressions": [{"operation": "row_count"}],
+        }
+    }
+    gateway, calls = gateway_harness(
+        monkeypatch, "gemini", [response("gemini", json.dumps(payload))]
+    )
+    try:
+        with generation_catalog(("t0", "t1"), ("t0.c0", "t1.c0"), ("r0",)):
+            gateway.generate_structured("Offline compatibility regression", PlanDecision)
+        wire = json.loads(calls[0].content)["generationConfig"]["responseSchema"]
+        accepted = json.loads(
+            (Path(__file__).parent / "fixtures" / "gemini_plan_schema.json").read_text()
+        )
+        assert wire == accepted
+        assert len(calls) == 1
+        # A Gemini projection must not alter the constraints used by Knowledge.
+        from app.text_to_sql.generation_contract import GenerationDecision
+
+        assert "anyOf" in GenerationDecision.model_json_schema()["$defs"]["GenerationExpression"]
+    finally:
+        gateway.close()
+
+
 @pytest.mark.parametrize("provider", ["knowledge", "gemini"])
-def test_sdk_wire_limits_references_to_this_requests_issued_catalog(monkeypatch, provider):
+def test_sdk_catalog_constraints_are_provider_specific_and_request_scoped(monkeypatch, provider):
     from app.text_to_sql.generation_contract import GenerationDecision, generation_catalog
 
     payload = {
@@ -42,9 +73,13 @@ def test_sdk_wire_limits_references_to_this_requests_issued_catalog(monkeypatch,
             if provider == "knowledge"
             else body["generationConfig"]["responseSchema"]
         )
-        assert schema["properties"]["source"]["enum"] == ["", "t0"]
-        assert schema["properties"]["relationships"]["items"]["enum"] == ["r0"]
-        assert "t0.c0" in schema["properties"]["group_by"]["items"]["enum"]
+        if provider == "knowledge":
+            assert schema["properties"]["source"]["enum"] == ["", "t0"]
+            assert schema["properties"]["relationships"]["items"]["enum"] == ["r0"]
+            assert "t0.c0" in schema["properties"]["group_by"]["items"]["enum"]
+        else:
+            assert "enum" not in schema["properties"]["source"]
+            assert "anyOf" not in schema["properties"]["expressions"]["items"]
         assert "t9.c9" not in json.dumps(schema)
         assert "enum" not in GenerationDecision.model_json_schema()["properties"]["source"]
         assert len(calls) == 1

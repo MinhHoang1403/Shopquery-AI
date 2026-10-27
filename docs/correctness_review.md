@@ -13,7 +13,7 @@ Chưa có kết quả live của bản sửa tại thời điểm lập hồ sơ
 | COUNT + SUM bị từ chối | Gemini | SQL → compilation/join_graph | `16228c7c4d5f49aea095124980194fe5`, `acb411b2b5234d26b717181a55dfccd4`; 2 calls, chưa execution, `dimension_group_key` | Xác nhận không phải router hoặc JSON conversion. Không có raw plan lịch sử nên grouping/projection chính xác còn UNKNOWN. Regression tái hiện bug riêng: scalar aggregate với grouping=category bị bắt có category key dù không có dimension projection. Chỉ sửa scalar direct aggregates; giữ fact/N:1/COUNT/type guards. |
 | JOIN theo entity bị lỗi | Knowledge | sql_plan_generation/request | `2ebd4e13cafa48b2b52d2123b5ee388d`, timeout attempt 1 | Timeout upstream, không có bằng chứng binder/compiler sai ở lượt này. Không tăng timeout/retry hoặc dùng fallback để che lỗi. |
 | Hybrid scope incomplete | Gemini | policy_verification | `f34fdb7c2f184b3cb0f61c6d6b968e54`, 8 SQL rows, `policy_sql_scope_incomplete` | Verifier cũ chỉ nhận all-row rule trong single chunk; tài liệu nhiều chunk có kỳ/trạng thái không nhận thành policy. Model fallback plan có scope qualifiers nên guard từ chối đúng. Bổ sung complete-document grammar và full-column scope proof; không xóa filters để vượt guard. |
-| Hybrid unknown reference | Knowledge | plan_binding | `92279dd317c448399b48fd31afcb3856`, `unknown_reference`, chưa SQL execution | Xác nhận reference không thuộc catalog/graph hợp lệ; raw token/reference cụ thể không được lưu nên UNKNOWN. Gửi issued-ID enums request-local trong wire schema; local binder vẫn là authority, không remap ID đoán mò. |
+| Hybrid unknown reference | Knowledge | plan_binding | `92279dd317c448399b48fd31afcb3856`, `unknown_reference`, chưa SQL execution | Xác nhận reference không thuộc catalog/graph hợp lệ; raw token/reference cụ thể không được lưu nên UNKNOWN. Gửi issued-ID enums request-local trong wire schema Knowledge; local binder vẫn là authority, không remap ID đoán mò. |
 | Follow-up thiếu kiểu literal | Knowledge | domain_conversion | `d8f1f7a971ed45e58d39a0fdff115b4d`, expressions[0].value_type, `literal_type_missing` | Literal đã dùng sentinel none; schema cũ cho phép tổ hợp này dù conversion từ chối. Chia wire anyOf thành literal/nonliteral với enum rời nhau, giữ local conversion. Không đoán kiểu từ giá trị. |
 | Ngày xuất hiện ở metric | Gemini | SQL projection → stored rows → UI | Stored response có literal DATE được SELECT với alias giống tổng; registry/CSV date và numeric đúng | Không phải formatter đổi tiền thành ngày. Unverified draft chỉ kiểm metric alias tồn tại, chưa bắt source lineage. Chặn metric constant cả khi unverified; result metadata lấy kiểu/provenance/header thực từ compiler, không lấy ngữ nghĩa từ alias. |
 | Văn trả lời SQL | Cả hai | deterministic presenter | Trước đây ghép raw alias vào câu | Dùng verified aggregate metadata/COUNT provenance để soạn summary; nhóm lớn chỉ nêu số nhóm, ranking chỉ từ verified sort/limit. Không thêm generation call hoặc tự thêm đơn vị. |
@@ -34,6 +34,7 @@ Không thêm SQL generator, provider, queue/service hoặc answer-rewrite model 
 - `generation_contract.py::generation_catalog`, `_expression_schema`: ContextVar request-local,
   source/column/relationship IDs được cấp; expression IDs vẫn kiểm DAG/depth local.
   `planner.py` chỉ scope schema trong lời gọi hiện hữu. Hai SDK có tests wire serialization.
+  Gemini giữ wire grammar đã nghiệm thu; enrichment enum/conditional chỉ gửi Knowledge.
 - `join_policy.py::_validate_entity_groups`: aggregate vô hướng không có dimension key;
   chỉ direct aggregate projections và không GROUP BY mới đi nhánh này. Không thay fanout guards.
 - `natural_policy.py::_parse_regulation`: thêm một ngữ pháp đóng cho quy định tổng tiền có
@@ -77,7 +78,9 @@ Trước bảng 32 dòng mặc định → sau summary số nhóm và nút `Xem 
   constant cases); cả 2 UI regression mới FAIL (bảng chưa thu gọn, thiếu verification label).
 - Targeted backend đã chạy: 213 PASS; lượt contract/API cập nhật: 60 PASS; lượt sửa tương thích
   fixture/Decimal/COUNT/diagnostics/presenter/Guest: 180 PASS. Các suite có overlap, không cộng.
-- Whole-document/scope unit: 15 PASS trên ba entity/schema/threshold biến đổi và 12 negatives.
+- Whole-document/scope unit: 17 PASS trên ba entity/schema/threshold biến đổi và 14 negatives,
+  gồm hai ca điều kiện/kỳ chỉ xuất hiện trong section title. Lượt targeted sau sửa: 163 PASS
+  (có overlap với các suite trên, không cộng).
 - Frontend local: 87 PASS, lint/typecheck/build PASS. E2E assertions cập nhật theo hành vi
   được yêu cầu; không bỏ các assertions về giá trị, pagination, privacy hoặc accessibility.
 - Full backend local ban đầu 1.404 PASS/17 FAIL: 11 fixture contracts dùng string thay typed plan,
@@ -91,8 +94,50 @@ Trước bảng 32 dòng mặc định → sau summary số nhóm và nút `Xem 
   đủ 8 entities/tổng đúng oracle/citations 50,51/verified_classification. Reuse document vector
   đã lưu và mock router; 0 paid calls. Không gọi đây là live model acceptance.
 
-Exact-head CI, Git SHA, release images và UI/provider scorecard còn phải bổ sung sau khi
-các gate tương ứng hoàn tất; không dùng baseline tests để chấm live.
+PR [#2](https://github.com/MinhHoang1403/Shopquery-AI/pull/2) đã squash merge main
+`b75a844b959ccd0d268a11ac10f99ab0326813d4`; CI PR và main đều PASS. Guard bổ sung
+section title ở main `937a828662c68516ba008ce1d5b6f459749bc498` có
+[exact-head CI 40550706754](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40550706754)
+4/4 jobs PASS: 1.423 backend, 875 PostgreSQL, 87 frontend, 125 mock E2E,
+10 maintenance checks và 10 Compose checks. Các tests mock/CI không thay live model acceptance.
+
+Image ứng viên API `sha256:6a63244725d904b3866e34298a46a4289a77b0a5144b45735123a1e141ee8116`
+được build từ `937a828`; Web `sha256:9b735b38e62a19f9e1f8426b10c1774bedc30ae07d23cbda6cae75db1237a23f`
+từ `b75a844` có inputs không đổi. API ứng viên trước `d7f2d822` bị loại trước triển khai
+do hai negative tests mới; chưa dùng image đó phục vụ người dùng. Effective candidate
+Compose chỉ đổi hai image refs; cấu hình rollback và DB archive đã được kiểm.
+
+### Cửa sổ live 28/10/2026 — BLOCKED
+
+Operator đã duyệt và cutover hai images trên. Strict verifier PASS 88 modules, không
+source/image/env drift; API/Web healthy, main DB container giữ nguyên. Fingerprints 36 data
+objects và 292 messages lịch sử (đến message366) khớp baseline trước khi gửi câu đầu.
+
+Câu Gemini COUNT+SUM duy nhất được gửi một lần. Router SQL PASS; QueryPlan generation
+bị Gemini từ chối HTTP400/schema_rejected/phase=request, trước binding/compile/execution.
+Correlation `43dc10ac9cf14ec4b47d7133c4e8cdc4`, lúc 00:42:45 28/10 giờ Việt Nam.
+Messages367/368 được persist; không có SQL rows. Langfuse có 14 observations, đúng một
+root và hai generation observations; mọi raw input/output absent. Router trả 1.867 input,
+39 output, 1.906 total tokens; rejected planner call không trả usage, phần đó UNKNOWN.
+Request 5.253ms, planner failure 140ms; không embedding/retry/fallback. Cửa sổ đã dừng
+ở 2/36 generation, 0/12 query, 0 document; không dùng phần dư để thử lại.
+
+API đã rollback về `d8ad8aa5`/source `3fe4cc2`; giữ Web mới `9b735b38` và toàn bộ config
+model/gates/Langfuse. Nginx validate/reload,8080 health PASS. Đây là rollback có chủ đích:
+API đang chạy chưa khớp source main của bản sửa, không tuyên bố strict/current-main PASS.
+
+New failure boundary được xác nhận là request schema tại Gemini, không phải SQL/JOIN/RAG.
+Không có error body chi tiết nên không kết luận chính xác enum hay anyOf gây HTTP400.
+Google công bố schema branching/enum complexity có thể bị từ chối400; đây chỉ là giả thuyết
+về lý do bên trong server, không phải bằng chứng cho request cụ thể.
+
+Correction offline: Gemini tắt riêng wire enrichment khi dựng schema, giữ contract native
+đã chạy trước cutover; local validation/conversion/catalog/binder/SQL guards không đổi.
+Fixture `gemini_plan_schema.json` được chụp từ SDK pinned trong API baseline bằng
+MockTransport, không network/provider. Regression từng FAIL trước sửa, sau sửa so toàn bộ
+serialized responseSchema bằng fixture (kể cả khi request có nhiều issued IDs). Knowledge
+vẫn giữ constraints và không bị ContextVar của Gemini làm thay đổi. Targeted 85 PASS;
+CI/image/live của correction này còn phải hoàn tất, không coi mocks là provider acceptance.
 
 ## Ngân sách và triển khai
 
