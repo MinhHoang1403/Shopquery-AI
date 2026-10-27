@@ -13,7 +13,7 @@ from app.text_to_sql.query_plan import PlanField, QueryPlan
 AGGREGATES = {"sum", "avg", "min", "max", "row_count", "value_count"}
 
 
-@diagnostic_stage("plan_binding")
+@diagnostic_stage("plan_binding", annotate_error=False)
 def bind_approved_grain(plan: QueryPlan, references: SchemaReferences) -> QueryPlan:
     def context(branch: str) -> ErrorContext:
         return ErrorContext(

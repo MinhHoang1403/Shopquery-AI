@@ -397,7 +397,8 @@ def diagnostic_request(correlation_id: str | None = None) -> Iterator[Diagnostic
 
 
 @contextmanager
-def diagnostic_stage(stage: str) -> Iterator[None]:
+def diagnostic_stage(stage: str, *, annotate_error: bool = True) -> Iterator[None]:
+    """Observe a stage; telemetry-only additions must preserve the error contract."""
     if _trace.get() is None:
         yield
         return
@@ -406,7 +407,7 @@ def diagnostic_stage(stage: str) -> Iterator[None]:
         try:
             yield
         except BaseException as exc:
-            if isinstance(exc, ShopQueryError):
+            if annotate_error and isinstance(exc, ShopQueryError):
                 attach_error_context(exc, stage)
             code = getattr(exc, "code", None)
             failed_stage = code if isinstance(code, str) and code in STAGES else stage

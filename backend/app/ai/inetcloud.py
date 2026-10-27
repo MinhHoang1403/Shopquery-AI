@@ -69,7 +69,7 @@ class InetCloudGateway:
             raise self._failure("response", "invalid_response", operation="answer generation")
         return response.content.strip()
 
-    @diagnostic_stage("generation_contract")
+    @diagnostic_stage("generation_contract", annotate_error=False)
     def generate_structured(
         self, prompt: str, response_model: type[StructuredModel]
     ) -> StructuredModel:

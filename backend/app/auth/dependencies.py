@@ -15,7 +15,7 @@ def auth_repository() -> AuthRepository:
     return AuthRepository(get_setup_engine())
 
 
-@diagnostic_stage("authentication")
+@diagnostic_stage("authentication", annotate_error=False)
 def require_session(request: Request) -> Principal:
     settings = get_settings()
     raw = request.cookies.get(settings.session_cookie_name)

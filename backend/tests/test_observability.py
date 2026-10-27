@@ -456,3 +456,18 @@ def test_missing_credentials_disable_export_without_business_failure(monkeypatch
         result = "unchanged"
     assert result == "unchanged"
     assert telemetry._client is None
+
+
+def test_telemetry_only_stage_preserves_business_error_origin(export):
+    _, collect = export
+    error = ProviderError("SENSITIVE")
+    before = error.error_context.model_dump()
+    with (
+        diagnostic_request(),
+        pytest.raises(ProviderError),
+        diagnostic_stage("generation_contract", annotate_error=False),
+    ):
+        raise error
+    assert error.error_context.model_dump() == before
+    stage = next(s for s in collect() if s.name == "generation_contract")
+    assert metadata(stage)["status"] == "failure"
