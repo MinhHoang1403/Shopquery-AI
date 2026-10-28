@@ -52,8 +52,12 @@ def test_scalar_metadata_preserves_identifiers_precision_null_and_safe_markdown(
     columns = (ResultColumn(key="sum", label="Tổng", numeric=True),)
     assert "56.531.054,50" in compose_sql_answer([{"sum": "56531054.50"}], (), columns)
     assert "1.000.000,00" in compose_sql_answer([{"sum": Decimal("1000000.00")}], (), columns)
-    assert "000123" in compose_sql_answer([{"id": "000123"}], ())
-    assert "20261026" in compose_sql_answer([{"date_code": 20261026}], ())
+    assert "000123" in compose_sql_answer(
+        [{"id": "000123"}], (), (ResultColumn(key="id", label="Mã"),)
+    )
+    assert "20261026" in compose_sql_answer(
+        [{"date_code": 20261026}], (), (ResultColumn(key="date_code", label="Mã ngày"),)
+    )
     assert "20.261.026" not in compose_sql_answer([{"date_code": 20261026}], ())
     assert "[x](https" not in compose_sql_answer([{"name": "[x](https://example.com)"}], ())
     assert "Không tìm thấy" in compose_sql_answer([], ())

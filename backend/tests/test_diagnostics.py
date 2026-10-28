@@ -54,6 +54,12 @@ def test_failure_stage_is_precise_and_has_no_raw_evidence(stage, monkeypatch):
             if stage == "structured_output_invalid":
                 raise StructuredResponseError("SENSITIVE provider text")
             return RouteDecision(
+                evidence_requirement={
+                    "SQL": "tables",
+                    "RAG": "documents",
+                    "HYBRID": "both",
+                    "UNSUPPORTED": "unavailable",
+                }[RouteLabel.UNSUPPORTED if stage == "router_unsupported" else RouteLabel.SQL],
                 route=RouteLabel.UNSUPPORTED if stage == "router_unsupported" else RouteLabel.SQL,
                 reason="Synthetic",
             )

@@ -368,7 +368,16 @@ def test_aggregate_diagnosis_never_executes_or_composes_a_hybrid_answer(route, c
     from app.rag.repository import RetrievedChunk
 
     rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
-    router.route.return_value = RouteDecision(route=route, reason="Synthetic branch")
+    router.route.return_value = RouteDecision(
+        evidence_requirement={
+            "SQL": "tables",
+            "RAG": "documents",
+            "HYBRID": "both",
+            "UNSUPPORTED": "unavailable",
+        }[route],
+        route=route,
+        reason="Synthetic branch",
+    )
     with caplog.at_level("INFO", logger="app.routing.service"):
         result = DatasetChatService(
             router, pipeline, rag, HybridPipeline(pipeline, rag, answer_gateway)

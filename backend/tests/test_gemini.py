@@ -28,7 +28,7 @@ class GatewayHarness:
 
 def _success_response() -> httpx.Response:
     decision = json.dumps(
-        {"route": "SQL", "reason": "Requires commerce rows"}
+        {"evidence_requirement": "tables", "route": "SQL", "reason": "Requires commerce rows"}
     )
     return httpx.Response(
         200,
@@ -108,10 +108,7 @@ def test_router_retries_transient_503_then_succeeds(
     assert harness.http_options.timeout == 1_000
     assert harness.http_options.retry_options is not None
     assert harness.http_options.retry_options.attempts == 3
-    assert (
-        harness.http_options.retry_options.http_status_codes
-        == TRANSIENT_HTTP_STATUS_CODES
-    )
+    assert harness.http_options.retry_options.http_status_codes == TRANSIENT_HTTP_STATUS_CODES
 
 
 def test_router_reports_503_after_retry_limit(

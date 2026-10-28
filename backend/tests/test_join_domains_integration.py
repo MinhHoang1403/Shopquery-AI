@@ -162,7 +162,9 @@ def test_domain_golden_results_and_metamorphic_uploads(
             calls.append(schema.__name__)
             assert all(t.physical_table_name in prompt for t in dataset.tables)
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel.SQL, reason="Golden offline")
+                return RouteDecision(
+                    evidence_requirement="tables", route=RouteLabel.SQL, reason="Golden offline"
+                )
             assert schema is PlanDecision
             return decision_from_sql(sql, prompt)
 
@@ -240,7 +242,16 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                return RouteDecision(route=route, reason="Golden document evidence")
+                return RouteDecision(
+                    evidence_requirement={
+                        "SQL": "tables",
+                        "RAG": "documents",
+                        "HYBRID": "both",
+                        "UNSUPPORTED": "unavailable",
+                    }[route],
+                    route=route,
+                    reason="Golden document evidence",
+                )
             if schema is PlanDecision:
                 return decision_from_sql(golden_sql(domain, dataset, 3), prompt)
             ids = [int(value) for value in re.findall(r"\[chunk_id=(\d+)", prompt)]

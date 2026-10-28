@@ -545,7 +545,7 @@ test("restores history and keeps RAG, Hybrid, Unsupported evidence truthful", as
   await waitForDrawerClosed(page);
   await input.fill("Sản phẩm bán chạy có được miễn phí vận chuyển không?");
   await input.press("Enter");
-  await expect(page.getByText("SQL + Tài liệu")).toBeVisible();
+  await expect(page.getByText("Dữ liệu và tài liệu")).toBeVisible();
   const hybridMessage = page.locator(".message--assistant").last();
   const hybridRows = hybridMessage.getByRole("button", { name: "Xem bảng dữ liệu · 1 dòng" });
   const hybridSql = hybridMessage.getByRole("button", { name: "Xem truy vấn SQL" });
@@ -747,7 +747,7 @@ test("shows provider failures without invented answers or evidence", async ({ pa
   await openApp(page);
   await page.getByLabel("Nhập câu hỏi cho ShopQuery AI").fill("Top sản phẩm");
   await page.getByRole("button", { name: "Gửi câu hỏi" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Chưa thể hoàn tất truy vấn này.");
+  await expect(page.getByRole("alert")).toHaveText("Chưa thể xử lý câu hỏi này chính xác. Dữ liệu của bạn vẫn được giữ.");
   await page.getByRole("button", {name:"Chi tiết lỗi"}).click();
   await expect(page.getByText("Knowledge tạm thời không khả dụng.", {exact:true})).toHaveCount(1);
   await expect(page.locator(".assistant-content")).toHaveCount(0);

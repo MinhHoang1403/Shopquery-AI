@@ -123,7 +123,9 @@ def test_reverse_draft_matches_postgres_oracle_through_authenticated_context(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 assert context.routing_context in prompt
-                return RouteDecision(route=RouteLabel.SQL, reason="Synthetic contract")
+                return RouteDecision(
+                    evidence_requirement="tables", route=RouteLabel.SQL, reason="Synthetic contract"
+                )
             assert schema is PlanDecision and all(name in prompt for name in context.table_columns)
             return decision_from_sql(reverse, prompt)
 
@@ -673,7 +675,11 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
                 assert all(t.physical_table_name not in prompt for t in foreign.tables)
                 if schema is RouteDecision:
                     assert context.routing_context in prompt
-                    return RouteDecision(route=RouteLabel.SQL, reason="Synthetic intent fixture")
+                    return RouteDecision(
+                        evidence_requirement="tables",
+                        route=RouteLabel.SQL,
+                        reason="Synthetic intent fixture",
+                    )
                 assert schema is PlanDecision and all(
                     name in prompt for name in context.table_columns
                 )

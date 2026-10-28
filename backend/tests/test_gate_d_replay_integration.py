@@ -165,6 +165,12 @@ def test_gate_d_questions_oracle_and_authenticated_history(
             if schema is RouteDecision:
                 assert "Required FROM/JOIN fragment" not in prompt
                 return RouteDecision(
+                    evidence_requirement={
+                        "SQL": "tables",
+                        "RAG": "documents",
+                        "HYBRID": "both",
+                        "UNSUPPORTED": "unavailable",
+                    }[RouteLabel.HYBRID if level == "H" else RouteLabel.SQL],
                     route=RouteLabel.HYBRID if level == "H" else RouteLabel.SQL,
                     reason="Scripted offline route, not model accuracy",
                 )
@@ -269,7 +275,11 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
         def generate_structured(self, prompt: str, schema: type[BaseModel]) -> BaseModel:
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel.HYBRID, reason="Offline hypothesis")
+                return RouteDecision(
+                    evidence_requirement="both",
+                    route=RouteLabel.HYBRID,
+                    reason="Offline hypothesis",
+                )
             assert schema is PlanDecision
             return (
                 PlanDecision(plan=None, unsupported_reason="Private synthetic hypothesis")
@@ -314,7 +324,11 @@ def test_verified_rule_classification_does_not_request_model_verdict(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel.HYBRID, reason="Offline evidence test")
+                return RouteDecision(
+                    evidence_requirement="both",
+                    route=RouteLabel.HYBRID,
+                    reason="Offline evidence test",
+                )
             if schema is PlanDecision:
                 return decision_from_sql(draft_sql(dataset, "H"), prompt)
             raise AssertionError("Verified policy verdict must not request a model draft")

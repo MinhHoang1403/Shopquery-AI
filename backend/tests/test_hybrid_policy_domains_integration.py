@@ -100,7 +100,11 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel.HYBRID, reason="Scripted policy test")
+                return RouteDecision(
+                    evidence_requirement="both",
+                    route=RouteLabel.HYBRID,
+                    reason="Scripted policy test",
+                )
             if schema is PlanDecision:
                 assert "retrieve required metrics, grouping identifiers" in prompt
                 assert "filters only if requested" in prompt

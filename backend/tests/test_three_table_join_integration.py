@@ -131,7 +131,9 @@ def test_three_table_pipeline_keeps_exact_root_fact_oracle(workspace, monkeypatc
                 "Safe three-table tree" in prompt or '"relationships": [' in prompt
             ) and payments in prompt
             if response_model is RouteDecision:
-                return RouteDecision(route=RouteLabel.SQL, reason="Offline synthetic")
+                return RouteDecision(
+                    evidence_requirement="tables", route=RouteLabel.SQL, reason="Offline synthetic"
+                )
             assert response_model is PlanDecision
             assert "At most three tables" in prompt
             assert "source fact to target dimension" in prompt
@@ -278,7 +280,16 @@ def test_authenticated_upload_three_tables_pipeline_and_owner_history(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel(route), reason="Offline authenticated")
+                return RouteDecision(
+                    evidence_requirement={
+                        "SQL": "tables",
+                        "RAG": "documents",
+                        "HYBRID": "both",
+                        "UNSUPPORTED": "unavailable",
+                    }[RouteLabel(route)],
+                    route=RouteLabel(route),
+                    reason="Offline authenticated",
+                )
             if schema is PlanDecision:
                 assert "Safe three-table tree" in prompt or '"relationships": [' in prompt
                 return decision_from_sql(sql, prompt)
@@ -360,7 +371,16 @@ def test_guest_three_table_auto_relations_temp_and_pipelines(monkeypatch, model,
         class Gateway:
             def generate_structured(self, prompt, schema):
                 if schema is RouteDecision:
-                    return RouteDecision(route=route, reason="Synthetic guest")
+                    return RouteDecision(
+                        evidence_requirement={
+                            "SQL": "tables",
+                            "RAG": "documents",
+                            "HYBRID": "both",
+                            "UNSUPPORTED": "unavailable",
+                        }[route],
+                        route=route,
+                        reason="Synthetic guest",
+                    )
                 if schema is PlanDecision:
                     assert "Safe three-table tree" in prompt or '"relationships": [' in prompt
                     return decision_from_sql(sql, prompt)

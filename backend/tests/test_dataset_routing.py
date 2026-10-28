@@ -14,12 +14,19 @@ class FakeRouter:
         self.route_label = route
         self.allowed: frozenset[RouteLabel] | None = None
 
-    def route(
-        self, question: str, allowed_routes: frozenset[RouteLabel]
-    ) -> RouteDecision:
+    def route(self, question: str, allowed_routes: frozenset[RouteLabel]) -> RouteDecision:
         assert question
         self.allowed = allowed_routes
-        return RouteDecision(route=self.route_label, reason="fixture")
+        return RouteDecision(
+            evidence_requirement={
+                "SQL": "tables",
+                "RAG": "documents",
+                "HYBRID": "both",
+                "UNSUPPORTED": "unavailable",
+            }[self.route_label],
+            route=self.route_label,
+            reason="fixture",
+        )
 
 
 @dataclass
@@ -88,7 +95,10 @@ def test_empty_workspace_does_not_call_router() -> None:
 def test_unavailable_route_never_fabricates_a_pipeline_result() -> None:
     router = FakeRouter(RouteLabel.RAG)
     service = DatasetChatService(
-        router, FakePipeline(), None, None  # type: ignore[arg-type]
+        router,
+        FakePipeline(),
+        None,
+        None,  # type: ignore[arg-type]
     )
 
     result = service.chat("Chính sách là gì?")

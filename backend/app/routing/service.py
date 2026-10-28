@@ -9,15 +9,23 @@ from app.core.errors import ErrorContext, SqlUnsupportedError
 from app.rag.pipeline import RagPipeline, Source
 from app.routing.hybrid import HybridPipeline
 from app.routing.hybrid_evidence import VerificationStatus
-from app.routing.router import QueryRouter, RouteLabel
+from app.routing.router import QueryRouter, RouteDecision, RouteLabel
 from app.text_to_sql.answer import ResultColumn
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
 INSUFFICIENT_INFORMATION = (
-    "Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. "
-    "Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé."
+    "Dữ liệu hiện tại chưa có thông tin cần thiết để trả lời chính xác câu hỏi này."
 )
 logger = logging.getLogger(__name__)
+
+
+def _unsupported_answer(decision: RouteDecision) -> str:
+    if decision.evidence_requirement == "unclear":
+        return (
+            "Tôi chưa xác định được phạm vi câu hỏi. "
+            "Bạn muốn tra quy định hay tính số liệu, cho nhóm và khoảng thời gian nào?"
+        )
+    return INSUFFICIENT_INFORMATION
 
 
 @dataclass
@@ -49,11 +57,15 @@ def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
             "Bạn có thể thiết lập trong Quản lý dữ liệu → Liên kết bảng."
         ),
         "calculation": (
-            "Mình chưa thể tính chính xác kết quả này từ dữ liệu hiện có. "
-            "Bạn thử hỏi theo cách khác nhé."
+            "Chưa thể xử lý phép tính này chính xác. Bạn có thể xem dữ liệu liên quan."
         ),
     }
-    return ChatResult(messages.get(exc.reason, INSUFFICIENT_INFORMATION), RouteLabel.UNSUPPORTED)
+    return ChatResult(
+        messages.get(
+            exc.reason, "Chưa thể xử lý câu hỏi này chính xác trong phạm vi hỗ trợ hiện tại."
+        ),
+        RouteLabel.UNSUPPORTED,
+    )
 
 
 class ChatService:
@@ -70,7 +82,10 @@ class ChatService:
         self._hybrid_pipeline = hybrid_pipeline
 
     def chat(self, question: str, *, current_question: str | None = None) -> ChatResult:
-        decision = self._router.route(question)
+        decision = self._router.route(
+            question,
+            **({"current_question": current_question} if current_question is not None else {}),
+        )
         route = decision.route
         if route == RouteLabel.SQL:
             result = self._sql_pipeline.run(question)
@@ -101,7 +116,7 @@ class ChatService:
                 answer_row_indices=result.answer_row_indices,
             )
         return ChatResult(
-            answer=INSUFFICIENT_INFORMATION,
+            answer=_unsupported_answer(decision),
             route=RouteLabel.UNSUPPORTED,
         )
 
@@ -138,7 +153,11 @@ class DatasetChatService:
                 RouteLabel.UNSUPPORTED,
                 requested_model=self._requested_model,
             )
-        decision = self._router.route(question, frozenset(allowed))
+        decision = self._router.route(
+            question,
+            frozenset(allowed),
+            **({"current_question": current_question} if current_question is not None else {}),
+        )
         route = decision.route
         if route == RouteLabel.SQL and self._sql_pipeline is not None:
             try:
@@ -180,6 +199,6 @@ class DatasetChatService:
                 answer_row_indices=result.answer_row_indices,
             )
         return ChatResult(
-            INSUFFICIENT_INFORMATION,
+            _unsupported_answer(decision),
             RouteLabel.UNSUPPORTED,
         )

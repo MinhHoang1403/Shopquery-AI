@@ -55,7 +55,11 @@ def test_selected_count_sort_matches_independent_oracle(
         def generate_structured(self, prompt, response_model):
             calls.append(response_model.__name__)
             if response_model is RouteDecision:
-                return RouteDecision(route=RouteLabel.SQL, reason="Offline scripted route")
+                return RouteDecision(
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Offline scripted route",
+                )
             assert response_model is PlanDecision
             return decision_from_sql(repeated, prompt)
 

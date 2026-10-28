@@ -83,7 +83,11 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel.HYBRID, reason="Offline explicit policy")
+                return RouteDecision(
+                    evidence_requirement="both",
+                    route=RouteLabel.HYBRID,
+                    reason="Offline explicit policy",
+                )
             if schema is PlanDecision:
                 return decision_from_sql(golden_sql(domain, dataset, tables_count), prompt)
             assert schema is HybridAnswerDraft

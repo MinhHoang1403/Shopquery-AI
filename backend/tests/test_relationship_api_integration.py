@@ -157,7 +157,16 @@ def test_join_api_pipelines_and_persisted_history(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 assert fact in prompt and dim in prompt
-                return RouteDecision(route=RouteLabel(pipeline), reason="Offline JOIN test")
+                return RouteDecision(
+                    evidence_requirement={
+                        "SQL": "tables",
+                        "RAG": "documents",
+                        "HYBRID": "both",
+                        "UNSUPPORTED": "unavailable",
+                    }[RouteLabel(pipeline)],
+                    route=RouteLabel(pipeline),
+                    reason="Offline JOIN test",
+                )
             if schema is PlanDecision:
                 bindings = (
                     f"FROM uploaded_data.{dim} d INNER JOIN uploaded_data.{fact} f"
@@ -238,7 +247,16 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
     class Gateway:
         def generate_structured(self, prompt, schema):
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel(pipeline), reason="Negative synthetic case")
+                return RouteDecision(
+                    evidence_requirement={
+                        "SQL": "tables",
+                        "RAG": "documents",
+                        "HYBRID": "both",
+                        "UNSUPPORTED": "unavailable",
+                    }[RouteLabel(pipeline)],
+                    route=RouteLabel(pipeline),
+                    reason="Negative synthetic case",
+                )
             if schema is PlanDecision:
                 return decision_from_sql(
                     "SELECT * FROM public.users"
@@ -303,7 +321,16 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
         from app.text_to_sql.query_plan import PlanField, QueryPlan
 
         if schema is RouteDecision:
-            return RouteDecision(route=RouteLabel(route), reason="Synthetic aggregate refusal")
+            return RouteDecision(
+                evidence_requirement={
+                    "SQL": "tables",
+                    "RAG": "documents",
+                    "HYBRID": "both",
+                    "UNSUPPORTED": "unavailable",
+                }[RouteLabel(route)],
+                route=RouteLabel(route),
+                reason="Synthetic aggregate refusal",
+            )
         assert schema is PlanDecision
         catalog = json.JSONDecoder().raw_decode(prompt.split("Authorized catalog JSON:\n")[1])[0]
         source = next(table["id"] for table in catalog["tables"] if table["name"] == fact)

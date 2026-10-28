@@ -84,8 +84,8 @@ test("completes SQL, RAG, and Hybrid through the React UI", async ({ page }, tes
     const badgeText = question.route === "RAG"
       ? "Tài liệu"
       : question.route === "HYBRID"
-        ? "SQL + Tài liệu"
-        : "SQL";
+        ? "Dữ liệu và tài liệu"
+        : "Dữ liệu";
     await expect(page.locator(".route-badge").last()).toHaveText(badgeText, { timeout: 10_000 });
     await question.validate();
   }

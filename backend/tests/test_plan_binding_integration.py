@@ -112,7 +112,10 @@ def test_dimension_identity_completion_matches_independent_postgresql(
         having="e5" if predicates else None,
     )
     replies = [
-        response(provider, '{"route":"SQL","reason":"Independent fixture"}'),
+        response(
+            provider,
+            '{"route": "SQL", "reason": "Independent fixture", "evidence_requirement": "tables"}',
+        ),
         response(provider, PlanDecision(plan=plan).model_dump_json()),
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, replies)

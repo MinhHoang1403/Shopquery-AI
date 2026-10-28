@@ -111,7 +111,11 @@ def test_numbered_logistics_upload_sql_owner_csrf_and_history(
             assert "No approved table-to-table relationships" not in prompt
             assert "Safe three-table tree" in prompt or '"relationships": [' in prompt
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel.SQL, reason="Offline synthetic logistics")
+                return RouteDecision(
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Offline synthetic logistics",
+                )
             assert schema is PlanDecision and "Row count has zero arguments" in prompt
             return decision_from_sql(sql, prompt)
 

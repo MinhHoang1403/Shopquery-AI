@@ -44,7 +44,16 @@ class GuestGateway:
     def generate_structured(self, prompt, schema):
         if schema is RouteDecision:
             assert "Never JOIN tables" not in prompt
-            return RouteDecision(route=self.route, reason="Fake gateway, real isolated sources")
+            return RouteDecision(
+                evidence_requirement={
+                    "SQL": "tables",
+                    "RAG": "documents",
+                    "HYBRID": "both",
+                    "UNSUPPORTED": "unavailable",
+                }[self.route],
+                route=self.route,
+                reason="Fake gateway, real isolated sources",
+            )
         if schema is PlanDecision:
             return decision_from_sql(
                 "SELECT count(*) FROM public.users"
