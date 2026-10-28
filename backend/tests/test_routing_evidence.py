@@ -9,7 +9,7 @@ from app.core.diagnostics import diagnostic_request, record_facts
 from app.core.errors import ModelResponseError
 from app.core.observability import safe_metadata
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
-from app.routing.service import DatasetChatService
+from app.routing.service import ChatService, DatasetChatService
 from tests.test_plan_providers import gateway_harness, response
 
 
@@ -21,6 +21,27 @@ def routing_fixture(payload):
             **payload,
         }
     )
+
+
+@pytest.mark.parametrize("service_type", [ChatService, DatasetChatService])
+@pytest.mark.parametrize("scope", ["filtered_entities", "unspecified"])
+def test_classification_without_proven_full_scope_refuses_before_hybrid(service_type, scope):
+    """Do not turn a classification into an unverified generic Hybrid answer."""
+    router, sql, rag, hybrid = Mock(), Mock(), Mock(), Mock()
+    router.route.return_value = routing_fixture(
+        {
+            "route": "HYBRID",
+            "reason": "Classification scope not proven",
+            "evidence_requirement": "both",
+            "policy_intent": "not_qualified",
+            "policy_scope": scope,
+        }
+    )
+    result = service_type(router, sql, rag, hybrid).chat("Câu hỏi tổng hợp")
+    assert result.route == RouteLabel.UNSUPPORTED
+    sql.run.assert_not_called()
+    rag.run.assert_not_called()
+    hybrid.run.assert_not_called()
 
 
 def test_automatic_wire_contract_requires_evidence_intent_and_scope():

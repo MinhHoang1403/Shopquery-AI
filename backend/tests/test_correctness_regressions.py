@@ -129,15 +129,6 @@ def test_unknown_policy_stops_typed_classification_before_sql_or_model_drafting(
 
 def test_filtered_intent_never_substitutes_a_full_workspace_plan():
     hybrid = Mock()
-    hybrid.run.return_value = Mock(
-        answer="Unverified",
-        sql="SELECT ...",
-        rows=[],
-        sources=[],
-        verification_status="unverified",
-        result_columns=(),
-        answer_row_indices=None,
-    )
     router = Mock(
         route=Mock(
             return_value=RouteDecision(
@@ -149,8 +140,12 @@ def test_filtered_intent_never_substitutes_a_full_workspace_plan():
             )
         )
     )
-    DatasetChatService(router, Mock(), Mock(), hybrid).chat("Only entities in an explicit subset")
-    assert "classification" not in hybrid.run.call_args.kwargs
+    result = DatasetChatService(router, Mock(), Mock(), hybrid).chat(
+        "Only entities in an explicit subset"
+    )
+    # Unsupported scoped classification cannot be converted to full-workspace or unverified SQL.
+    assert result.route == RouteLabel.UNSUPPORTED
+    hybrid.run.assert_not_called()
 
 
 def test_date_literal_retains_its_type_and_cannot_obtain_numeric_provenance_from_its_alias():

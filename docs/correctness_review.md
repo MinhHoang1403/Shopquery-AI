@@ -44,6 +44,16 @@ phải UI acceptance hay kết quả PostgreSQL oracle.
 | Knowledge timeout | Trace `21efd96c67cb41d69dd7e4fd6e71e5de`: timeout tại Router trước QueryPlan | **UPSTREAM_EVIDENCE_REQUIRED**; không có log server để phân biệt connect/read/pool/queue/inference |
 | Coverage, binder, typed literal, SQL safety và provenance | Bằng chứng lịch sử và các regression tương ứng ở các bảng bên dưới | Giữ guard; không suy lỗi ứng dụng hiện tại từ trace cũ nếu chưa tái hiện |
 
+Với output scope sai nói trên, `DatasetChatService.chat` và `ChatService.chat` trước sửa chỉ
+truyền `classification` khi scope là `all_entities`. Sai scope có thể làm Hybrid không yêu
+cầu coverage classification; `HybridPipeline.run` có nhánh draft model với trạng thái
+`unverified`. Bốn negative regressions tái hiện ở cả hai service và hai scope thiếu chứng minh
+đã FAIL trước sửa. Guard chung hiện trả lời không hỗ trợ trước khi chạy pipeline khi có
+classification nhưng scope không phải `all_entities`; không xóa hoặc nới SQL/coverage guard.
+Đây là **safe refusal**, có thể từ chối câu hợp lệ khi model phân loại sai scope; chưa sửa
+được semantic routing và không chứng minh câu trả lời hay SQL của `h07` đã sai vì thử nghiệm
+chỉ dừng ở Router. Fix guard hiện chỉ có bằng chứng offline, chưa triển khai.
+
 Candidate khớp tất cả nhãn ở 6/7 mẫu Knowledge held-out đã chạy trước khi dừng;
 13 mẫu held-out Knowledge và toàn bộ held-out Gemini chưa chạy. Không tính đây là
 accuracy đầy đủ hoặc ước lượng ổn định dài hạn. Mẫu phát triển/hồi quy và baseline

@@ -45,6 +45,19 @@ class ChatResult:
     answer_row_indices: tuple[int, ...] | None = None
 
 
+def _classification_scope_refusal(decision: RouteDecision) -> ChatResult | None:
+    if decision.policy_intent == "none" or decision.policy_scope == "all_entities":
+        return None
+    # The verified classification path currently proves coverage for the complete entity set.
+    # Dropping a requested classification would silently route it through unverified Hybrid.
+    record_facts(route="UNSUPPORTED")
+    return ChatResult(
+        "Mình chưa thể xác minh chính xác kết quả phân loại trong phạm vi này. "
+        "Bạn có thể làm rõ phạm vi hoặc hỏi về toàn bộ đối tượng.",
+        RouteLabel.UNSUPPORTED,
+    )
+
+
 def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
     record_facts(route="UNSUPPORTED")
     if exc.code == "join_aggregate" and exc.aggregate_reason is not None:
@@ -96,6 +109,9 @@ class ChatService:
             result = self._rag_pipeline.run(question)
             return ChatResult(result.answer, route, sources=result.sources)
         if route == RouteLabel.HYBRID:
+            refusal = _classification_scope_refusal(decision)
+            if refusal is not None:
+                return refusal
             result = self._hybrid_pipeline.run(
                 question,
                 **(
@@ -171,6 +187,9 @@ class DatasetChatService:
             result = self._rag_pipeline.run(question)
             return ChatResult(result.answer, route, sources=result.sources)
         if route == RouteLabel.HYBRID and self._hybrid_pipeline is not None:
+            refusal = _classification_scope_refusal(decision)
+            if refusal is not None:
+                return refusal
             try:
                 result = self._hybrid_pipeline.run(
                     question,
