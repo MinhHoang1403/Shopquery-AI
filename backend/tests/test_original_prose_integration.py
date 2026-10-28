@@ -55,7 +55,11 @@ def test_original_prose_exact_kh_acceptance_and_history(
                 if "Vậy còn" in prompt:
                     assert "Previous successful turns" not in prompt
                     assert "Account 1" not in prompt
-                return RouteDecision(route=RouteLabel.HYBRID, reason="Offline original prose")
+                return RouteDecision(
+                    evidence_requirement="both",
+                    route=RouteLabel.HYBRID,
+                    reason="Offline original prose",
+                )
             if schema is PlanDecision:
                 sql = draft_sql(dataset, "H")
                 decision = decision_from_sql(
@@ -141,7 +145,8 @@ def test_original_prose_exact_kh_acceptance_and_history(
     answer = followup.json()["assistant_message"]["response"]
     assert answer["error"] is None and answer["route"] == "HYBRID"
     assert set(re.search(r"Chưa đạt: ([^.]+)\.", answer["answer"])[1].split(", ")) == {
-        "KHO01", "KHO04"
+        "KHO01",
+        "KHO04",
     }
     assert answer["sources"][0]["chunk_id"] == response["sources"][0]["chunk_id"]
     assert answer["verification_status"] == "verified_classification"
@@ -150,7 +155,9 @@ def test_original_prose_exact_kh_acceptance_and_history(
 
 @pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
 def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evidence(
-    gate_d_workspace, monkeypatch, model  # noqa: F811
+    gate_d_workspace,  # noqa: F811
+    monkeypatch,
+    model,
 ):
     actors, dataset, facts, embedder = gate_d_workspace
     dataset = add_policy(actors, dataset, embedder, ORIGINAL)
@@ -164,10 +171,14 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
             if "Vậy còn" in prompt:
                 assert "Previous successful turns" in prompt
                 assert set(re.search(r"(?<!Chưa )Đạt: ([^.]+)\.", prompt)[1].split(", ")) == {
-                    "KHO02", "KHO03", "KHO05"
+                    "KHO02",
+                    "KHO03",
+                    "KHO05",
                 }
                 assert "Account 1" not in prompt
-            return RouteDecision(route=RouteLabel.HYBRID, reason="Verified premise")
+            return RouteDecision(
+                evidence_requirement="both", route=RouteLabel.HYBRID, reason="Verified premise"
+            )
 
         def generate_text(self, prompt):
             raise AssertionError("Verified policy uses backend arithmetic, not model verdicts")
@@ -189,7 +200,8 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
         assert response["verification_status"] == "verified_classification"
         assert {row["entity_id"]: row["metric_value"] for row in response["rows"]} == expected
         assert set(re.search(r"Chưa đạt: ([^.]+)\.", response["answer"])[1].split(", ")) == {
-            "KHO01", "KHO04"
+            "KHO01",
+            "KHO04",
         }
         assert response["sources"][0]["content"] == ORIGINAL.split("\n\n", 1)[1].strip()
         assert actors.a.client.get(path).json()["messages"][-1]["response"] == response

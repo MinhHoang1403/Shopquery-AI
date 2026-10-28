@@ -113,6 +113,7 @@ def test_complete_regulation_and_full_row_scope_have_independent_pg_evidence(
         gateway = Mock(
             generate_structured=Mock(
                 return_value=RouteDecision(
+                    evidence_requirement="both",
                     route=RouteLabel.HYBRID,
                     reason="synthetic typed intent",
                     policy_intent="all",

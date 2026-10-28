@@ -85,7 +85,16 @@ def test_domain_pipeline_matches_independent_fact_grain_oracle(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 assert domain[0] + ".csv" in prompt and domain[1] + ".csv" in prompt
-                return RouteDecision(route=route, reason="Offline capability contract")
+                return RouteDecision(
+                    evidence_requirement={
+                        "SQL": "tables",
+                        "RAG": "documents",
+                        "HYBRID": "both",
+                        "UNSUPPORTED": "unavailable",
+                    }[route],
+                    route=route,
+                    reason="Offline capability contract",
+                )
             if schema is PlanDecision:
                 assert '"source": "t1.c' in prompt and '"target": "t0.c' in prompt
                 return decision_from_sql(
@@ -174,7 +183,11 @@ def test_single_table_questions_need_no_relationship(model: str, metric: str) ->
             if schema is RouteDecision:
                 assert question in prompt
                 assert "Never JOIN tables" not in prompt
-                return RouteDecision(route=RouteLabel.SQL, reason="Single table fixture")
+                return RouteDecision(
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Single table fixture",
+                )
             assert schema is PlanDecision
             assert '"relationships": []' in prompt
             return decision_from_sql(sql, prompt)

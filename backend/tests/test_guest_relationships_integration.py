@@ -100,7 +100,16 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                return RouteDecision(route=route, reason="Offline remapped JOIN")
+                return RouteDecision(
+                    evidence_requirement={
+                        "SQL": "tables",
+                        "RAG": "documents",
+                        "HYBRID": "both",
+                        "UNSUPPORTED": "unavailable",
+                    }[route],
+                    route=route,
+                    reason="Offline remapped JOIN",
+                )
             if schema is PlanDecision:
                 # Input list is reversed below: payments becomes table_1, students table_2.
                 assert '"source": "t0.c' in prompt and '"target": "t1.c' in prompt
@@ -163,7 +172,11 @@ def test_guest_upload_detects_then_chats_without_manual_confirmation(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel.SQL, reason="Synthetic guest auto relation")
+                return RouteDecision(
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Synthetic guest auto relation",
+                )
             assert schema is PlanDecision and "Never JOIN tables" not in prompt
             return decision_from_sql(
                 "SELECT d.name, SUM(f.amount) AS total, "

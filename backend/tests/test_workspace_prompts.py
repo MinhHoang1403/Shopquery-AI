@@ -34,7 +34,16 @@ class RecordingGateway:
     def generate_structured(self, prompt: str, response_model: type[Any]) -> Any:
         self.prompt = prompt
         if response_model is RouteDecision:
-            return RouteDecision(route=self.route, reason="fixture")
+            return RouteDecision(
+                evidence_requirement={
+                    "SQL": "tables",
+                    "RAG": "documents",
+                    "HYBRID": "both",
+                    "UNSUPPORTED": "unavailable",
+                }[self.route],
+                route=self.route,
+                reason="fixture",
+            )
         if response_model is PlanDecision:
             return decision_from_sql(
                 "SELECT SUM(da_dong) FROM uploaded_data.tuition_fixture", prompt
@@ -176,9 +185,7 @@ def test_planner_grouping_keys_come_only_from_approved_dimension_targets():
     planner = QueryPlanner(Gateway(), "2026-10-01", context)
     with pytest.raises(SqlUnsupportedError):
         planner.generate("So sánh các khóa học")
-    catalog, _ = json.JSONDecoder().raw_decode(
-        prompts[0].split("Authorized catalog JSON:\n", 1)[1]
-    )
+    catalog, _ = json.JSONDecoder().raw_decode(prompts[0].split("Authorized catalog JSON:\n", 1)[1])
     actual = {
         table["name"]: [planner.references.columns[key] for key in table["grouping_keys"]]
         for table in catalog["tables"]

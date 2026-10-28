@@ -28,7 +28,13 @@ def test_backend_status_reaches_persistence_and_reload_and_followup_rechecks_evi
     sql, executor, gateway = pipeline(context, rows)
     retrieval = Mock(retrieve=Mock(return_value=[chunk]))
     hybrid = HybridPipeline(sql, retrieval, gateway, context)
-    router = Mock(route=Mock(return_value=RouteDecision(route=RouteLabel.HYBRID, reason="fixture")))
+    router = Mock(
+        route=Mock(
+            return_value=RouteDecision(
+                evidence_requirement="both", route=RouteLabel.HYBRID, reason="fixture"
+            )
+        )
+    )
     service = ModelChatService(
         Settings(_env_file=None, ai_default_model="gemini"),
         lambda _: DatasetChatService(router, sql, retrieval, hybrid),

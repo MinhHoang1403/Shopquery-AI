@@ -268,6 +268,19 @@ def compose_answer(
         _fail("citation_rule_source_mismatch")
     # Both summary and detail are derived from this same ordered status vector.
     parts = []
+    if policy is not None and draft.language == "vi":
+        totals = [
+            f"**{statuses.count(status)} {label}**"
+            for status, label in (
+                ("qualified", "đối tượng đạt yêu cầu"),
+                ("not_qualified", "đối tượng chưa đạt"),
+                ("insufficient_evidence", "đối tượng chưa đủ bằng chứng"),
+            )
+            if statuses.count(status)
+        ]
+        parts.append(
+            "Theo điều kiện trong tài liệu và số liệu hiện tại, " + ", ".join(totals) + "."
+        )
     for status in ("qualified", "not_qualified", "insufficient_evidence", "unverified"):
         values = [
             " / ".join(_cell(v) for v in identity)
@@ -294,7 +307,7 @@ def compose_answer(
     if policy is None:
         parts.insert(
             0,
-            "Chưa xác minh ngữ nghĩa chính sách; không kết luận đạt/chưa đạt."
+            "Chưa đủ bằng chứng từ tài liệu để kết luận đối tượng nào đạt hoặc chưa đạt."
             if draft.language == "vi"
             else "Policy semantics unverified; no qualification conclusion is asserted.",
         )

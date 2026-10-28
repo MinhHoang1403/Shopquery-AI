@@ -93,6 +93,7 @@ def test_typed_classification_intent_uses_bound_evidence_without_a_question_temp
     router = Mock(
         route=Mock(
             return_value=RouteDecision(
+                evidence_requirement="both",
                 route=RouteLabel.HYBRID,
                 reason="typed fixture",
                 policy_intent=selection,
@@ -140,6 +141,7 @@ def test_filtered_intent_never_substitutes_a_full_workspace_plan():
     router = Mock(
         route=Mock(
             return_value=RouteDecision(
+                evidence_requirement="both",
                 route=RouteLabel.HYBRID,
                 reason="explicit subset",
                 policy_intent="qualified",

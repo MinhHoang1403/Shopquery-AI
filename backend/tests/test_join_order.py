@@ -207,8 +207,7 @@ def test_internal_code_logs_no_sql_or_detail_and_does_not_change_frontend_copy(c
         )
     assert "join_key" in caplog.text and "private synthetic SQL literal" not in caplog.text
     assert response.answer == (
-        "Mình chưa thể tính chính xác kết quả này từ dữ liệu hiện có. "
-        "Bạn thử hỏi theo cách khác nhé."
+        "Chưa thể xử lý phép tính này chính xác. Bạn có thể xem dữ liệu liên quan."
     )
     assert response.sql is None and not response.rows and not response.sources
 
@@ -339,8 +338,7 @@ def test_aggregate_diagnostic_branch_is_private_and_stops_before_execution(
     assert f"SQL request refused: join_aggregate ({expected_reason})" in caplog.text
     assert response.route == RouteLabel.UNSUPPORTED
     assert response.answer == (
-        "Mình chưa thể tính chính xác kết quả này từ dữ liệu hiện có. "
-        "Bạn thử hỏi theo cách khác nhé."
+        "Chưa thể xử lý phép tính này chính xác. Bạn có thể xem dữ liệu liên quan."
     )
     assert response.sql is None and response.rows == [] and response.sources == []
     for private in (sql, FACT, DIMENSION, projection, str(error), expected_reason):
@@ -368,7 +366,16 @@ def test_aggregate_diagnosis_never_executes_or_composes_a_hybrid_answer(route, c
     from app.rag.repository import RetrievedChunk
 
     rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
-    router.route.return_value = RouteDecision(route=route, reason="Synthetic branch")
+    router.route.return_value = RouteDecision(
+        evidence_requirement={
+            "SQL": "tables",
+            "RAG": "documents",
+            "HYBRID": "both",
+            "UNSUPPORTED": "unavailable",
+        }[route],
+        route=route,
+        reason="Synthetic branch",
+    )
     with caplog.at_level("INFO", logger="app.routing.service"):
         result = DatasetChatService(
             router, pipeline, rag, HybridPipeline(pipeline, rag, answer_gateway)

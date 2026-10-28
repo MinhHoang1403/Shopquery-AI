@@ -23,6 +23,7 @@ _strings = {
     "provider": frozenset({"knowledge", "gemini"}),
     "model": _models,
     "route": frozenset({"SQL", "RAG", "HYBRID", "UNSUPPORTED"}),
+    "evidence_requirement": frozenset({"tables", "documents", "both", "unavailable", "unclear"}),
     "model_id": frozenset({"gemini", "inetcloud-knowledge"}),
     "requested_model": frozenset({"gemini", "inetcloud-knowledge"}),
     "used_model": frozenset({"gemini", "inetcloud-knowledge"}),

@@ -67,7 +67,9 @@ def test_deterministic_grounding_preserves_empty_null_zero_and_rows_without_ai(
     if not rows:
         assert "Không tìm thấy" in result.answer
     elif len(rows) == 1 and rows[0].get("total", 1) is None:
-        assert "Chưa có dữ liệu" in result.answer
+        # This fake validator supplies no typed labels; the summary must not invent them.
+        # NULL and the different row counts remain exact in structured evidence above.
+        assert "1 kết quả" in result.answer and "bảng dữ liệu" in result.answer
     elif len(rows) > 1:
         assert "2 kết quả" in result.answer
     else:

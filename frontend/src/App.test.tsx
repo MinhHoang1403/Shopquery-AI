@@ -307,7 +307,7 @@ describe("ShopQuery workspace", () => {
     const input = await screen.findByLabelText("Nhập câu hỏi cho ShopQuery AI");
     await waitFor(() => expect(input).not.toBeDisabled());
     await user.type(input, "Top sản phẩm{Enter}");
-    expect(await screen.findByRole("alert")).toHaveTextContent("Chưa thể hoàn tất truy vấn này.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Chưa thể xử lý câu hỏi này chính xác. Dữ liệu của bạn vẫn được giữ.");
     await user.click(screen.getByRole("button", {name:"Chi tiết lỗi"}));
     expect(screen.getByText("Knowledge tạm thời không khả dụng.")).toBeVisible();
     expect(document.querySelector(".model-attribution")).not.toBeInTheDocument();
@@ -415,7 +415,7 @@ describe("ShopQuery workspace", () => {
     await user.click(await screen.findByRole("button", { name: /Phân tích bán hàng/ }));
 
     expect(await screen.findByText("Đây là câu trả lời.")).toBeInTheDocument();
-    expect(screen.getByText("SQL")).toBeInTheDocument();
+    expect(screen.getByText("Dữ liệu")).toBeInTheDocument();
     const sqlControl = screen.getByRole("button", { name: "Xem truy vấn SQL" });
     const tableControl = screen.getByRole("button", { name: "Xem bảng dữ liệu · 1 dòng" });
     expect(sqlControl).toHaveAttribute("aria-expanded", "false");
@@ -594,7 +594,7 @@ describe("ShopQuery workspace", () => {
     installApi({ response: chatResponse({ route: "HYBRID", sources: [{ chunk_id: 9, source_file: "shipping.md", section_title: "Vận chuyển", content: "Laptop miễn phí." }] }) });
     const second = render(<App />);
     await user.click(await screen.findByRole("button", { name: /Kết hợp dữ liệu/ }));
-    expect(await screen.findByText("SQL + Tài liệu")).toBeInTheDocument();
+    expect(await screen.findByText("Dữ liệu và tài liệu")).toBeInTheDocument();
     const hybridRows = screen.getByRole("button", { name: "Xem bảng dữ liệu · 1 dòng" });
     const hybridSql = screen.getByRole("button", { name: "Xem truy vấn SQL" });
     const hybridSources = screen.getByRole("button", { name: "Nguồn · 1" });

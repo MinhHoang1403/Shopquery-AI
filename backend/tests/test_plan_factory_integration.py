@@ -30,7 +30,7 @@ def test_real_provider_plan_through_authenticated_factory(monkeypatch, provider,
         )
     )
     responses = [
-        response(provider, '{"route":"SQL","reason":"Rows"}'),
+        response(provider, '{"route": "SQL", "reason": "Rows", "evidence_requirement": "tables"}'),
         response(provider, decision.model_dump_json()),
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, responses)
@@ -41,9 +41,7 @@ def test_real_provider_plan_through_authenticated_factory(monkeypatch, provider,
         assert isinstance(service._sql_pipeline._planner, QueryPlanner)
         assert isinstance(service._sql_pipeline._compiler, QueryCompiler)
         assert len(calls) == 2
-        assert "GenerationDecision" in json.dumps(
-            json.loads(calls[1].content)
-        )
+        assert "GenerationDecision" in json.dumps(json.loads(calls[1].content))
     finally:
         gateway.close()
 
@@ -65,7 +63,7 @@ def test_real_provider_plan_through_guest_factory(monkeypatch, provider):
         )
     )
     responses = [
-        response(provider, '{"route":"SQL","reason":"Rows"}'),
+        response(provider, '{"route": "SQL", "reason": "Rows", "evidence_requirement": "tables"}'),
         response(provider, decision.model_dump_json()),
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, responses)

@@ -43,6 +43,13 @@ def compose_sql_answer(
     if not rows:
         return "Không tìm thấy kết quả thỏa điều kiện trong bộ dữ liệu hiện tại."
     metadata = {column.key: column for column in columns}
+    if not columns and not counts:
+        if len(rows) == 1 and len(rows[0]) == 1 and next(iter(rows[0].values())) is None:
+            return "Kết quả chưa có giá trị được ghi nhận."
+        return (
+            f"Tìm thấy **{format_number(len(rows))} kết quả** thỏa điều kiện. "
+            "Mở bảng dữ liệu để xem chi tiết."
+        )
     if len(rows) == 1 and any(c.provenance == "aggregate" for c in columns):
         row = rows[0]
         if ranking is not None and ranking[0] in row:

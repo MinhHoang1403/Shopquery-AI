@@ -40,7 +40,15 @@ def test_compiled_count_provenance_and_exact_rows_need_no_answer_generation():
 
 
 def test_neutral_table_preserves_large_numbers_null_and_does_not_invent_empty_rows():
-    answer = compose_sql_answer([{"n": "9007199254740993", "x": Decimal("0.0000"), "y": None}], ())
+    answer = compose_sql_answer(
+        [{"n": "9007199254740993", "x": Decimal("0.0000"), "y": None}],
+        (),
+        (
+            ResultColumn(key="n", label="Mã"),
+            ResultColumn(key="x", label="Giá trị", numeric=True),
+            ResultColumn(key="y", label="Thiếu"),
+        ),
+    )
     assert "9007199254740993" in answer and "Chưa có dữ liệu" in answer
     assert "Không tìm thấy" in compose_sql_answer([], ())
 

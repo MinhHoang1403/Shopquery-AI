@@ -17,7 +17,7 @@ describe("Assistant content", () => {
       response: { answer: "Nhà cung cấp tạm thời không khả dụng.", error: "Provider unavailable",
         route: null, sql: null, rows: [], sources: [], requested_model: "gemini", used_model: null,
         error_context: { attempted_route: "HYBRID", correlation_id: id } } }} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Chưa thể hoàn tất truy vấn này.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Chưa thể xử lý câu hỏi này chính xác. Dữ liệu của bạn vẫn được giữ.");
     expect(screen.queryByText(id)).not.toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Chi tiết lỗi" }));

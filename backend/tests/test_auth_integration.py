@@ -398,7 +398,16 @@ def test_owned_pipelines_execute_real_sql_retrieval_with_offline_providers(
             assert "Private account 1" not in prompt
             assert accounts.b.dataset.table.physical_table_name not in prompt
             if response_model.__name__ == "RouteDecision":
-                return response_model(route=route, reason="Offline fixture")
+                return response_model(
+                    evidence_requirement={
+                        "SQL": "tables",
+                        "RAG": "documents",
+                        "HYBRID": "both",
+                        "UNSUPPORTED": "unavailable",
+                    }[route],
+                    route=route,
+                    reason="Offline fixture",
+                )
             if response_model.__name__ == "PlanDecision":
                 from tests.plan_fixtures import decision_from_sql
 

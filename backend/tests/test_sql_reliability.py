@@ -19,17 +19,12 @@ from app.text_to_sql.validator import SqlValidator
 from tests.test_dataset_routing import FakeRouter
 from tests.test_workspace_prompts import tuition_context
 
-DEFAULT_MESSAGE = (
-    "Mình chưa đủ thông tin để trả lời chính xác câu hỏi này. "
-    "Bạn hãy kiểm tra dữ liệu hoặc liên kết bảng trong Quản lý dữ liệu nhé."
-)
+DEFAULT_MESSAGE = "Chưa thể xử lý câu hỏi này chính xác trong phạm vi hỗ trợ hiện tại."
 RELATIONSHIP_MESSAGE = (
     "Mình chưa tìm thấy liên kết phù hợp giữa các bảng. "
     "Bạn có thể thiết lập trong Quản lý dữ liệu → Liên kết bảng."
 )
-CALCULATION_MESSAGE = (
-    "Mình chưa thể tính chính xác kết quả này từ dữ liệu hiện có. Bạn thử hỏi theo cách khác nhé."
-)
+CALCULATION_MESSAGE = "Chưa thể xử lý phép tính này chính xác. Bạn có thể xem dữ liệu liên quan."
 
 
 def test_join_prompt_includes_exact_from_fragment_even_when_dimension_is_listed_first() -> None:

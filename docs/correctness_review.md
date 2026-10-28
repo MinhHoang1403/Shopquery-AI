@@ -1,5 +1,27 @@
 # Sửa correctness và trình bày kết quả sau bàn giao
 
+## Quyết định bổ sung 28/10/2026 — evidence routing và UX
+
+Baseline b576ab8/API e2722da/4a80e003 được kiểm lại bằng strict verifier:88 modules,
+không source/config drift; PostgreSQL và sáu Langfuse services healthy. Cửa sổ cũ đã đóng.
+Yêu cầu mới cho phép tối đa8 câu UI/16 generation/5 query/0 document, attempts1,
+không retry/fallback. Chưa dispatch trong bước chẩn đoán offline.
+
+| Vấn đề | Bằng chứng | Nguồn nghiên cứu | Phương án | Rủi ro | Test chứng minh |
+| --- | --- | --- | --- | --- | --- |
+| Policy-only chọn HYBRID | Trace0029c481; QueryRouter chỉ nhận route/reason, không có hợp đồng về bằng chứng cần dùng | RAT-SQL: liên kết schema; PICARD: hợp lệ cấu trúc không đồng nghĩa đúng ngữ nghĩa | Cùng classifier trả evidence requirement; backend suy route, kiểm capability; không thêm call/regex ngành | Model vẫn có thể phân loại sai evidence; cần live, mocks không đo accuracy | Cặp policy/data/application nhiều domain; contradiction/missing metadata; unavailable capability |
+| Context làm lẫn intent | Prompt hiện ghép current question với các lượt trước | Spider: tách schema/queries; nguyên tắc scope hiện có | Nêu rõ current request và context chỉ để giải tham chiếu; không dùng route trước làm authority | Không tự chứng minh semantic accuracy | Topic switch/rule-only follow-up; failed/unverified/cross-owner context |
+| Lời trả lời lộ labels/thiếu thông báo phù hợp | Presenter fallback dùng raw alias; ErrorDetails luôn hiển thị một câu chung, message backend có SDK/SQL | ToTTo: trung thành dữ kiện; metadata compiler là authority | Summary trung tính khi thiếu metadata; error summary theo category an toàn, details vẫn thu gọn | Không đoán nhãn/đơn vị từ alias | Unknown alias/date/ID/Decimal; provider khác validation/insufficient; history/accessibility |
+| Tổng quát hóa | Các mocks cũ cung cấp route mong muốn, không thể chứng minh model hiểu câu hỏi | Spider/BIRD: schema khác và kết quả execution | Tách fixtures phát triển và domain held-out; independent PostgreSQL oracle, biến đổi IDs/columns/values | Không tuyên bố Spider/BIRD benchmark hoặc routing accuracy từ mocks | Targeted PG/metamorphic + live giới hạn |
+
+Nguồn chính: [RAT-SQL](https://aclanthology.org/2020.acl-main.677/),
+[Spider](https://aclanthology.org/D18-1425/),
+[BIRD](https://proceedings.neurips.cc/paper_files/paper/2023/hash/83fc8fab1710363050bbd1d4b8cc0021-Abstract-Datasets_and_Benchmarks.html),
+[PICARD](https://aclanthology.org/2021.emnlp-main.779/),
+[ToTTo](https://aclanthology.org/2020.emnlp-main.89/).
+Đây là nguyên tắc thiết kế/đánh giá, không phải bằng chứng mô hình ShopQuery đạt các benchmark.
+Giữ Gemini native wire của QueryPlan và các guards; không đổi SDK, timeout, auth hoặc Knowledge endpoint.
+
 Baseline: main `1f7871a16c16f9b840703e50199ec81f41269a9c`, API application
 `3fe4cc2`/image `d8ad8aa5`, Web `02d5cbb`/image `ae181335`. Một deployment 8080;
 không đổi DB/schema, model, gate, fallback, Guest policy, embedding hoặc Langfuse.

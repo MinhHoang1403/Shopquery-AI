@@ -93,7 +93,10 @@ def completion(content):
 
 
 def test_chatopenai_sends_verified_completion_schema_and_placeholder(monkeypatch):
-    gateway, calls = harness(monkeypatch, [completion('{"route":"SQL","reason":"Rows"}')])
+    gateway, calls = harness(
+        monkeypatch,
+        [completion('{"route": "SQL", "reason": "Rows", "evidence_requirement": "tables"}')],
+    )
     try:
         result = gateway.generate_structured("Classify", RouteDecision)
     finally:
@@ -123,7 +126,11 @@ def test_http_error_classification_and_sdk_retry_bound(monkeypatch, status):
 
 def test_malformed_structured_fails_without_another_paid_request(monkeypatch):
     gateway, calls = harness(
-        monkeypatch, [completion("bad-json"), completion('{"route":"SQL","reason":"Rows"}')]
+        monkeypatch,
+        [
+            completion("bad-json"),
+            completion('{"route": "SQL", "reason": "Rows", "evidence_requirement": "tables"}'),
+        ],
     )
     with pytest.raises(ProviderError) as error:
         gateway.generate_structured("Classify", RouteDecision)
@@ -500,7 +507,7 @@ def test_sql_only_build_does_not_instantiate_gemini(monkeypatch):
     class Gateway:
         def generate_structured(self, prompt, response_model):
             if response_model is RouteDecision:
-                return response_model(route="SQL", reason="Rows")
+                return response_model(evidence_requirement="tables", route="SQL", reason="Rows")
             return decision_from_sql("SELECT COUNT(*) AS total FROM products", prompt)
 
         def generate_text(self, prompt):

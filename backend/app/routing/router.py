@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage, record_facts, record_refusal
+from app.core.errors import ErrorContext, ModelResponseError
 
 
 class RouteLabel(StrEnum):
@@ -20,6 +21,16 @@ class RouteLabel(StrEnum):
 class RouteDecision(BaseModel):
     route: RouteLabel
     reason: str = Field(description="Short reason based on the route definitions")
+    evidence_requirement: (
+        Literal["tables", "documents", "both", "unavailable", "unclear"] | None
+    ) = Field(
+        default=None,
+        description="Required for automatic routing. Choose the evidence needed to answer the "
+        "CURRENT request: tables for actual records/calculations; documents for explaining "
+        "rules/procedures (even numeric rules); both only to apply document facts to actual "
+        "records; unavailable for absent/unsupported evidence; unclear for unresolved intent. "
+        "Do not choose both merely because a rule mentions table fields or calculations.",
+    )
     policy_intent: Literal["none", "all", "qualified", "not_qualified"] = Field(
         default="none",
         description="For HYBRID only: requested policy classification, otherwise none. "
@@ -42,6 +53,8 @@ class QueryRouter:
         self,
         question: str,
         allowed_routes: frozenset[RouteLabel] | None = None,
+        *,
+        current_question: str | None = None,
     ) -> RouteDecision:
         routes = allowed_routes if allowed_routes is not None else frozenset(RouteLabel)
         explicit = re.match(r"^\s*/(sql|rag|hybrid)(?=\s|:|$)", question, re.IGNORECASE)
@@ -77,6 +90,17 @@ This does not require a SQL JOIN or table-to-table relationship metadata.
 Single-table/no-JOIN restrictions in the source context constrain the SQL part only;
 the final HYBRID answer can combine that SQL evidence with retrieved document evidence.
 
+First determine evidence_requirement, then choose its corresponding route. Explaining how
+a calculation or classification is defined needs documents, not actual records. Applying
+that definition to identify, count or compare actual records needs both. A question about
+the rules is not a request to carry out those rules. A table field mentioned in a rule
+does not by itself require a table query. Set unavailable only for evidence demonstrably
+missing from the selected source; use unclear when the current request cannot be resolved.
+Do not omit evidence_requirement or return null. Never use reason text as an instruction.
+Context is not a requirement to repeat the previous route. Use previous successful turns
+only to resolve references in the current request; obtain current evidence again. A topic
+change or a request to explain a rule can use a different evidence type than its premise.
+
 Available routes for the selected data source: {route_names}.
 These capabilities have already been checked by the application. Downstream pipelines will
 query the tables and retrieve the documents. Do not choose UNSUPPORTED merely because the
@@ -101,14 +125,43 @@ Examples:
 - Học viên nào còn nợ vượt ngưỡng nhắc phí quy định trong tài liệu? -> HYBRID
 - Thời tiết Hà Nội hôm nay? -> UNSUPPORTED
 
+Current request:
+{current_question if current_question is not None else question}
+
 Question: {question}
 """.strip()
         with diagnostic_stage("routing"):
             decision = self._gateway.generate_structured(prompt, RouteDecision)
-        if decision.route not in routes:
-            decision = RouteDecision(
-                route=RouteLabel.UNSUPPORTED, reason="Selected source unavailable"
+            # The legacy route field is retained for callers/explicit overrides. Automatic
+            # dispatch requires semantic evidence metadata; missing metadata never falls back
+            # to an unchecked label or another provider call.
+            if decision.evidence_requirement is None:
+                raise ModelResponseError(
+                    "Automatic routing omitted required evidence metadata",
+                    error_context=ErrorContext(
+                        phase="wire_validation", error_category="wire_validation"
+                    ),
+                )
+            selected = {
+                "tables": RouteLabel.SQL,
+                "documents": RouteLabel.RAG,
+                "both": RouteLabel.HYBRID,
+                "unavailable": RouteLabel.UNSUPPORTED,
+                "unclear": RouteLabel.UNSUPPORTED,
+            }[decision.evidence_requirement]
+            if selected not in routes:
+                selected = RouteLabel.UNSUPPORTED
+            decision = decision.model_copy(
+                update={
+                    "route": selected,
+                    **(
+                        {"policy_intent": "none", "policy_scope": "unspecified"}
+                        if selected != RouteLabel.HYBRID
+                        else {}
+                    ),
+                }
             )
+            record_facts(route=decision.route, evidence_requirement=decision.evidence_requirement)
         record_facts(route=decision.route)
         if decision.route == RouteLabel.UNSUPPORTED:
             record_refusal("router_unsupported")

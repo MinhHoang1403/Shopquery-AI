@@ -21,7 +21,16 @@ class FakeGateway:
 
     def generate_structured(self, prompt: str, response_model: type[Any]) -> Any:
         if response_model is RouteDecision:
-            return RouteDecision(route=self.route, reason="test classification")
+            return RouteDecision(
+                evidence_requirement={
+                    "SQL": "tables",
+                    "RAG": "documents",
+                    "HYBRID": "both",
+                    "UNSUPPORTED": "unavailable",
+                }[self.route],
+                route=self.route,
+                reason="test classification",
+            )
         if response_model is RagAnswerDraft:
             return RagAnswerDraft(answer="Câu trả lời có nguồn.", used_chunk_ids=[11])
         if response_model is HybridAnswerDraft:

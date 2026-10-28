@@ -88,7 +88,10 @@ def test_provider_count_sum_group_and_approved_joins_match_oracle(
         monkeypatch,
         provider,
         [
-            response(provider, '{"route":"SQL","reason":"Synthetic fixture"}'),
+            response(
+                provider,
+                '{"route": "SQL", "reason": "Synthetic fixture", "evidence_requirement": "tables"}',
+            ),
             response(provider, decision.model_dump_json()),
         ],
     )
@@ -97,8 +100,6 @@ def test_provider_count_sum_group_and_approved_joins_match_oracle(
         assert result.rows == expected
         assert result.sql.count("JOIN") == table_count - 1
         assert "WHERE" not in result.sql and len(calls) == 2
-        assert "GenerationDecision" in json.dumps(
-            json.loads(calls[1].content)
-        )
+        assert "GenerationDecision" in json.dumps(json.loads(calls[1].content))
     finally:
         gateway.close()

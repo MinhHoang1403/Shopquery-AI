@@ -5,9 +5,9 @@ import { ResponseEvidence } from "./ResponseEvidence";
 import { ErrorDetails } from "./ErrorDetails";
 
 const ROUTE_LABELS: Record<RouteLabel, string> = {
-  SQL: "SQL",
+  SQL: "Dữ liệu",
   RAG: "Tài liệu",
-  HYBRID: "SQL + Tài liệu",
+  HYBRID: "Dữ liệu và tài liệu",
   UNSUPPORTED: "Chưa thể trả lời",
 };
 

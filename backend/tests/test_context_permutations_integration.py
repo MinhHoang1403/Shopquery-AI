@@ -67,7 +67,11 @@ def test_context_permutations_and_multiple_unrelated_tables_keep_oracle(
         def generate_structured(self, prompt, schema):
             assert all(table.physical_table_name in prompt for table in tables)
             if schema is RouteDecision:
-                return RouteDecision(route=RouteLabel.SQL, reason="Offline permutation")
+                return RouteDecision(
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Offline permutation",
+                )
             assert schema is PlanDecision
             return decision_from_sql(golden_sql(domain, dataset, 3), prompt)
 

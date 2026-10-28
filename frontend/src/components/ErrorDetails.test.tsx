@@ -5,6 +5,15 @@ import { ErrorDetails } from "./ErrorDetails";
 
 afterEach(cleanup);
 
+it("explains provider timeout without exposing diagnostic labels in the summary", () => {
+  render(<ErrorDetails text="HTTP504 ProviderError" response={{
+    answer:"HTTP504 ProviderError",error:"HTTP504 ProviderError",route:null,rows:[],sources:[],sql:null,
+    error_context:{error_category:"timeout",origin_stage:"routing"},
+  }} />);
+  expect(screen.getByRole("alert")).toHaveTextContent("Dịch vụ AI chưa phản hồi kịp");
+  expect(screen.queryByText(/HTTP504/)).not.toBeInTheDocument();
+});
+
 it("keeps one compact summary, toggles by keyboard and copies a bounded code", async () => {
   const user=userEvent.setup();
   const copy=vi.spyOn(navigator.clipboard,"writeText").mockResolvedValue();

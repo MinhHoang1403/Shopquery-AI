@@ -229,7 +229,9 @@ def test_hybrid_unsafe_drafts_stop_after_evidence_before_execution_or_answer(pro
     rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
     sql = f"SELECT s.student_id,{projection} {CHAIN_ORDERS[0]} GROUP BY s.student_id" + suffix
     gateway.generate_structured.side_effect = [
-        RouteDecision(route=RouteLabel.HYBRID, reason="Scripted offline"),
+        RouteDecision(
+            evidence_requirement="both", route=RouteLabel.HYBRID, reason="Scripted offline"
+        ),
         SqlFixture(sql=sql),
     ]
     pipeline = ValidationPipeline(
