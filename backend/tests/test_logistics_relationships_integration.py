@@ -112,6 +112,8 @@ def test_numbered_logistics_upload_sql_owner_csrf_and_history(
             assert "Safe three-table tree" in prompt or '"relationships": [' in prompt
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="tables",
                     route=RouteLabel.SQL,
                     reason="Offline synthetic logistics",

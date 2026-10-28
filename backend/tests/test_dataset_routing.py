@@ -18,6 +18,8 @@ class FakeRouter:
         assert question
         self.allowed = allowed_routes
         return RouteDecision(
+            policy_intent="none",
+            policy_scope="unspecified",
             evidence_requirement={
                 "SQL": "tables",
                 "RAG": "documents",

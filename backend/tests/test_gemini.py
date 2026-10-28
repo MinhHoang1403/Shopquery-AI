@@ -28,7 +28,13 @@ class GatewayHarness:
 
 def _success_response() -> httpx.Response:
     decision = json.dumps(
-        {"evidence_requirement": "tables", "route": "SQL", "reason": "Requires commerce rows"}
+        {
+            "policy_intent": "none",
+            "policy_scope": "unspecified",
+            "evidence_requirement": "tables",
+            "route": "SQL",
+            "reason": "Requires commerce rows",
+        }
     )
     return httpx.Response(
         200,

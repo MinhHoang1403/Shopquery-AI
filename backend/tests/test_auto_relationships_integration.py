@@ -173,7 +173,11 @@ def test_upload_chat_and_history_with_automatic_relation(
             assert "Never JOIN tables" not in prompt
             if schema is RouteDecision:
                 return RouteDecision(
-                    evidence_requirement="tables", route=RouteLabel.SQL, reason="Offline synthetic"
+                    policy_intent="none",
+                    policy_scope="unspecified",
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Offline synthetic",
                 )
             assert schema is PlanDecision
             assert "Row count has zero arguments" in prompt

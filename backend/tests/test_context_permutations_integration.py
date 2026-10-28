@@ -68,6 +68,8 @@ def test_context_permutations_and_multiple_unrelated_tables_keep_oracle(
             assert all(table.physical_table_name in prompt for table in tables)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="tables",
                     route=RouteLabel.SQL,
                     reason="Offline permutation",

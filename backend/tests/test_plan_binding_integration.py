@@ -114,7 +114,8 @@ def test_dimension_identity_completion_matches_independent_postgresql(
     replies = [
         response(
             provider,
-            '{"route": "SQL", "reason": "Independent fixture", "evidence_requirement": "tables"}',
+            '{"route":"SQL","reason":"Independent fixture","evidence_requirement":"tables",'
+            '"policy_intent":"none","policy_scope":"unspecified"}',
         ),
         response(provider, PlanDecision(plan=plan).model_dump_json()),
     ]

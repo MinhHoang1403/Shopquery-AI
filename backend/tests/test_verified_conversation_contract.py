@@ -31,7 +31,11 @@ def test_backend_status_reaches_persistence_and_reload_and_followup_rechecks_evi
     router = Mock(
         route=Mock(
             return_value=RouteDecision(
-                evidence_requirement="both", route=RouteLabel.HYBRID, reason="fixture"
+                policy_intent="none",
+                policy_scope="unspecified",
+                evidence_requirement="both",
+                route=RouteLabel.HYBRID,
+                reason="fixture",
             )
         )
     )

@@ -54,6 +54,8 @@ def test_failure_stage_is_precise_and_has_no_raw_evidence(stage, monkeypatch):
             if stage == "structured_output_invalid":
                 raise StructuredResponseError("SENSITIVE provider text")
             return RouteDecision(
+                policy_intent="none",
+                policy_scope="unspecified",
                 evidence_requirement={
                     "SQL": "tables",
                     "RAG": "documents",

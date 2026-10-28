@@ -86,6 +86,8 @@ def test_domain_pipeline_matches_independent_fact_grain_oracle(
             if schema is RouteDecision:
                 assert domain[0] + ".csv" in prompt and domain[1] + ".csv" in prompt
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement={
                         "SQL": "tables",
                         "RAG": "documents",
@@ -184,6 +186,8 @@ def test_single_table_questions_need_no_relationship(model: str, metric: str) ->
                 assert question in prompt
                 assert "Never JOIN tables" not in prompt
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="tables",
                     route=RouteLabel.SQL,
                     reason="Single table fixture",

@@ -13,6 +13,41 @@ from app.routing.service import DatasetChatService
 from tests.test_plan_providers import gateway_harness, response
 
 
+def routing_fixture(payload):
+    return RouteDecision.model_validate(
+        {
+            "policy_intent": "none",
+            "policy_scope": "unspecified",
+            **payload,
+        }
+    )
+
+
+def test_automatic_wire_contract_requires_evidence_intent_and_scope():
+    assert {"evidence_requirement", "policy_intent", "policy_scope"}.issubset(
+        RouteDecision.model_json_schema()["required"]
+    )
+
+
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+def test_missing_classification_metadata_never_silently_dispatches_sql(monkeypatch, provider):
+    payload = json.dumps(
+        {"route": "HYBRID", "reason": "Current evidence needs both", "evidence_requirement": "both"}
+    )
+    gateway, calls = gateway_harness(monkeypatch, provider, [response(provider, payload)])
+    sql, rag, hybrid = Mock(), Mock(), Mock()
+    try:
+        with pytest.raises(ModelResponseError):
+            DatasetChatService(QueryRouter(gateway), sql, rag, hybrid).chat(
+                "Đối chiếu các đối tượng với điều kiện trong tài liệu."
+            )
+        assert len(calls) == 1
+        for pipeline in (sql, rag, hybrid):
+            pipeline.run.assert_not_called()
+    finally:
+        gateway.close()
+
+
 @pytest.mark.parametrize(
     "evidence,expected",
     [
@@ -25,7 +60,7 @@ from tests.test_plan_providers import gateway_harness, response
 )
 def test_evidence_requirement_controls_dispatch_even_when_model_label_disagrees(evidence, expected):
     gateway = Mock()
-    gateway.generate_structured.return_value = RouteDecision.model_validate(
+    gateway.generate_structured.return_value = routing_fixture(
         {
             "route": "HYBRID",
             "reason": "Untrusted explanation",
@@ -43,7 +78,9 @@ def test_evidence_requirement_controls_dispatch_even_when_model_label_disagrees(
 
 def test_missing_evidence_fails_closed_without_sql_rag_or_second_classifier():
     gateway, sql, rag, hybrid = Mock(), Mock(), Mock(), Mock()
-    gateway.generate_structured.return_value = RouteDecision(route="HYBRID", reason="Legacy only")
+    gateway.generate_structured.return_value = RouteDecision.model_construct(
+        route="HYBRID", reason="Legacy only"
+    )
     with pytest.raises(ModelResponseError):
         DatasetChatService(QueryRouter(gateway), sql, rag, hybrid).chat("Quy định?")
     gateway.generate_structured.assert_called_once()
@@ -55,7 +92,7 @@ def test_missing_evidence_fails_closed_without_sql_rag_or_second_classifier():
 def test_required_evidence_cannot_downgrade_to_an_available_but_wrong_pipeline(evidence):
     gateway = Mock(
         generate_structured=Mock(
-            return_value=RouteDecision.model_validate(
+            return_value=routing_fixture(
                 {
                     "route": "RAG",
                     "reason": "fixture",
@@ -98,7 +135,7 @@ CASES = [
 def test_cross_domain_intent_contract(domain, question, evidence):
     gateway = Mock(
         generate_structured=Mock(
-            return_value=RouteDecision.model_validate(
+            return_value=routing_fixture(
                 {
                     "route": "HYBRID",
                     "reason": "Scripted evidence, not semantic accuracy",
@@ -134,7 +171,7 @@ def test_cross_domain_intent_contract(domain, question, evidence):
 def test_current_rule_question_is_distinguished_from_a_verified_comparison_premise():
     gateway = Mock(
         generate_structured=Mock(
-            return_value=RouteDecision.model_validate(
+            return_value=routing_fixture(
                 {
                     "route": "HYBRID",
                     "reason": "Policy explanation",
@@ -158,7 +195,13 @@ def test_evidence_contract_survives_pinned_sdk_wire_and_local_validation(
     monkeypatch, provider, evidence
 ):
     payload = json.dumps(
-        {"route": "HYBRID", "reason": "Synthetic fixture", "evidence_requirement": evidence}
+        {
+            "route": "HYBRID",
+            "reason": "Synthetic fixture",
+            "policy_intent": "none",
+            "policy_scope": "unspecified",
+            "evidence_requirement": evidence,
+        }
     )
     gateway, calls = gateway_harness(monkeypatch, provider, [response(provider, payload)])
     try:
@@ -187,17 +230,81 @@ def test_evidence_contract_survives_pinned_sdk_wire_and_local_validation(
 
 
 def test_evidence_telemetry_cannot_export_free_text():
-    assert safe_metadata({"evidence_requirement": "PRIVATE question"}) == {}
+    assert (
+        safe_metadata(
+            {
+                "evidence_requirement": "PRIVATE question",
+                "policy_intent": "PRIVATE answer",
+                "policy_scope": "PRIVATE scope",
+            }
+        )
+        == {}
+    )
     with diagnostic_request() as trace:
         record_facts(evidence_requirement="PRIVATE question")
     assert "evidence_requirement" not in trace.facts
+
+
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+@pytest.mark.parametrize("selection", ["all", "qualified", "not_qualified"])
+def test_complete_sdk_classification_reaches_coverage_without_a_question_template(
+    monkeypatch, provider, selection
+):
+    from app.routing.hybrid import HybridPipeline
+    from tests.test_evidence_coverage import fixture, pipeline
+
+    chunk, context, _ = fixture()
+    rows = [
+        {"entity_id": "U1", "metric_value": "40.00"},
+        {"entity_id": "U2", "metric_value": "0.00"},
+    ]
+    sql, executor, drafting = pipeline(context, rows)
+    payload = json.dumps(
+        {
+            "route": "HYBRID",
+            "reason": "Synthetic evidence requirements",
+            "evidence_requirement": "both",
+            "policy_intent": selection,
+            "policy_scope": "all_entities",
+        }
+    )
+    gateway, calls = gateway_harness(monkeypatch, provider, [response(provider, payload)])
+    rag = Mock(retrieve=Mock(return_value=[chunk]))
+    try:
+        with diagnostic_request() as trace:
+            result = DatasetChatService(
+                QueryRouter(gateway),
+                sql,
+                rag,
+                HybridPipeline(sql, rag, drafting, context),
+            ).chat("Đối chiếu toàn bộ đối tượng với các điều kiện được lưu.")
+        assert result.verification_status == "verified_classification"
+        assert (
+            result.answer_row_indices
+            == {
+                "all": None,
+                "qualified": (0,),
+                "not_qualified": (1,),
+            }[selection]
+        )
+        assert trace.facts["policy_intent"] == selection
+        assert trace.facts["policy_scope"] == "all_entities"
+        assert len(calls) == 1
+        executor.execute.assert_called_once()
+        drafting.generate_structured.assert_not_called()
+    finally:
+        gateway.close()
 
 
 def test_unclear_request_asks_for_scope_without_mislabeling_a_provider_failure():
     gateway = Mock(
         generate_structured=Mock(
             return_value=RouteDecision(
-                route="UNSUPPORTED", reason="No resolved referent", evidence_requirement="unclear"
+                route="UNSUPPORTED",
+                reason="No resolved referent",
+                evidence_requirement="unclear",
+                policy_intent="none",
+                policy_scope="unspecified",
             )
         )
     )

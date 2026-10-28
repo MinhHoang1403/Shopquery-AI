@@ -165,6 +165,8 @@ def test_gate_d_questions_oracle_and_authenticated_history(
             if schema is RouteDecision:
                 assert "Required FROM/JOIN fragment" not in prompt
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement={
                         "SQL": "tables",
                         "RAG": "documents",
@@ -276,6 +278,8 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="both",
                     route=RouteLabel.HYBRID,
                     reason="Offline hypothesis",
@@ -325,6 +329,8 @@ def test_verified_rule_classification_does_not_request_model_verdict(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="both",
                     route=RouteLabel.HYBRID,
                     reason="Offline evidence test",

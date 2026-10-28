@@ -56,6 +56,8 @@ def test_selected_count_sort_matches_independent_oracle(
             calls.append(response_model.__name__)
             if response_model is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="tables",
                     route=RouteLabel.SQL,
                     reason="Offline scripted route",

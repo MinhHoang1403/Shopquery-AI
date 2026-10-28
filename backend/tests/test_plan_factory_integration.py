@@ -30,7 +30,10 @@ def test_real_provider_plan_through_authenticated_factory(monkeypatch, provider,
         )
     )
     responses = [
-        response(provider, '{"route": "SQL", "reason": "Rows", "evidence_requirement": "tables"}'),
+        response(
+            provider,
+            '{"route":"SQL","reason":"Rows","evidence_requirement":"tables","policy_intent":"none","policy_scope":"unspecified"}',
+        ),
         response(provider, decision.model_dump_json()),
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, responses)
@@ -63,7 +66,10 @@ def test_real_provider_plan_through_guest_factory(monkeypatch, provider):
         )
     )
     responses = [
-        response(provider, '{"route": "SQL", "reason": "Rows", "evidence_requirement": "tables"}'),
+        response(
+            provider,
+            '{"route":"SQL","reason":"Rows","evidence_requirement":"tables","policy_intent":"none","policy_scope":"unspecified"}',
+        ),
         response(provider, decision.model_dump_json()),
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, responses)

@@ -99,7 +99,8 @@ def test_three_table_categories_merge_entities_and_keep_exact_fact_totals(monkey
                 [
                     response(
                         provider,
-                        '{"route":"SQL","reason":"Categories","evidence_requirement":"tables"}',
+                        '{"route":"SQL","reason":"Categories","evidence_requirement":"tables",'
+                        '"policy_intent":"none","policy_scope":"unspecified"}',
                     ),
                     response(provider, PlanDecision(plan=plan).model_dump_json()),
                 ],
@@ -143,7 +144,8 @@ def test_three_table_categories_merge_entities_and_keep_exact_fact_totals(monkey
             [
                 response(
                     provider,
-                    '{"route":"SQL","reason":"Numeric filter","evidence_requirement":"tables"}',
+                    '{"route":"SQL","reason":"Numeric filter","evidence_requirement":"tables",'
+                    '"policy_intent":"none","policy_scope":"unspecified"}',
                 ),
                 response(provider, PlanDecision(plan=filtered).model_dump_json()),
             ],

@@ -101,6 +101,8 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement={
                         "SQL": "tables",
                         "RAG": "documents",
@@ -173,6 +175,8 @@ def test_guest_upload_detects_then_chats_without_manual_confirmation(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="tables",
                     route=RouteLabel.SQL,
                     reason="Synthetic guest auto relation",

@@ -45,6 +45,8 @@ class GuestGateway:
         if schema is RouteDecision:
             assert "Never JOIN tables" not in prompt
             return RouteDecision(
+                policy_intent="none",
+                policy_scope="unspecified",
                 evidence_requirement={
                     "SQL": "tables",
                     "RAG": "documents",

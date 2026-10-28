@@ -21,10 +21,7 @@ class RouteLabel(StrEnum):
 class RouteDecision(BaseModel):
     route: RouteLabel
     reason: str = Field(description="Short reason based on the route definitions")
-    evidence_requirement: (
-        Literal["tables", "documents", "both", "unavailable", "unclear"] | None
-    ) = Field(
-        default=None,
+    evidence_requirement: Literal["tables", "documents", "both", "unavailable", "unclear"] = Field(
         description="Required for automatic routing. Choose the evidence needed to answer the "
         "CURRENT request: tables for actual records/calculations; documents for explaining "
         "rules/procedures (even numeric rules); both only to apply document facts to actual "
@@ -32,12 +29,12 @@ class RouteDecision(BaseModel):
         "Do not choose both merely because a rule mentions table fields or calculations.",
     )
     policy_intent: Literal["none", "all", "qualified", "not_qualified"] = Field(
-        default="none",
         description="For HYBRID only: requested policy classification, otherwise none. "
-        "all means both qualifying and non-qualifying entities. Do not infer a policy verdict.",
+        "all means both qualifying and non-qualifying entities. Use all when the user asks "
+        "to assess each entity or asks both who qualifies and who does not. none means an "
+        "explanation without an actual eligibility/threshold verdict. Do not infer a verdict.",
     )
     policy_scope: Literal["unspecified", "all_entities", "filtered_entities"] = Field(
-        default="unspecified",
         description="all_entities only when the user requests the whole workspace entity set "
         "without additional entity/date/status/top-N restrictions. Preserve all user qualifiers "
         "as filtered_entities; unspecified when intent is unclear.",
@@ -62,9 +59,25 @@ class QueryRouter:
             selected = RouteLabel(explicit.group(1).upper())
             if selected in routes:
                 record_facts(route=selected)
-                return RouteDecision(route=selected, reason="Explicit user source selection")
+                return RouteDecision(
+                    route=selected,
+                    reason="Explicit user source selection",
+                    evidence_requirement={
+                        RouteLabel.SQL: "tables",
+                        RouteLabel.RAG: "documents",
+                        RouteLabel.HYBRID: "both",
+                    }[selected],
+                    policy_intent="none",
+                    policy_scope="unspecified",
+                )
             record_facts(route=RouteLabel.UNSUPPORTED)
-            return RouteDecision(route=RouteLabel.UNSUPPORTED, reason="Selected source unavailable")
+            return RouteDecision(
+                route=RouteLabel.UNSUPPORTED,
+                reason="Selected source unavailable",
+                evidence_requirement="unavailable",
+                policy_intent="none",
+                policy_scope="unspecified",
+            )
         route_names = ", ".join(sorted(route.value for route in routes))
         source_context = self._source_context or (
             "Default demo store: products, categories, orders and order_items. "
@@ -132,10 +145,11 @@ Question: {question}
 """.strip()
         with diagnostic_stage("routing"):
             decision = self._gateway.generate_structured(prompt, RouteDecision)
-            # The legacy route field is retained for callers/explicit overrides. Automatic
-            # dispatch requires semantic evidence metadata; missing metadata never falls back
-            # to an unchecked label or another provider call.
-            if decision.evidence_requirement is None:
+            # Even injected gateways must supply the complete automatic routing contract.
+            # Never turn omitted classification metadata into a speculative SQL plan.
+            if not {"evidence_requirement", "policy_intent", "policy_scope"}.issubset(
+                decision.model_fields_set
+            ):
                 raise ModelResponseError(
                     "Automatic routing omitted required evidence metadata",
                     error_context=ErrorContext(
@@ -161,7 +175,12 @@ Question: {question}
                     ),
                 }
             )
-            record_facts(route=decision.route, evidence_requirement=decision.evidence_requirement)
+            record_facts(
+                route=decision.route,
+                evidence_requirement=decision.evidence_requirement,
+                policy_intent=decision.policy_intent,
+                policy_scope=decision.policy_scope,
+            )
         record_facts(route=decision.route)
         if decision.route == RouteLabel.UNSUPPORTED:
             record_refusal("router_unsupported")

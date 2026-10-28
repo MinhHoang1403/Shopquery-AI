@@ -127,7 +127,9 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
     gateway, calls = harness(
         monkeypatch,
         [
-            completion('{"route": "SQL", "reason": "Revenue", "evidence_requirement": "tables"}'),
+            completion(
+                '{"route":"SQL","reason":"Revenue","evidence_requirement":"tables","policy_intent":"none","policy_scope":"unspecified"}'
+            ),
             response("knowledge", decision.model_dump_json()),
         ],
     )

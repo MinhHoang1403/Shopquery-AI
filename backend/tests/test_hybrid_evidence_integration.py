@@ -84,6 +84,8 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="both",
                     route=RouteLabel.HYBRID,
                     reason="Offline explicit policy",
