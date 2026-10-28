@@ -74,6 +74,11 @@ Knowledge đã có SQL JOIN/RAG/Hybrid live passes trong phạm vi synthetic, nh
 Generation/embedding gửi dữ liệu tới provider đã chọn; chọn Knowledge không ngăn
 query/document embeddings gửi text tới Google. Không tự bật fallback hoặc Guest AI.
 
+Đợt sửa28/10/2026 đã triển khai Hybrid/follow-up và evidence UI mới. Nghiệm thu toàn bộ
+còn bị chặn: Knowledge403, một COUNT+SUM gặp Gemini504 và một câu hỏi chỉ về chính sách
+bị chọn sai route. Xem [kết quả mới, root causes và giới hạn](docs/correctness_review.md);
+không coi các PASS lịch sử là bảo đảm mọi câu hỏi tự nhiên.
+
 ## Cài đặt và vận hành
 
 Công cụ phát triển: Git, PowerShell, Python 3.11/uv, Node 24/npm; Docker Desktop dùng

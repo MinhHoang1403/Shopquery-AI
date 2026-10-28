@@ -140,19 +140,9 @@ class GeminiGateway:
                 config=config,
             ),
         )
-        refused = {"SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "RECITATION"}
-        if any(
-            getattr(candidate, "finish_reason", None) in refused
-            for candidate in (getattr(response, "candidates", None) or [])
-        ):
-            raise ProviderError(
-                "Gemini declined the response",
-                error_context=self._context(
-                    "generation", phase="response", error_category="model_refusal"
-                ),
-            )
+        response_text = self._response_text(response, "generation")
         try:
-            payload = json.loads(response.text)
+            payload = json.loads(response_text)
         except (ValueError, TypeError) as exc:
             raise self._structured_error("json_decode", "invalid_json", exc) from exc
         try:
@@ -256,18 +246,42 @@ class GeminiGateway:
                 config=types.GenerateContentConfig(temperature=0.1),
             ),
         )
-        try:
-            text = response.text.strip()
-            if not text:
-                raise ValueError("empty response")
-            return text
-        except Exception as exc:
-            raise ModelResponseError(
-                "Gemini answer generation failed",
+        return self._response_text(response, "answer generation")
+
+    def _response_text(self, response: Any, operation: str) -> str:
+        """Check provider block signals before parsing; never expose their raw contents."""
+        feedback = getattr(response, "prompt_feedback", None)
+        prompt_block = getattr(feedback, "block_reason", None)
+        refused = {
+            "SAFETY",
+            "BLOCKLIST",
+            "PROHIBITED_CONTENT",
+            "SPII",
+            "RECITATION",
+            "LANGUAGE",
+            "IMAGE_SAFETY",
+            "IMAGE_PROHIBITED_CONTENT",
+            "IMAGE_RECITATION",
+        }
+        if prompt_block not in (None, "", "BLOCKED_REASON_UNSPECIFIED") or any(
+            getattr(candidate, "finish_reason", None) in refused
+            for candidate in (getattr(response, "candidates", None) or [])
+        ):
+            raise ProviderError(
+                "Gemini declined the response",
                 error_context=self._context(
-                    "answer generation", phase="response", error_category="invalid_response"
+                    operation, phase="response", error_category="model_refusal"
                 ),
-            ) from exc
+            )
+        content = response.text
+        if not isinstance(content, str) or not content.strip():
+            raise ProviderError(
+                "Gemini returned no text response",
+                error_context=self._context(
+                    operation, phase="response", error_category="invalid_response"
+                ),
+            )
+        return content.strip()
 
     def embed_query(self, content: str) -> list[float]:
         prepared = f"task: question answering | query: {content}"

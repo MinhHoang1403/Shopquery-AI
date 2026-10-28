@@ -43,7 +43,8 @@ INNER fact key có thể row-equivalent. SUM/AVG NULL không đổi thành zero.
 executor là `Asia/Ho_Chi_Minh`; boundaries giữ offset và khoảng `>= start AND < end`.
 Không writes, CTE/subquery/window/locks hoặc hàm ngoài allowlist.
 
-Deployed26/10 inline results dùng structured rows; scalar/count+sum được diễn đạt
+Evidence UI triển khai28/10 mặc định thu gọn bảng/SQL/citation, không lặp inline table.
+Structured rows đi riêng với summary; scalar/count+sum được diễn đạt
 deterministic, không thêm generation call hoặc suy đơn vị từ alias. Numeric display
 chỉ opt-in theo compiled type/aggregate metadata; identifiers/unknown legacy strings
 giữ nguyên. Detail/SQL/sources vẫn mở được; kết quả lớn phân trang20, SQL cap200 giữ.
@@ -73,7 +74,11 @@ Guest giữ vector-only với isolation limits. Không chạy benchmark GPU đ�
 
 Hybrid retrieval trước SQL. Verified scope gồm một numeric rule SUM/AVG/row count/
 non-NULL count, exact threshold/operator/source units/entity key, all rows và whole
-single-chunk document. Closed bilingual prose grammar không phải general rules
+document. Một grammar đóng cho SUM có kỳ/trạng thái chỉ được dùng khi đủ toàn bộ
+registered chunks/section titles/hash/owner proof (tối đa20 chunks/60.000 ký tự) và
+COUNT/non-NULL/MIN/MAX toàn cột chứng minh mọi dòng nằm đúng phạm vi. Dữ liệu ngoài kỳ,
+status hỗn hợp, NULL, tên/heading ngoài grammar hoặc cột mơ hồ không được suy all-rows.
+Chưa hỗ trợ arbitrary filtered-policy plans. Closed bilingual prose grammar không phải general rules
 engine. Multiple/conflicting rules, unverified exceptions, thiếu metric hoặc mơ hồ
 identity/unit phải refusal/insufficient. Summary/detail dùng cùng decision set.
 

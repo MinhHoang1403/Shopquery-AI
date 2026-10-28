@@ -31,8 +31,8 @@ from tests.test_providers import harness
     "status,category",
     [
         (400, "request_rejected"),
-        (401, "authentication_or_permission"),
-        (403, "authentication_or_permission"),
+        (401, "authentication_failed"),
+        (403, "permission_denied"),
         (408, "timeout"),
         (429, "quota_or_rate_limit"),
         (503, "transient_unavailable"),

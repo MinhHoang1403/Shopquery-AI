@@ -202,6 +202,49 @@ def test_provider_error_retains_unknown_consumption_and_safe_category(export):
     assert "SENSITIVE" not in str(dict(call.attributes))
 
 
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+@pytest.mark.parametrize(
+    "status,category",
+    [
+        (401, "authentication_failed"),
+        (403, "permission_denied"),
+        (402, "payment_required"),
+        (504, "timeout"),
+    ],
+)
+def test_http_failure_exports_one_error_observation_with_exact_status(
+    export, monkeypatch, provider, status, category
+):
+    import httpx
+    import httpx2
+
+    from app.routing.router import QueryRouter
+    from tests.test_gemini import _build_harness
+    from tests.test_providers import harness
+
+    payload = {"error": {"code": status, "message": "SENSITIVE upstream error"}}
+    if provider == "knowledge":
+        gateway, calls = harness(monkeypatch, [httpx2.Response(status, json=payload)])
+    else:
+        run = _build_harness(monkeypatch, [httpx.Response(status, json=payload)], attempts=1)
+        gateway, calls = run.gateway, run.calls
+    _, collect = export
+    try:
+        with pytest.raises(ProviderError), diagnostic_request():
+            QueryRouter(gateway).route("SENSITIVE question")
+    finally:
+        gateway.close()
+    spans = collect()
+    generations = [span for span in spans if span.name == "generation"]
+    assert len(generations) == len(calls) == 1
+    facts = metadata(generations[0])
+    assert facts["http_status"] == status and facts["error_category"] == category
+    assert facts["provider"] == provider and facts["usage_status"] == "unknown"
+    assert generations[0].attributes["langfuse.observation.level"] == "ERROR"
+    assert not any(span.name == "sql_execution" for span in spans)
+    assert "SENSITIVE" not in str([dict(span.attributes) for span in spans])
+
+
 def test_disabled_does_not_initialize_sdk_or_change_result(monkeypatch):
     def unexpected(**_):
         pytest.fail("SDK must not initialize when OFF")

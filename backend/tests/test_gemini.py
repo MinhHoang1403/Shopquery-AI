@@ -147,8 +147,8 @@ def test_router_does_not_retry_authentication_error(
     ("status", "category"),
     [
         (400, "request_rejected"),
-        (401, "authentication_or_permission"),
-        (403, "authentication_or_permission"),
+        (401, "authentication_failed"),
+        (403, "permission_denied"),
         (429, "quota_or_rate_limit"),
         (503, "transient_unavailable"),
     ],

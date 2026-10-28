@@ -5,6 +5,13 @@ Không release tag/full Stage2, không enterprise/public-ready hoặc bảo đ�
 Một source main, một ShopQuery8080, một Langfuse3000. Runtime/image/config chính xác
 ở [deployment](deployment.md); quyết định cleanup/Git/tests cuối ở [handoff](operational_handoff.md).
 
+**Cập nhật28/10/2026:** correction application `29bb788` đang chạy trên8080. Hybrid và
+follow-up Giao nhận verified, SQL Khách sạn, DATE/ID và unsupported safety PASS live;
+full correction acceptance còn **RELEASE_BLOCKED** vì COUNT+SUM gặp Gemini504,
+Knowledge403 và một câu policy-only bị false refusal do chọn HYBRID. Các PASS cũ bên
+dưới có phạm vi/timestamp riêng, không thay các gate chưa đạt hiện tại.
+Root causes/functions, CI, scorecard và ngân sách: [correctness review](correctness_review.md).
+
 ## Bằng chứng đang dùng
 
 | Phạm vi | Kết luận / giới hạn | Nguồn |
@@ -49,7 +56,7 @@ thành công. Stages/model calls chỉ có khi thực chạy.
 Chi tiết implementation và failing reproductions được giữ trong
 [architecture audit](architecture_audit.md), không tạo pipeline hoặc luật nghiệp vụ mới.
 
-## Nghiệm thu live gần nhất — cửa sổ đã đóng
+## Baseline live27/10/2026 — cửa sổ đã đóng
 
 Ngày 27/10/2026, source 3fe4cc2/API d8ad8aa5, Web 02d5cbb/ae181335:
 Gemini SQL 360/33066538.03, Knowledge JOIN 12trạm, RAG citation 23, Hybrid 6đạt/6 chưa,

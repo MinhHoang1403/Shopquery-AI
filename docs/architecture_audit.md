@@ -6,6 +6,11 @@ runtime/image ở [deployment](deployment.md), kết quả mới nhất ở
 [system acceptance](v2_final_acceptance.md) và [Langfuse acceptance](observability_acceptance.md).
 Đợt bàn giao không đổi AI business logic, guards hoặc model/provider.
 
+Đợt correction28/10/2026 sau bàn giao có sửa scalar grain, typed wire/provenance,
+complete policy proof và presentation; hồ sơ riêng ở [correctness review](correctness_review.md).
+Không dùng scorecard lịch sử bên dưới để che COUNT504, Knowledge403 hoặc false refusal
+đã ghi nhận ở lượt mới.
+
 ## Knowledge SQL — bằng chứng27/10/2026
 
 Nguồn application/test a67242d và CI 40441018076; đây là baseline lịch sử trước

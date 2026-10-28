@@ -11,6 +11,10 @@ ErrorCategory = Literal[
     "schema_rejected",
     "schema_complexity",
     "authentication_or_permission",
+    "authentication_failed",
+    "permission_denied",
+    "payment_required",
+    "resource_not_found",
     "timeout",
     "quota_or_rate_limit",
     "transient_unavailable",
@@ -259,13 +263,19 @@ def conversion_context(exc: Exception) -> dict:
 
 
 def provider_category(status: int) -> ErrorCategory:
-    if status in {401, 403}:
-        return "authentication_or_permission"
-    if status == 408:
+    if status == 401:
+        return "authentication_failed"
+    if status == 403:
+        return "permission_denied"
+    if status == 402:
+        return "payment_required"
+    if status == 404:
+        return "resource_not_found"
+    if status in {408, 504}:
         return "timeout"
     if status == 429:
         return "quota_or_rate_limit"
-    if status in {500, 502, 503, 504}:
+    if status in {500, 502, 503}:
         return "transient_unavailable"
     return "request_rejected"
 
@@ -281,6 +291,10 @@ def error_message(context: ErrorContext) -> str:
         "authentication_or_permission": (
             "Nhà cung cấp AI từ chối quyền truy cập; cần kiểm tra cấu hình."
         ),
+        "authentication_failed": "Nhà cung cấp AI không chấp nhận xác thực; cần kiểm tra cấu hình.",
+        "permission_denied": "Nhà cung cấp AI từ chối quyền truy cập tài nguyên được yêu cầu.",
+        "payment_required": "Nhà cung cấp AI yêu cầu kiểm tra thanh toán hoặc số dư.",
+        "resource_not_found": "Nhà cung cấp AI không tìm thấy model hoặc tài nguyên được yêu cầu.",
         "request_rejected": "Nhà cung cấp AI từ chối yêu cầu.",
         "schema_rejected": "Nhà cung cấp AI từ chối cấu trúc yêu cầu.",
         "schema_complexity": "Nhà cung cấp AI từ chối cấu trúc yêu cầu quá phức tạp.",

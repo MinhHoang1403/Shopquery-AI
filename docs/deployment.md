@@ -9,14 +9,20 @@ Không dùng các image refs lịch sử làm cấu hình hiện hành.
 
 | Service | Immutable image | Application revision |
 | --- | --- | --- |
-| API | sha256:d8ad8aa5e3425b803bcec9c61a5e84dd5e950a2e07dc978d70c64d7c33dcbbb2 |3fe4cc22bc4769dfa6318541bf26bd50109ffb29|
-| Web | sha256:ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58 |02d5cbb445901f7eb63f82bee87e2e8785d35663|
+| API | sha256:5675513a90921b713413b8dda5391a9c0dfb2b24acbdb60edf4b9f96446f14b0 |29bb788314b965d63b218a50898ab91d74faf0a3|
+| Web | sha256:9b735b38e62a19f9e1f8426b10c1774bedc30ae07d23cbda6cae75db1237a23f |b75a844b959ccd0d268a11ac10f99ab0326813d4|
 | Main PostgreSQL/pgvector | sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf |upstream image|
 
 API 127.0.0.1:8001, Web 127.0.0.1:8080, main DB 127.0.0.1:15432. Main volume
 `shopquery-ai_postgres_auth_20261019` là external/protected; không recreate/reset/xóa.
 Application inputs khớp main dù các commit docs/scripts về sau có SHA khác OCI revision.
 Strict verifier đối chiếu bytes/manifests, image IDs, Compose/env; không chỉ so tên tag.
+
+Cutover được operator duyệt ngày 28/10/2026; API/Web healthy, strict 88 modules PASS.
+Hybrid/follow-up Giao nhận, SQL Khách sạn, DATE/ID và unsupported safety đã kiểm live.
+Nghiệm thu toàn bộ correction còn **RELEASE_BLOCKED**: Knowledge403, COUNT+SUM gặp
+Gemini504, một policy-only question chọn sai route/false refusal. Không đổi model/gate
+hoặc retry để che failure. Chi tiết và ngân sách: [correctness review](correctness_review.md).
 
 Gemini default, Knowledge manual, fallback OFF, gate ON, Guest AI OFF, embedding2/768,
 approved JOIN ON, vector-only/BGE OFF, Langfuse ON. Không tự đổi model/provider/gates.
@@ -101,14 +107,20 @@ bật containers đã có, dùng chính file/env/project và `up -d --no-build -
 --pull never`; không dùng `down -v`. Runtime/image thay đổi phải dùng controlled release,
 không coi một restart là triển khai source mới.
 
-Rollback API hiện hành: `sha256:52701da8a2d0fb40f5825647ef955936148271cad47c0838dcbaeaca41983285`,
-source 8a2c6aa. Private `.env.release.before` ở
-`C:/Users/admin/.codex/backups/shopquery-ai/langfuse-acceptance-20261027`.
-Trước rollback xem lại image/config tương thích và current work, xin duyệt thời điểm;
-khôi phục release env rồi API-only deploy với `-Observability`. Không undo main data.
-Image069e7f67 trước instrumentation cũng được giữ cho lịch sử phục hồi, không dùng tự động.
-Web hiện hành không đổi trong các đợt Langfuse; các image cũ chưa chứng minh không cần
-vẫn được giữ. GitHub không thay backup volumes/secrets.
+Rollback API gần nhất: `sha256:d8ad8aa5e3425b803bcec9c61a5e84dd5e950a2e07dc978d70c64d7c33dcbbb2`,
+source `3fe4cc2`; rollback Web `sha256:ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58`,
+source `02d5cbb`. Private configs nằm trong
+`C:/Users/admin/.codex/backups/shopquery-ai/correctness-20261027`; `.env.release.before`
+giữ cả hai image trước cutover, `.env.release.rollback-api-new-web` giữ API trước/Web mới.
+Không promote hai candidates đã bị loại `d7f2d822` và `6a632447`.
+
+Trước rollback kiểm exact image/config, active leases/Guest work và thời điểm được duyệt.
+Rollback application source khác main cần đối chiếu với chính Git revision của image;
+strict verifier so main sẽ báo source drift có chủ đích, không được đổi guard để báo PASS.
+Chỉ recreate service cần rollback và refresh Nginx sau API; không undo main data. Lượt
+rollback API sau schema400 đã kiểm identity/config, leases, Guest và 88 modules với Git
+revision cũ (chỉ chuẩn hóa CRLF/LF khi so Git blobs), rồi phục hồi bản sửa sau CI/duyệt mới.
+Các rollback cũ52701da8/069e7f67 vẫn giữ; GitHub không thay backup volumes/secrets.
 
 ## Dữ liệu và backups
 
