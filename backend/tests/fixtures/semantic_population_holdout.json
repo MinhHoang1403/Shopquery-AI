@@ -1,0 +1,527 @@
+{
+  "description": "Independent synthetic evaluation locked before the population and conversation contract changes. Required evidence and requested operation are not evidence that execution is safe.",
+  "schema_version": 1,
+  "contexts": {
+    "logistics": {
+      "tables": [
+        "depots(depot_id,name,region)",
+        "deliveries(delivery_id,depot_id,fee,status,delivery_date)"
+      ],
+      "documents": [
+        "A policy describes the delivery-fee assessment for depots."
+      ],
+      "relations": [
+        "deliveries.depot_id -> depots.depot_id, N:1"
+      ]
+    },
+    "energy": {
+      "tables": [
+        "stations(station_id,name,province)",
+        "sessions(session_id,station_id,amount,started_at)"
+      ],
+      "documents": [
+        "A policy describes how charging stations are evaluated from session amounts."
+      ],
+      "relations": [
+        "sessions.station_id -> stations.station_id, N:1"
+      ]
+    },
+    "hotel": {
+      "tables": [
+        "hotels(hotel_id,name,province,room_count)"
+      ],
+      "documents": [
+        "A handbook states a room-count standard for hotels."
+      ],
+      "relations": []
+    },
+    "library": {
+      "tables": [
+        "branches(branch_id,name,district)",
+        "loans(loan_id,branch_id,loan_date)"
+      ],
+      "documents": [
+        "A guide defines an assessment based on loan counts at branches."
+      ],
+      "relations": [
+        "loans.branch_id -> branches.branch_id, N:1"
+      ]
+    },
+    "agriculture": {
+      "tables": [
+        "plots(plot_id,label,zone)",
+        "harvests(harvest_id,plot_id,weight_kg,harvest_date)"
+      ],
+      "documents": [
+        "A standard defines a harvest-weight assessment for plots."
+      ],
+      "relations": [
+        "harvests.plot_id -> plots.plot_id, N:1"
+      ]
+    },
+    "museum": {
+      "tables": [
+        "collections(collection_id,title,wing)",
+        "conservations(event_id,collection_id,hours,event_date)"
+      ],
+      "documents": [
+        "A preservation manual describes the required conservation hours for collections."
+      ],
+      "relations": [
+        "conservations.collection_id -> collections.collection_id, N:1"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "p01",
+      "context": "logistics",
+      "question": "Theo tài liệu, điều kiện đánh giá phí giao của điểm tập kết được mô tả thế nào?",
+      "gold": {
+        "task": "explain",
+        "evidence": "documents",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "documents",
+        "route": "RAG"
+      }
+    },
+    {
+      "id": "p02",
+      "context": "logistics",
+      "question": "Dùng chính sách để xác định những điểm tập kết không đáp ứng yêu cầu.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p03",
+      "context": "logistics",
+      "question": "Đối chiếu quy định, hãy liệt kê các điểm đạt yêu cầu.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p04",
+      "context": "logistics",
+      "question": "Trong các điểm ở miền Bắc, điểm nào không đáp ứng điều kiện của chính sách?",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "filtered_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [
+          "depots.region = miền Bắc"
+        ],
+        "output_qualifiers": [],
+        "execution": "refuse_unless_filtered_coverage_verified",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p05",
+      "context": "logistics",
+      "question": "Đếm số lượt giao và tổng phí của mỗi điểm tập kết.",
+      "gold": {
+        "task": "query",
+        "evidence": "tables",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "tables",
+        "route": "SQL"
+      }
+    },
+    {
+      "id": "p06",
+      "context": "energy",
+      "question": "Cho biết tài liệu quy định việc đánh giá trạm sạc như thế nào; chưa cần tính số liệu.",
+      "gold": {
+        "task": "explain",
+        "evidence": "documents",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "documents",
+        "route": "RAG"
+      }
+    },
+    {
+      "id": "p07",
+      "context": "energy",
+      "question": "Xếp từng trạm vào nhóm đáp ứng hoặc không đáp ứng theo quy tắc đã lưu.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "all",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p08",
+      "context": "energy",
+      "question": "Dua theo quy tac da luu, liet ke cac tram dat yeu cau.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p09",
+      "context": "energy",
+      "question": "Trong các trạm thuộc tỉnh Lâm Đồng, trạm nào đạt chuẩn theo chính sách?",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "filtered_entities",
+        "selection": "qualified",
+        "input_qualifiers": [
+          "stations.province = Lâm Đồng"
+        ],
+        "output_qualifiers": [],
+        "execution": "refuse_unless_filtered_coverage_verified",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p10",
+      "context": "energy",
+      "question": "Trong các trạm không đạt theo chính sách, cho biết 5 trạm có tổng phí thấp nhất.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [
+          "order total amount ascending",
+          "limit 5"
+        ],
+        "execution": "refuse_unless_output_order_and_limit_verified",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p11",
+      "context": "hotel",
+      "question": "Sổ tay định nghĩa tiêu chuẩn số phòng của khách sạn ra sao?",
+      "gold": {
+        "task": "explain",
+        "evidence": "documents",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "documents",
+        "route": "RAG"
+      }
+    },
+    {
+      "id": "p12",
+      "context": "hotel",
+      "question": "Which hotels fail the room-count standard in the handbook?",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p13",
+      "context": "hotel",
+      "question": "Theo tiêu chuẩn trong sổ tay, phân loại toàn bộ khách sạn đạt và không đạt.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "all",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p14",
+      "context": "hotel",
+      "question": "Liệt kê tên và số phòng của các khách sạn trên 120 phòng.",
+      "gold": {
+        "task": "query",
+        "evidence": "tables",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [
+          "hotels.room_count > 120"
+        ],
+        "output_qualifiers": [],
+        "execution": "tables",
+        "route": "SQL"
+      }
+    },
+    {
+      "id": "p15",
+      "context": "library",
+      "question": "Hướng dẫn nói gì về tiêu chí số lượt mượn cho một chi nhánh?",
+      "gold": {
+        "task": "explain",
+        "evidence": "documents",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "documents",
+        "route": "RAG"
+      }
+    },
+    {
+      "id": "p16",
+      "context": "library",
+      "question": "Theo hướng dẫn, những chi nhánh nào chưa đủ điều kiện?",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p17",
+      "context": "library",
+      "question": "Chỉ xét các chi nhánh ở quận 3, những chi nhánh nào đạt tiêu chí của hướng dẫn?",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "filtered_entities",
+        "selection": "qualified",
+        "input_qualifiers": [
+          "branches.district = quận 3"
+        ],
+        "output_qualifiers": [],
+        "execution": "refuse_unless_filtered_coverage_verified",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p18",
+      "context": "library",
+      "question": "Trong năm 2025 có bao nhiêu lượt mượn theo từng chi nhánh?",
+      "gold": {
+        "task": "query",
+        "evidence": "tables",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [
+          "loans.loan_date in 2025"
+        ],
+        "output_qualifiers": [],
+        "execution": "tables",
+        "route": "SQL"
+      }
+    },
+    {
+      "id": "p19",
+      "context": "agriculture",
+      "question": "Tài liệu mô tả chuẩn sản lượng thu hoạch cho thửa đất là gì?",
+      "gold": {
+        "task": "explain",
+        "evidence": "documents",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "documents",
+        "route": "RAG"
+      }
+    },
+    {
+      "id": "p20",
+      "context": "agriculture",
+      "question": "Đối chiếu sản lượng với tiêu chuẩn đã lưu: thửa nào không đạt?",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p21",
+      "context": "agriculture",
+      "question": "Đánh giá các thửa thuộc khu Đông theo tiêu chuẩn trong tài liệu và nêu thửa chưa đạt.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "filtered_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [
+          "plots.zone = Đông"
+        ],
+        "output_qualifiers": [],
+        "execution": "refuse_unless_filtered_coverage_verified",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p22",
+      "context": "museum",
+      "question": "Theo cẩm nang bảo quản, tiêu chuẩn về số giờ bảo dưỡng bộ sưu tập là gì?",
+      "gold": {
+        "task": "explain",
+        "evidence": "documents",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "documents",
+        "route": "RAG"
+      }
+    },
+    {
+      "id": "p23",
+      "context": "museum",
+      "question": "Dựa vào cẩm nang, liệt kê các bộ sưu tập chưa đủ thời gian bảo dưỡng.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p24",
+      "context": "museum",
+      "question": "Trong khu trưng bày Tây, bộ sưu tập nào đáp ứng yêu cầu bảo dưỡng của cẩm nang?",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "filtered_entities",
+        "selection": "qualified",
+        "input_qualifiers": [
+          "collections.wing = Tây"
+        ],
+        "output_qualifiers": [],
+        "execution": "refuse_unless_filtered_coverage_verified",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p25",
+      "context": "library",
+      "question": "Còn những chi nhánh không đạt thì sao?",
+      "history_state": "verified_hybrid",
+      "history_question": "Hãy đối chiếu các chi nhánh với hướng dẫn.",
+      "history_answer": "Kết quả phân loại các chi nhánh được backend xác minh.",
+      "gold": {
+        "task": "apply",
+        "evidence": "both",
+        "population": "all_entities",
+        "selection": "not_qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "requires_verified_complete_coverage",
+        "route": "HYBRID"
+      }
+    },
+    {
+      "id": "p26",
+      "context": "museum",
+      "question": "Còn những bộ sưu tập khác thì sao?",
+      "history_state": "insufficient_rag",
+      "history_question": "Quy tắc bảo dưỡng bộ sưu tập là gì?",
+      "history_answer": "Chưa đủ bằng chứng để xác định quy tắc.",
+      "gold": {
+        "task": "clarify",
+        "evidence": "unclear",
+        "population": "unknown",
+        "selection": "unknown",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "clarify_without_trusted_premise",
+        "route": "UNSUPPORTED"
+      }
+    },
+    {
+      "id": "p27",
+      "context": "energy",
+      "question": "Tổng số tiền của tất cả phiên sạc là bao nhiêu?",
+      "history_state": "failed",
+      "history_question": "Trạm nào đạt chuẩn?",
+      "history_answer": "Không có kết quả do provider thất bại.",
+      "gold": {
+        "task": "query",
+        "evidence": "tables",
+        "population": "not_applicable",
+        "selection": "not_applicable",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "tables",
+        "route": "SQL"
+      }
+    },
+    {
+      "id": "p28",
+      "context": "hotel",
+      "question": "Theo sổ tay, khách sạn nào đủ điều kiện?",
+      "capabilities": {
+        "tables": true,
+        "documents": false
+      },
+      "gold": {
+        "task": "apply",
+        "evidence": "unavailable",
+        "population": "unknown",
+        "selection": "qualified",
+        "input_qualifiers": [],
+        "output_qualifiers": [],
+        "execution": "refuse_missing_documents",
+        "route": "UNSUPPORTED"
+      }
+    }
+  ]
+}
