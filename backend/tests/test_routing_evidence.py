@@ -65,8 +65,8 @@ def test_evidence_requirement_controls_dispatch_even_when_model_label_disagrees(
             "route": "HYBRID",
             "reason": "Untrusted explanation",
             "evidence_requirement": evidence,
-            "policy_intent": "qualified",
-            "policy_scope": "all_entities",
+            "policy_intent": "qualified" if evidence == "both" else "none",
+            "policy_scope": "all_entities" if evidence == "both" else "unspecified",
         }
     )
     decision = QueryRouter(gateway).route("Câu hỏi không được dùng làm keyword override")
@@ -187,6 +187,63 @@ def test_current_rule_question_is_distinguished_from_a_verified_comparison_premi
     prompt = gateway.generate_structured.call_args.args[0]
     assert "Current request:\n" + current in prompt
     assert "Context is not a requirement to repeat the previous route" in prompt
+
+
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+@pytest.mark.parametrize("evidence", ["documents", "tables"])
+def test_contradictory_classification_never_dispatches_a_pipeline(monkeypatch, provider, evidence):
+    payload = json.dumps(
+        {
+            "route": "RAG",
+            "reason": "Contradictory synthetic fixture",
+            "evidence_requirement": evidence,
+            "policy_intent": "qualified",
+            "policy_scope": "all_entities",
+        }
+    )
+    gateway, calls = gateway_harness(monkeypatch, provider, [response(provider, payload)])
+    sql, rag, hybrid = Mock(), Mock(), Mock()
+    try:
+        result = DatasetChatService(QueryRouter(gateway), sql, rag, hybrid).chat(
+            "Giải thích điều kiện trong tài liệu."
+        )
+        assert result.route == RouteLabel.UNSUPPORTED
+        assert "chưa xác định" in result.answer
+        for pipeline in (sql, rag, hybrid):
+            pipeline.run.assert_not_called()
+        assert len(calls) == 1
+    finally:
+        gateway.close()
+
+
+@pytest.mark.parametrize(
+    "current,previous",
+    [
+        ("Which units meet the documented condition?", "Explain the condition only."),
+        ("Explain the condition only.", "Which units meet the documented condition?"),
+        ("Tong gia tri theo don vi?", "The previous provider timed out."),
+        ("Quy định áp dụng cho kỳ nào?", "The prior classification was not verified."),
+    ],
+)
+def test_current_request_is_last_and_not_duplicated_after_context(current, previous):
+    gateway = Mock(
+        generate_structured=Mock(
+            return_value=routing_fixture(
+                {
+                    "route": "RAG",
+                    "reason": "Scripted contract",
+                    "evidence_requirement": "documents",
+                }
+            )
+        )
+    )
+    contextual = current + "\n\nPrevious successful turns: " + previous
+    QueryRouter(gateway, "Synthetic workspace").route(contextual, current_question=current)
+    prompt = gateway.generate_structured.call_args.args[0]
+    assert prompt.endswith("Current request:\n" + current)
+    assert prompt.count(current) == 1
+    assert prompt.index(previous) < prompt.index("Current request:\n")
+    gateway.generate_structured.assert_called_once()
 
 
 @pytest.mark.parametrize("provider", ["knowledge", "gemini"])

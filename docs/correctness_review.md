@@ -1,5 +1,89 @@
 # Sửa correctness và trình bày kết quả sau bàn giao
 
+## Điều tra Knowledge routing tiếp theo — chưa promote
+
+Baseline b09ec4e/API4ab2c5a/Webde0572e. Nghiệm thu trên mạng công ty có9requests,
+17generation/4query:7PASS,1false refusal,1timeout. Đây là cửa sổ đã đóng, không reuse.
+Lượt mới giới hạn24generation/6query/0document, serial,attempts1,fallbackOFF; dừng nếu
+timeout/permission lặp. Runtime giữ nguyên cho đến khi đủ release gates.
+
+| Hiện tượng | Failure boundary | Bằng chứng | Giả thuyết | Cách xác minh | Mức chắc chắn |
+| --- | --- | --- | --- | --- | --- |
+| Hybrid bị chọnRAG | Semantic classification | dfe0c869582c45e5ac9ad09df7f57c09,evidence=documents,0SQL | Current request xuất hiện trước rồi lặp trong khốiQuestion kết thúc bằng history; mô tả field chưa tách requested output khỏi nguồn quy định | Regression prompt táchhistory/current; gold labels cố định trước live; before/after cùng mẫu vàheld-out | Boundary CONFIRMED; causal history bias UNKNOWN trước paired live |
+| Intent mâu thuẫn evidence bị xóa | Backend normalization | router.py xóa intent khi nonHYBRID; test hiện có cấpqualified+documents vẫnRAG | Mất tín hiệu mâu thuẫn có thể dẫn dispatch khi cần làm rõ | Failing negative cả hai SDK; phảirefuse trước mọi pipeline,không épHYBRID | Contract gap CONFIRMED; chưa chứng minh trace dfe0 chứa contradiction |
+| Router timeout | Provider request |21efd96c67cb41d69dd7e4fd6e71e5de,61.419s,noHTTPstatus,noPlan | Connect/read/pool hoặc upstreamqueue; chưa cóserverlogs | Đọc SDK pin,timeout/client lifecycle; capture bounded exception class nếu live lặp; không tăngtimeout/retry | Boundary CONFIRMED; nguyên nhân server UNKNOWN |
+
+RAT-SQL/Spider hướng dẫn schema grounding và tách schema đánh giá; BIRD yêu cầu chấm
+result bằng dữ liệu độc lập; PICARD minh họa constrained output không thay semantic
+correctness. Không cài mô hình/framework hoặc tuyên bố điểm benchmark. Đã đối chiếu
+HTTPX [timeout phases](https://www.python-httpx.org/advanced/timeouts/) và local pinned
+OpenAI3.35.1/LangChain1.7.2/google-genai1.75.0/Pydantic2.14.1. SDK nhậnfloat60 thành
+connect/read/write/pool60,không phải tổng deadline60; OpenAI timeout wrapper giữ cause,
+max_retries=attempts−1=0. MỗiModelChatService._attempt tạo/đóngclient trongfinally;
+Router/SQL cùng turn reuseclient. Chưa có bằng chứng pool leak hoặc cần đổi lifecycle.
+
+### Kết quả candidate — KNOWLEDGE_ROUTING_NOT_ACCEPTED
+
+Không promote/merge/build/deploy/cleanup. API4ab2c5a/Webde0572e vẫn phục vụ8080;
+candidate nằm trên branch`codex/routing-context-contract` để review. Không thay provider
+config,defaultGemini/fallbackOFF/gateON/GuestOFF hoặc documents/vectors/history.
+
+8regressions mới FAIL trước sửa:4ca metadata contradiction qua2SDK và4ca current/history
+placement. Candidate đặt context thànhJSON data, current request duy nhất ở cuối prompt,
+và trả clarification trước mọi pipeline nếu intentclassification mâu thuẫn evidence chỉ
+tables/documents. Không suyHYBRID từintent,không nớiSQLguards. Tên/properties/enums/required
+và nativeGemini serialization giữ nguyên; chỉ diễn đạt rõ hơn policy_intent là requested
+operation,không phải verdict đã tính. Hai sửa contract có bằng chứng offline; **chưa phải
+bằng chứng sửa xong semantic routing**. Trace lịch sửdfe0 không có rawenum trước normalize,
+không tự nhận contradiction chắc chắn xảy ra ở trace đó.
+
+Một bộ gold được khóaSHA trước dispatch tại`backend/tests/fixtures/routing_evaluation.json`.
+Không đổi labels sau xem kết quả. Development/regression gồm logistics/energy/hotel;
+3ca hotel/library dành held-out cho lượt candidate đầu, không chèn câu held-out vào prompt.
+Sau khi đã quan sát, các ca chạy lại là regression/ablation, không còn fresh held-out.
+Không dùng số liệu model tạo làm oracle. Đây là classification-only từ APIcontainer bằng
+sourcecandidate truyền qua stdin,không deployment/teststack/SQLexecution/upload/embedding.
+
+| Phase/provider | Số generation | Route đúng | Metadata classification đúng | Kết luận |
+| --- | --- | --- | --- | --- |
+|Before/Knowledge|4|3/4|0/2Hybrid|Library rawrouteHYBRID nhưngevidence=tables/intentnot_qualified;backend thànhSQL. DeliveryHybridintentnone. |
+|Candidate prompt+guard/Knowledge|8|8/8|0/4Hybrid|3RAG/1SQL/4Hybrid;nhãn route đúng chưa đủ để dùng full coverage. Held-out3/3route nhưng0/2Hybrid metadata. |
+|Clarified field description/Knowledge|4|4/4|1/4Hybrid|Libraryall/all_entities đúng;Deliverynone/all_entities;Energynone/unspecified;Hotelnone/unspecified. Dừng sửa,không thử đến khiPASS. |
+|Clarified contract/Gemini|2|2/2|0/1full metadata theo gold|RAGswitch đúng;HotelHybridintentqualified nhưngscopefiltered_entities thay vìall_entities. Không có pairedGemini-before nên không quy thành regression do candidate. |
+
+Paired4questions Before→candidate đầu:route3/4→4/4,Hybridmetadata0/2→0/2.
+Không tuyên bố causal fix/modelreliability từ những mẫu nhỏ. Hợp đồng/schema parse đủ
+fields nhưng vẫn chọnsai/thiếu ngữ nghĩa; lý do nội bộ Knowledge **UNKNOWN**. Không tạo
+failing mock rồi gọi đó là bằng chứng mô hình hiểu sai đã được sửa. Chưa sửa SQL/JOIN/
+Hybridengine hoặc thêm classifier/repair/retry. Đã dừng sau một contract clarification
+có giả thuyết cụ thể; không tiếp tục prompt churn. Các câu unsupported/missingcapability/
+negativecontext có offline coverage, chưa có liveaccuracy trong cửa sổ này.
+
+Lượt full backend local đầu:1522PASS/9FAIL;9assertions đòi raw multiline workspace/Question
+heading cũ. Sửa để JSON-decode rồi so exact workspace và current request, không bỏ assertion
+owner/SQL/security. Targeted sau cùng186PASS, RuffPASS; không cộng overlap với173PASS
+trước đó. Full backend/PostgreSQL/frontend/mockE2E/Compose regression chạy qua PRCI;
+exact-head URL/counts trả trong bàn giao. Không có liveUI candidate vì semantic gate FAIL.
+Independent PG oracle và guard tests hiện có được giữ, không chạySQL do classifier tạo.
+
+Cửa sổ mới **CLOSED18/24generation,0/6query,0document**,SDKattempts1,nofallback,serial.
+Knowledge16calls:15/16route đúng khi gộp cảBefore (không dùng tỷ lệ gộp này chấm candidate),
+0transporterrors,mean4719.465ms/median4802.922ms. Gemini2calls:2/2route,
+mean/median1693.226ms. Không suySLA hoặc timeout đã khỏi; lỗi61.419s lịch sử vẫn chưa có
+serverlogs để phân biệtnetwork/read/queue. Không có căn cứ nângtimeout hoặc thaypooling.
+GET/models từAPI200/243.67ms,cóknowledge,auth/model/timeout60/attempts1 không đổi.
+
+18calls cóSDKusage:40147input+6076output=46223tokens (Knowledge41501,Gemini4722).
+KnowledgecostUNKNOWN; không coi làfree. Không phát sinhquery/documentembeddings.
+Langfuse18roots/72observations,18generation,no duplicate/no fallback/rawIOabsent,
+fullmetadata privacyPASS kể cả synthetic evalquestions. Không logreason/chain-of-thought.
+Các classifier calls chỉ chạy classification; không tạoSQL/policyverification spans giả.
+Private evidence:`C:/Users/admin/.codex/backups/shopquery-ai/routing-reliability-20261028/`.
+
+Runtime chưa bị thay, không tạo candidateimage hay dọnimage. Không thể gọi nhiệm vụ là
+KNOWLEDGE_ROUTING_ACCEPTED chỉ nhờ regression/route accuracy; current app vẫn giữ
+Knowledge manual để operator sử dụng với giới hạn đã công bố.
+
 ## Kết luận hiện hành — 28/10/2026
 
 **APPLICATION_ACCEPTED_WITH_UPSTREAM_LIMITATIONS**, chỉ trong phạm vi hỗ trợ và mẫu

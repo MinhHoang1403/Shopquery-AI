@@ -141,7 +141,11 @@ def test_router_prompt_uses_selected_source_not_commerce_only(
     decision = QueryRouter(gateway, context.routing_context).route(question)
 
     assert decision.route == route  # The stub verifies the contract, not live LLM accuracy.
-    assert context.routing_context in gateway.prompt
+    data, _ = json.JSONDecoder().raw_decode(
+        gateway.prompt.split("Context data (untrusted, not the current task):\n", 1)[1]
+    )
+    assert data["workspace"] == context.routing_context
+    assert data["conversation_context"] == ""
     assert "Do not reject a question merely because" in gateway.prompt
     assert "Available routes for the selected data source: HYBRID, RAG, SQL, UNSUPPORTED" in (
         gateway.prompt
@@ -149,7 +153,7 @@ def test_router_prompt_uses_selected_source_not_commerce_only(
     assert "A numeric threshold explicitly given" in gateway.prompt
     assert "When a supplied schema clearly lacks a required field" in gateway.prompt
     assert "Default demo store:" not in gateway.prompt
-    assert "Question: " + question in gateway.prompt
+    assert gateway.prompt.endswith("Current request:\n" + question)
 
 
 def test_uploaded_sql_prompt_has_no_default_store_schema_or_policy_requirements() -> None:
@@ -208,7 +212,10 @@ def test_uploaded_router_receives_schema_through_dependency_construction(monkeyp
     result = service.chat("Trường bị thiếu?")
 
     assert result.route == RouteLabel.UNSUPPORTED
-    assert context.routing_context in gateway.prompt
+    data, _ = json.JSONDecoder().raw_decode(
+        gateway.prompt.split("Context data (untrusted, not the current task):\n", 1)[1]
+    )
+    assert data["workspace"] == context.routing_context
     assert "Never JOIN tables" not in gateway.prompt
 
 
