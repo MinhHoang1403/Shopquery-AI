@@ -4,6 +4,11 @@ Ngày 27/10/2026, múi giờ Asia/Saigon. Hệ thống chuyển sang sử dụng
 kiểm soát trong phạm vi đã nghiệm thu. Đợt này không sửa logic AI, migration hay dữ
 liệu; không gọi provider, thêm stack hoặc thay đổi runtime.
 
+Đây là baseline bàn giao27/10. Đợt correction28/10 sau đó đã đổi API/Web và có các lỗi
+provider/false refusal mới; trạng thái/source/images hiện hành phải đọc
+[deployment](deployment.md) và [correctness review](correctness_review.md), không dùng
+bảng/nhãn READY lịch sử của tài liệu này để thay acceptance hiện tại.
+
 Trạng thái bàn giao: **OPERATIONAL_HANDOFF_READY_WITH_LIMITATIONS**, chỉ có hiệu lực
 khi CI đúng commit bàn giao đã PASS. Đối chiếu
 [CI trên main](https://github.com/MinhHoang1403/Shopquery-AI/actions/workflows/ci.yml?query=branch%3Amain)

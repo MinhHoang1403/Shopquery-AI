@@ -4,6 +4,10 @@ Baseline `00415fb`, API `52701da8`, Web `ae181335`, Langfuse 4.70.1/SDK 5.0.4.
 Một deployment8080, project observability riêng. Báo cáo này phân biệt coverage
 trong source/tests với quan sát live; bảng live bên dưới sẽ ghi kết quả thực tế.
 
+Đây là cửa sổ đã đóng ngày27/10. Lượt correction28/10 có thêm success/failure traces,
+provider mapping và usage riêng: xem [correctness review](correctness_review.md).
+Không cộng lại các token/lượt baseline vào ngân sách mới hoặc lấy success cũ để che lỗi mới.
+
 ## Coverage từ source
 
 Duration lấy từ thời điểm bắt đầu/kết thúc span SDK. Model/usage chỉ thuộc provider

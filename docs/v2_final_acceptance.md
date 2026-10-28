@@ -5,12 +5,14 @@ Không release tag/full Stage2, không enterprise/public-ready hoặc bảo đ�
 Một source main, một ShopQuery8080, một Langfuse3000. Runtime/image/config chính xác
 ở [deployment](deployment.md); quyết định cleanup/Git/tests cuối ở [handoff](operational_handoff.md).
 
-**Cập nhật28/10/2026:** correction application `29bb788` đang chạy trên8080. Hybrid và
+**Cập nhật28/10/2026:** correction application `e2722da` đang chạy trên8080. Hybrid và
 follow-up Giao nhận verified, SQL Khách sạn, DATE/ID và unsupported safety PASS live;
 full correction acceptance còn **RELEASE_BLOCKED** vì COUNT+SUM gặp Gemini504,
 Knowledge403 và một câu policy-only bị false refusal do chọn HYBRID. Các PASS cũ bên
 dưới có phạm vi/timestamp riêng, không thay các gate chưa đạt hiện tại.
 Root causes/functions, CI, scorecard và ngân sách: [correctness review](correctness_review.md).
+Provider mapping và blocked/empty response guard đã triển khai; SQL ranking/explicit RAG
+PASS sau cutover. Knowledge thử thêm một lần theo operator vẫn timeout; giữ lựa chọn manual.
 
 ## Bằng chứng đang dùng
 

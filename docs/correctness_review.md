@@ -3,7 +3,7 @@
 Baseline: main `1f7871a16c16f9b840703e50199ec81f41269a9c`, API application
 `3fe4cc2`/image `d8ad8aa5`, Web `02d5cbb`/image `ae181335`. Một deployment 8080;
 không đổi DB/schema, model, gate, fallback, Guest policy, embedding hoặc Langfuse.
-Application hiện hành: API `29bb788`/image `5675513a`, Web `b75a844`/image `9b735b38`.
+Application hiện hành: API `e2722da`/image `4a80e003`, Web `b75a844`/image `9b735b38`.
 **Kết luận nghiệm thu toàn bộ: RELEASE_BLOCKED.** Các sửa đổi đã triển khai và có các
 bounded live PASS bên dưới; không tuyên bố tất cả gate đều đạt. Không có release tag.
 
@@ -219,10 +219,10 @@ API candidates d7f2d822/6a632447 bị loại, không dùng phục vụ sau corre
 
 ### Bổ sung điều tra provider28/10/2026
 
-Yêu cầu bổ sung giữ nguyên công việc và dữ liệu; không mở lại audit kiến trúc. Các
-thay đổi provider dưới đây chưa được coi là đã triển khai cho tới cutover/strict riêng.
-Runtime trong lượt điều tra vẫn API29bb788/Webb75a844. Working tree chứa sửa errors,
-Gemini response handling, tests và tài liệu của chính nhiệm vụ; không reset/gộp file ngoài scope.
+Yêu cầu bổ sung giữ nguyên công việc và dữ liệu; không mở lại audit kiến trúc. Điều tra
+bắt đầu từ API29bb788/Webb75a844. Thay đổi chỉ errors/Gemini response handling/tests/docs
+của chính nhiệm vụ; không reset/gộp file ngoài scope. Source e2722da đã push/CI và được
+operator duyệt API-only cutover sang image4a80e003, strict88/source/image/env PASS.
 
 #### A. Nguồn chính thức và SDK thực
 
@@ -370,6 +370,50 @@ Không nâng SDK, đổi auth/key, SQL/JOIN/RAG algorithms hoặc tăng timeout/
 Sau lượt Knowledge bổ sung: tổng nhiệm vụ14 generation/3 query/0 document,10 requests,
 thêm20 messages (max386),không reset13 stages trước. File yêu cầu mới cho phép dùng phần
 ngân sách còn lại nhưng chưa phát thêm calls; không nghiệm thu Knowledge tiếp sau timeout.
+
+#### E. CI, cutover và nghiệm thu provider fix
+
+[CI40620972527](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40620972527)
+exact application/test source `e2722da8973883bdeb5cb837e9614001f9be490a`:4/4 PASS,
+1.476 backend,875 PostgreSQL,87 frontend,125 browser mock E2E,10 maintenance và10 Compose.
+Chỉ API build; immutable digest
+`sha256:4a80e003aeb9ea008afcc5b557084db105ad4507130695a5b7fa1d378bc586e7`.
+Operator duyệt cutover và tối đa2 câu Gemini/4 generation/1 query/0 document trong trần
+còn lại; không xin ngân sách nhiệm vụ mới hoặc reset usage. API source e2722da, one worker,
+strict88 modules/no mismatches/no environment drift, health8080 PASS. Web9b735b38/main DB/
+six Langfuse services/volumes giữ nguyên; rollback API5675513a/config đã giữ. Không cleanup
+image/cache/model/volume hoặc tạo test containers.
+
+| Scenario sau cutover | Correlation | Kết quả thực |
+| --- | --- | --- |
+| Gói dịch vụ có tổng phí cao nhất, auto route |4f1c2477e09b429b9680f4aed82f230a|PASS: Gemini SQL,2 generation/0 query,4,558s;message388,1row G04/Ưu tiên/7530000 đúng PG oracle đã tính trước. Summary ranking từ sort/limit và SUM provenance; không tự gắn đơn vị. Bảng thu gọn.|
+| Hồ sơ khi kiện hư hỏng, explicit /rag |f4a5d34123aa4fa18327bd69e02770d8|PASS_EXPLICIT_RAG:1 generation/1 query,2,287s;message390,citation53 khớp source file/title/content/dataset17. Đủ4 loại bằng chứng, không thêm SQL. Không phải PASS của câu auto-route policy-only đã FAIL.|
+
+Lượt sau provider fix dùng3/4 generation,1/1 query,0 document và đã đóng. Tổng nhiệm vụ
+**17/36 generation,4/12 query,0 document**,12 câu/24 messages thêm (max390),không retry,
+fallback hoặc chạy Knowledge tiếp sau timeout. Không chủ động gây lỗi trả phí để kiểm
+mapping; HTTP/error paths chỉ mocks; successful generation mới chứng minh success path
+trên image hiện hành, không chứng minh mọi loại lỗi provider xảy ra live đều đã thử.
+
+Tổng Langfuse12 roots/303 observations,17 generation/4 query observations khớp diagnostics,
+không duplicate IDs/calls.31.528 generation tokens có usage khớp từng root;4failed calls
+không usage và toàn bộ embedding tokens UNKNOWN. Full metadata privacy check303obs:
+không raw input/output,questions/SQL,owner/conversation UUID thật hoặc private credentials/
+Knowledge URL. Root totals là subtotals, không cộng trùng child usage. Giá Knowledge và
+phần usage thiếu UNKNOWN, không coi0 hoặc báo tổng bill chính xác.
+
+Integrity cuối:36 data objects và292 old messages≤366 vẫn khớp SHA256 fingerprint
+ban đầu; chỉ thêm24messages của12requests (316messages,max390). Phiên Google/reload,
+history và citation panel trên8080 hoạt động. Không sửa/migrate/xóa/re-embed main data.
+
+Phân loại cuối: scalar/provenance/complete policy/context/presentation và provider
+mapping/safety corrections có regression PASS, SQL/Hybrid/DATE/ranking/RAG live bounded
+như scorecard. Knowledge reliability/access **UPSTREAM_BLOCKED/ROOT_CAUSE_UNKNOWN**, giữ
+manual theo operator. COUNT+SUM exact question mới **NOT_VERIFIED** vì504; false refusal
+policy-only **NOT_FIXED**. Historical raw plans không được lưu vẫn **UNKNOWN**.
+Vì vậy full correction vẫn **RELEASE_BLOCKED**, không promote Knowledge/default/fallback,
+không tag/Stage2 hoặc tuyên bố mọi schema hoạt động. Normal gateON/Gemini default/GuestOFF
+và dữ liệu hiện có được giữ. Bản bàn giao docs sau e2722da không đổi image inputs.
 
 Wire JSON Schema là ràng buộc cấu trúc, không tự chứng minh đúng ngữ nghĩa. Đối chiếu
 [tài liệu Google](https://ai.google.dev/gemini-api/docs/structured-output?hl=en) với
