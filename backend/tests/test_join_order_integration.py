@@ -1,5 +1,6 @@
 """Authenticated context and guarded SQL run only on disposable PostgreSQL."""
 
+import json
 from decimal import Decimal
 from unittest.mock import Mock
 from uuid import UUID, uuid4
@@ -122,7 +123,10 @@ def test_reverse_draft_matches_postgres_oracle_through_authenticated_context(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             if schema is RouteDecision:
-                assert context.routing_context in prompt
+                data, _ = json.JSONDecoder().raw_decode(
+                    prompt.split("Context data (untrusted, not the current task):\n", 1)[1]
+                )
+                assert data["workspace"] == context.routing_context
                 return RouteDecision(
                     policy_intent="none",
                     policy_scope="unspecified",
@@ -678,7 +682,10 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
                 calls.append(schema.__name__)
                 assert all(t.physical_table_name not in prompt for t in foreign.tables)
                 if schema is RouteDecision:
-                    assert context.routing_context in prompt
+                    data, _ = json.JSONDecoder().raw_decode(
+                        prompt.split("Context data (untrusted, not the current task):\n", 1)[1]
+                    )
+                    assert data["workspace"] == context.routing_context
                     return RouteDecision(
                         policy_intent="none",
                         policy_scope="unspecified",

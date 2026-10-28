@@ -84,6 +84,35 @@ Runtime chưa bị thay, không tạo candidateimage hay dọnimage. Không th�
 KNOWLEDGE_ROUTING_ACCEPTED chỉ nhờ regression/route accuracy; current app vẫn giữ
 Knowledge manual để operator sử dụng với giới hạn đã công bố.
 
+### Tiếp tục theo operator — kiểm contract nhỏ và chốt giới hạn
+
+Job PostgreSQL đầu của PR40649825723:870PASS/8FAIL. Tất cả8failure nằm ở hai assertions
+`context.routing_context in prompt` trong`test_join_order_integration.py`, còn tìm raw
+multiline sau khi context đã encodeJSON. Đã đổi sangdecodeJSON/soexactworkspace; giữ
+toàn bộ owner-isolation/SQL/oracle assertions. Không sửa compiler hoặc bỏ testcase.
+
+Operator yêu cầu tiếp tục sửa kỹ; mở cửa sổ mới tối đa6generation trong cùng trần24,
+không reuse cửa sổ18calls đã đóng. Không thêmUI/embeddings. Đã thử một contract nhỏ
+classification-only có mộtoperationenum vàscope, mapdeterministic vàoRouteDecision:
+không các trườngroute/evidence/intent độc lập để model trả mâu thuẫn. Cùng schema/prompt
+context và3câuHybrid+1policy-only đã khóa trước,1call/case,khôngrepair/retry.
+
+| Case | Operation/scope Knowledge | Kết quả |
+| --- | --- | --- |
+|delivery_apply|classify_every_entity_using_document/whole_entity_set|HYBRID/all/all_entities đúng;5996.038ms;0758543f660a45988fba2cf5ebc1af15|
+|energy_apply|classify_every_entity_using_document/whole_entity_set|HYBRID/all/all_entities đúng;4619.043ms;158e20b174874f088a089634522ddbd6|
+|library_apply|classify_every_entity_using_document/whole_entity_set|HYBRID/all/all_entities đúng;4167.028ms;45b33c6ad9e24a5393ac6b9c90b7e833|
+|delivery_rule|classify_every_entity_using_document/whole_entity_set|**FAIL_FALSE_HYBRID**:chỉ hỏiquyđịnh phảiRAG;2463.475ms;8bf21385274048bbae2ad23ba6bb7380|
+
+Contract nhỏ không được tích hợp vàoadapter hoặc giữ thànhproductionmodule chết.
+Schema/kết quả thử được lưuprivateevidence; bỏhai experimental source/test files của
+phương án chưađạt. Không đổi Knowledge/Gemini wire đang dùng. Không suy vì3HybridPASS
+mà bỏpolicy-onlyFAIL, không chạythêm để kiếmcaPASS. Những ca đã quan sát không cònheld-out.
+
+Lượt nối tiếp **CLOSED4/6generation**, cộng dồn nhiệm vụ **22/24generation,0query,0document**;
+2stagescònlại khôngtựdùng sau đóng. Kết luận giữ **KNOWLEDGE_ROUTING_NOT_ACCEPTED**.
+KhôngcandidateUI,merge/build/deploy/cleanup;main và runtime hiện hành được bảo toàn.
+
 ## Kết luận hiện hành — 28/10/2026
 
 **APPLICATION_ACCEPTED_WITH_UPSTREAM_LIMITATIONS**, chỉ trong phạm vi hỗ trợ và mẫu
