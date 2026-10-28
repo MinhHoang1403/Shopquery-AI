@@ -74,10 +74,12 @@ Knowledge đã có SQL JOIN/RAG/Hybrid live passes trong phạm vi synthetic, nh
 Generation/embedding gửi dữ liệu tới provider đã chọn; chọn Knowledge không ngăn
 query/document embeddings gửi text tới Google. Không tự bật fallback hoặc Guest AI.
 
-Đợt sửa28/10/2026 đã triển khai Hybrid/follow-up và evidence UI mới. Nghiệm thu toàn bộ
-còn bị chặn: Knowledge403, một COUNT+SUM gặp Gemini504 và một câu hỏi chỉ về chính sách
-bị chọn sai route. Xem [kết quả mới, root causes và giới hạn](docs/correctness_review.md);
-không coi các PASS lịch sử là bảo đảm mọi câu hỏi tự nhiên.
+Đợt sửa28/10/2026 đã triển khai định tuyến theo bằng chứng cần dùng, contract intent/scope
+bắt buộc và thông báo dễ hiểu. AutoRAG policy-only, COUNT+SUM, SQL Khách sạn, Hybrid và
+follow-up đã PASS trong phạm vi7câu mới, có cả1failure trước correction. Knowledge vẫn
+manual/chưa nghiệm thu generation lại sau403/timeout. Trạng thái ứng dụng đạt trong phạm vi
+đã kiểm với giới hạn upstream; xem [root causes, scorecard và giới hạn](docs/correctness_review.md).
+Không suy các PASS này thành bảo đảm mọi câu hỏi/schema hoặc khả năng phục hồi của Knowledge.
 
 ## Cài đặt và vận hành
 

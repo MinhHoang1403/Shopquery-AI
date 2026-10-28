@@ -5,14 +5,16 @@ Không release tag/full Stage2, không enterprise/public-ready hoặc bảo đ�
 Một source main, một ShopQuery8080, một Langfuse3000. Runtime/image/config chính xác
 ở [deployment](deployment.md); quyết định cleanup/Git/tests cuối ở [handoff](operational_handoff.md).
 
-**Cập nhật28/10/2026:** correction application `e2722da` đang chạy trên8080. Hybrid và
-follow-up Giao nhận verified, SQL Khách sạn, DATE/ID và unsupported safety PASS live;
-full correction acceptance còn **RELEASE_BLOCKED** vì COUNT+SUM gặp Gemini504,
-Knowledge403 và một câu policy-only bị false refusal do chọn HYBRID. Các PASS cũ bên
-dưới có phạm vi/timestamp riêng, không thay các gate chưa đạt hiện tại.
+**Cập nhật28/10/2026:** API `4ab2c5a`/image2d27fba1 và Webde0572e/b2188879 đang chạy8080.
+**APPLICATION_ACCEPTED_WITH_UPSTREAM_LIMITATIONS**: AutoRAG policy-only/citation23,
+exactCOUNT+SUM192/24360000,16khách sạn và Hybrid/follow-up/RAG trong cùng hội thoại đã
+PASS đúng oracle/tài liệu. Một Hybrid failure trên candidate trước được giữ trong scorecard;
+API đã rollback rồi sửa contract và nghiệm thu3câu mới thành công. Không chọn riêng caPASS.
+Knowledge generation sau403/timeout vẫn chưa được nghiệm thu,giữmanual/fallbackOFF.
+Các PASS cũ bên dưới có phạm vi/timestamp riêng, không phải khả năng tổng quát vô hạn.
 Root causes/functions, CI, scorecard và ngân sách: [correctness review](correctness_review.md).
-Provider mapping và blocked/empty response guard đã triển khai; SQL ranking/explicit RAG
-PASS sau cutover. Knowledge thử thêm một lần theo operator vẫn timeout; giữ lựa chọn manual.
+Tổng7requests mới/13generation/5query/0document,attempts1,khôngretry/fallback; cửa sổđãđóng.
+Strict88modules/source/configPASS,36objects/316messagescũ nguyênvẹn; thêm14messages.
 
 ## Bằng chứng đang dùng
 

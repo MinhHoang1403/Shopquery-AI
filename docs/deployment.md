@@ -9,8 +9,8 @@ Không dùng các image refs lịch sử làm cấu hình hiện hành.
 
 | Service | Immutable image | Application revision |
 | --- | --- | --- |
-| API | sha256:4a80e003aeb9ea008afcc5b557084db105ad4507130695a5b7fa1d378bc586e7 |e2722da8973883bdeb5cb837e9614001f9be490a|
-| Web | sha256:9b735b38e62a19f9e1f8426b10c1774bedc30ae07d23cbda6cae75db1237a23f |b75a844b959ccd0d268a11ac10f99ab0326813d4|
+| API | sha256:2d27fba187bb8703ebefbb214931933576767a52d7a32855b05d4a25c3bf5d98 |4ab2c5a1cc115b95cbc9854d6dc65f75a95ae473|
+| Web | sha256:b2188879d84d6069f66dd73a13210bb810d269a23366aa77d6d4fd6eb307a7b3 |de0572ebf7e946c3396c5693a9c5a3f27ab6a4ef|
 | Main PostgreSQL/pgvector | sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf |upstream image|
 
 API 127.0.0.1:8001, Web 127.0.0.1:8080, main DB 127.0.0.1:15432. Main volume
@@ -18,13 +18,16 @@ API 127.0.0.1:8001, Web 127.0.0.1:8080, main DB 127.0.0.1:15432. Main volume
 Application inputs khớp main dù các commit docs/scripts về sau có SHA khác OCI revision.
 Strict verifier đối chiếu bytes/manifests, image IDs, Compose/env; không chỉ so tên tag.
 
-Cutover được operator duyệt ngày 28/10/2026; API/Web healthy, strict 88 modules PASS.
-Hybrid/follow-up Giao nhận, SQL Khách sạn, DATE/ID và unsupported safety đã kiểm live.
-Provider error mapping/safety response correction e2722da đã được duyệt API-only cutover;
-SQL ranking và explicit RAG trên image hiện hành PASS, không dùng để chấm auto-routing PASS.
-Nghiệm thu toàn bộ correction còn **RELEASE_BLOCKED**: Knowledge403, COUNT+SUM gặp
-Gemini504, một policy-only question chọn sai route/false refusal. Không đổi model/gate
-hoặc retry để che failure. Chi tiết và ngân sách: [correctness review](correctness_review.md).
+Cutover ngày28/10 theo chỉ thị tự hoàn tất triển khai của operator; API/Web healthy,
+strict88 modules/source/config PASS. Policy-only AutoRAG/citation23, exact COUNT+SUM
+192/24360000 và SQL Khách sạn16entities PASS trên de0572e. Sau một Hybrid failure đã
+rollback API rồi sửa contract bắt buộc intent/scope, CI4/4 và triển khai4ab2c5a: Hybrid8kho/
+5đạt/3chưa,follow-up3kho và policy-only follow-up AutoRAG đều PASS đúng oracle/citations.
+Trạng thái: **APPLICATION_ACCEPTED_WITH_UPSTREAM_LIMITATIONS** trong phạm vi đã kiểm,
+không full Stage2/tag hoặc bảo đảm mọi câu hỏi/schema. Knowledge generation còn chưa
+nghiệm thu lại sau403/timeout; GET/models200 không chứng minh inference phục hồi. Giữmanual.
+Chi tiết nguồn, root-cause certainty và7requests/13generation/5query/0document đã đóng:
+[correctness review](correctness_review.md). Không gọi lại provider để kiểm docs/cleanup.
 
 Gemini default, Knowledge manual, fallback OFF, gate ON, Guest AI OFF, embedding2/768,
 approved JOIN ON, vector-only/BGE OFF, Langfuse ON. Không tự đổi model/provider/gates.
@@ -124,9 +127,14 @@ rollback API sau schema400 đã kiểm identity/config, leases, Guest và 88 mod
 revision cũ (chỉ chuẩn hóa CRLF/LF khi so Git blobs), rồi phục hồi bản sửa sau CI/duyệt mới.
 Các rollback cũ52701da8/069e7f67 vẫn giữ; GitHub không thay backup volumes/secrets.
 
-Rollback tức thời sau provider fix: API `sha256:5675513a90921b713413b8dda5391a9c0dfb2b24acbdb60edf4b9f96446f14b0`,
-source29bb788, private `.env.release.before-provider-fix` trong cùng thư mục nêu trên.
-Không dọn images/cache/volumes trong đợt điều tra provider.
+Rollback tức thời hiện giữ API `sha256:4a80e003aeb9ea008afcc5b557084db105ad4507130695a5b7fa1d378bc586e7`
+(e2722da), Web `sha256:9b735b38e62a19f9e1f8426b10c1774bedc30ae07d23cbda6cae75db1237a23f`
+(b75a844). Private configs: `C:/Users/admin/.codex/backups/shopquery-ai/evidence-routing-20261028/`,
+`.env.release.rollback` giữ cả hai trước đợt; `classification-window/.env.release.rollback`
+giữ API4a80e003/Webb2188879 trước API-only promotion. Các rollback5675513a/d8ad8aa5/ae181335
+và model images còn giữ. Ba rejected/superseded API images07045862/d7f2d822/6a632447 đã
+xóa exacttags khôngforce sau kiểm toàn bộ container references và runtime accepted;
+private candidate configs cũ chỉ là lịch sử, không dùng deploy. Không prune cache/volumes.
 
 ## Dữ liệu và backups
 

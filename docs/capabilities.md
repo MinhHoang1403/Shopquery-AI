@@ -63,6 +63,17 @@ quy tắc này không áp dụng cho uploaded workspaces.
 
 ## RAG và Hybrid
 
+Auto Router dùng một structured classifier call với evidence_requirement và intent/scope
+bắt buộc; backend suy SQL/RAG/HYBRID từ loại bằng chứng, không dùng keyword ngành nghề.
+Thiếu metadata bị từ chối trước dispatch, không gọi classifier/model lần hai. Current question
+tách khỏi bounded history; history chỉ giải tham chiếu, không bắt buộc dùng route trước.
+Đây vẫn là model semantic classification, không chứng minh mọi paraphrase sẽ đúng.
+Typed intent/scope không tự cấp quyền hoặc chứng minh chính sách; guards hiện có vẫn kiểm.
+Explicit /sql,/rag,/hybrid giữ nguyên và không phát classifier call. Các metadata/enum chỉ
+ghi diagnostics an toàn; user-facing badges và provider errors dùng ngôn ngữ dễ hiểu,
+technical codes giữ trong details thu gọn. Thiếu result metadata dùng summary trung tính,
+không tự dùng alias làm nhãn nghiệp vụ. Hybrid summaries đếm cùng các decisions đã kiểm.
+
 CSV/XLSX tạo bảng; PDF text-layer, DOCX, TXT/MD tạo tài liệu. Không OCR, DOC cũ,
 macro, URL ingestion hoặc vector database mới. Original binaries không lưu để tải
 lại. Không tự re-embed corpus main hoặc đổi embedding dimensions.
