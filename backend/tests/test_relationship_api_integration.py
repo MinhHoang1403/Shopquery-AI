@@ -158,6 +158,8 @@ def test_join_api_pipelines_and_persisted_history(
             if schema is RouteDecision:
                 assert fact in prompt and dim in prompt
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement={
                         "SQL": "tables",
                         "RAG": "documents",
@@ -248,6 +250,8 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
         def generate_structured(self, prompt, schema):
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement={
                         "SQL": "tables",
                         "RAG": "documents",
@@ -322,6 +326,8 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
 
         if schema is RouteDecision:
             return RouteDecision(
+                policy_intent="none",
+                policy_scope="unspecified",
                 evidence_requirement={
                     "SQL": "tables",
                     "RAG": "documents",

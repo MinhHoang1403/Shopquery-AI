@@ -85,7 +85,11 @@ def test_count_key_order_differential(
         def generate_structured(self, prompt, schema):
             if schema is RouteDecision:
                 return RouteDecision(
-                    evidence_requirement="tables", route=RouteLabel.SQL, reason="Synthetic offline"
+                    policy_intent="none",
+                    policy_scope="unspecified",
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Synthetic offline",
                 )
             assert schema is PlanDecision
             return decision_from_sql(draft, prompt)

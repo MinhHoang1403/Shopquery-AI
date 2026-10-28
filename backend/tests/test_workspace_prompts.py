@@ -35,6 +35,8 @@ class RecordingGateway:
         self.prompt = prompt
         if response_model is RouteDecision:
             return RouteDecision(
+                policy_intent="none",
+                policy_scope="unspecified",
                 evidence_requirement={
                     "SQL": "tables",
                     "RAG": "documents",

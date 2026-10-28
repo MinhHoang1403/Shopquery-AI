@@ -61,7 +61,11 @@ def test_router_keeps_relationship_facts_without_sql_generation_instructions(edg
     context = build_dataset_sql_context(dataset, approved_joins=relations, join_v1_enabled=True)
     gateway = Mock()
     gateway.generate_structured.return_value = RouteDecision(
-        evidence_requirement="both", route=RouteLabel.HYBRID, reason="stub"
+        policy_intent="none",
+        policy_scope="unspecified",
+        evidence_requirement="both",
+        route=RouteLabel.HYBRID,
+        reason="stub",
     )
     QueryRouter(gateway, context.routing_context).route("Kho nào đạt KPI trong tài liệu?")
     prompt = gateway.generate_structured.call_args.args[0]

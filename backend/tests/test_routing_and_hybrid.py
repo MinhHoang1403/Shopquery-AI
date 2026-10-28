@@ -22,6 +22,8 @@ class FakeGateway:
     def generate_structured(self, prompt: str, response_model: type[Any]) -> Any:
         if response_model is RouteDecision:
             return RouteDecision(
+                policy_intent="none",
+                policy_scope="unspecified",
                 evidence_requirement={
                     "SQL": "tables",
                     "RAG": "documents",

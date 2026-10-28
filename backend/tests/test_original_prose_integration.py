@@ -56,6 +56,8 @@ def test_original_prose_exact_kh_acceptance_and_history(
                     assert "Previous successful turns" not in prompt
                     assert "Account 1" not in prompt
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="both",
                     route=RouteLabel.HYBRID,
                     reason="Offline original prose",
@@ -177,7 +179,11 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
                 }
                 assert "Account 1" not in prompt
             return RouteDecision(
-                evidence_requirement="both", route=RouteLabel.HYBRID, reason="Verified premise"
+                policy_intent="none",
+                policy_scope="unspecified",
+                evidence_requirement="both",
+                route=RouteLabel.HYBRID,
+                reason="Verified premise",
             )
 
         def generate_text(self, prompt):

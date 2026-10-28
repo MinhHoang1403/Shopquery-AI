@@ -22,6 +22,61 @@ Nguồn chính: [RAT-SQL](https://aclanthology.org/2020.acl-main.677/),
 Đây là nguyên tắc thiết kế/đánh giá, không phải bằng chứng mô hình ShopQuery đạt các benchmark.
 Giữ Gemini native wire của QueryPlan và các guards; không đổi SDK, timeout, auth hoặc Knowledge endpoint.
 
+### Kết quả của đợt evidence routing — chưa promote toàn bộ
+
+PR[#3](https://github.com/MinhHoang1403/Shopquery-AI/pull/3) merge thành application source
+`de0572ebf7e946c3396c5693a9c5a3f27ab6a4ef`. [CI40628380855](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/40628380855)
+4/4 PASS:1514 backend,878 PostgreSQL,88 frontend,125 mock browser,10 maintenance,
+10 Compose. Trước sửa19/27 tests mới FAIL; sau sửa27/27 PASS. Bổ sung tiếp9 SDK/privacy/
+ambiguity checks và2 presentation checks; các suite targeted có overlap, không cộng.
+Lượt CI đầu có52 failures do assertions copy cũ/no-metadata summaries; đã sửa đúng
+presentation contract, giữ nguyên rows/Decimal/SQL refusal/privacy assertions. Không skip failure.
+
+Thư viện là domain không dùng trong prompt thiết kế.3 biến thể schema mới kiểm12 trường hợp
+execution (scalar COUNT/COUNT-column/SUM/AVG, numeric+DATE filter,3table chain,2table ranking),
+cùng3 policy threshold boundaries. Oracle đọc fact rows độc lập/PG AVG, không chấm theo SQL
+do model tạo. Đổi table/column names, IDs có0 đầu, column order, numeric values, thêm cột dư,
+NULL và tên trùng. Đây là scripted execution tests, không phải độ chính xác mô hình trên schema mới.
+16 natural-language routing fixtures (6 policy-only,4 SQL,4 Hybrid,1 unsupported,1 unclear)
+kiểm dispatch của metadata được script cấp, không dùng chúng để báo model route accuracy.
+
+Operator yêu cầu tự hoàn tất build/deploy trong prompt mới. Sau exact-main CI và0active
+leases/no Guest work, cutover API/Web chỉ đổi2image refs. API
+`sha256:0704586256cc56c03f7379509d2db58a95191ae9e04d97cc3fe8f4d04ab5a20e`, Web
+`sha256:b2188879d84d6069f66dd73a13210bb810d269a23366aa77d6d4fd6eb307a7b3`.
+Strict88/source/config/health PASS.36data objects và316messages≤390 fingerprint không đổi.
+Google existing session/history sau reload PASS; không coi đây là fresh OAuth test.
+
+| Câu UI mới | Correlation | Kết quả |
+| --- | --- | --- |
+| Xe điện policy-only, Auto |b4c406f7eddb460490f289f25c4f8760|PASS RAG/evidence=documents,citation23,mọi trạng thái,0SQL,2generation/1query,4.053s |
+| Giao nhận exact COUNT+SUM |c428a8d352e54d19bad04cba20e164f1|PASS SQL/evidence=tables,192rows/24360000 đúng oracle,2generation/0query,3.328s |
+| Khách sạn >100 phòng |713cd9502e24454094e1c1bf900d500f|PASS SQL,16IDs/names đúng oracle,2generation/0query,4.467s |
+| Giao nhận câu KPI tự nhiên mới |f1d3dafe938c4717914803d21220505a|FAIL:HYBRID/evidence=both,8rows,policy_sql_scope_incomplete;3generation/1query,17.101s;không gửi follow-up |
+
+Auto routing đúng4/4 evidence routes trong mẫu nhỏ; business correctness3PASS/1FAIL.
+Không có provider transport failure trong4requests; không suy SLA hoặc không bao giờ timeout.
+Lỗi Hybrid không được gọi PASS chỉ vì có8rows. Intent/scope raw của classifier chưa lưu nên
+giá trị cụ thể **UNKNOWN**. Source chứng minh contract cho phép bỏ cả hai và dùng defaults;
+nhánh full-classification coverage chỉ nhận khi intent khácnone vàscope=all_entities, còn
+fallback lexical grammar không phủ mọi cách diễn đạt. Không khẳng định lần này chắc chắn
+model đã bỏ fields. Failing regressions mới tái hiện riêng contract gap: schema không required,
+hai SDK chấp nhận payload thiếuintent/scope và tiếp tục tới Hybrid.3tests FAIL trước sửa.
+
+Correction kế tiếp yêu cầu evidence/intent/scope trong wire và local validation, giữ metadata
+enum an toàn ở diagnostics/Langfuse để biết nhánh thực. Không nới WHERE/HAVING/LIMIT, không
+coi intent là bằng chứng chính sách, không tăng retry hoặc gọi classifier thứhai. Phần này
+**FIXED_OFFLINE_LIVE_PENDING** cho đến khi tests/CI/live phù hợp hoàn tất; không tuyên bố
+đã giải quyết nguyên nhân duy nhất của trace mới. Knowledge GET/models200/334ms,cóknowledge,
+khôngredirect/request-ID; generation vẫn **NOT_VERIFIED**,không đổiauth/model/config.
+
+Cửa sổ mới đã đóng sau4câu:9/16generation,2/5query,0document. Không reuse phần dư sau
+failure. NormalgateON/defaultGemini/fallbackOFF/GuestOFF giữ nguyên. Theo rollback gate của
+operator, chỉAPI quay về4a80e003/sourcee2722da;Webb2188879 giữ UX đã kiểm.88modules runtime
+khớp Git e2722da (chuẩn hóaCRLF/LF),health8080PASS. Đây là source drift có chủ đích với main;
+không đổi strict guard để báo current-mainPASS. Main PostgreSQL/Langfuse/volumes giữcontainer.
+Không cleanup images khi API candidate chưa được promote ổn định. Tổng thể **RELEASE_BLOCKED**.
+
 Baseline: main `1f7871a16c16f9b840703e50199ec81f41269a9c`, API application
 `3fe4cc2`/image `d8ad8aa5`, Web `02d5cbb`/image `ae181335`. Một deployment 8080;
 không đổi DB/schema, model, gate, fallback, Guest policy, embedding hoặc Langfuse.

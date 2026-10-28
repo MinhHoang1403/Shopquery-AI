@@ -399,6 +399,8 @@ def test_owned_pipelines_execute_real_sql_retrieval_with_offline_providers(
             assert accounts.b.dataset.table.physical_table_name not in prompt
             if response_model.__name__ == "RouteDecision":
                 return response_model(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement={
                         "SQL": "tables",
                         "RAG": "documents",

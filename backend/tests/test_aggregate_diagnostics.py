@@ -230,7 +230,11 @@ def test_hybrid_unsafe_drafts_stop_after_evidence_before_execution_or_answer(pro
     sql = f"SELECT s.student_id,{projection} {CHAIN_ORDERS[0]} GROUP BY s.student_id" + suffix
     gateway.generate_structured.side_effect = [
         RouteDecision(
-            evidence_requirement="both", route=RouteLabel.HYBRID, reason="Scripted offline"
+            policy_intent="none",
+            policy_scope="unspecified",
+            evidence_requirement="both",
+            route=RouteLabel.HYBRID,
+            reason="Scripted offline",
         ),
         SqlFixture(sql=sql),
     ]

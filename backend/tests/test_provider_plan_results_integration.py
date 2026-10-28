@@ -90,7 +90,8 @@ def test_provider_count_sum_group_and_approved_joins_match_oracle(
         [
             response(
                 provider,
-                '{"route": "SQL", "reason": "Synthetic fixture", "evidence_requirement": "tables"}',
+                '{"route":"SQL","reason":"Synthetic fixture","evidence_requirement":"tables",'
+                '"policy_intent":"none","policy_scope":"unspecified"}',
             ),
             response(provider, decision.model_dump_json()),
         ],

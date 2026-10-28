@@ -367,6 +367,8 @@ def test_aggregate_diagnosis_never_executes_or_composes_a_hybrid_answer(route, c
 
     rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
     router.route.return_value = RouteDecision(
+        policy_intent="none",
+        policy_scope="unspecified",
         evidence_requirement={
             "SQL": "tables",
             "RAG": "documents",

@@ -163,7 +163,11 @@ def test_domain_golden_results_and_metamorphic_uploads(
             assert all(t.physical_table_name in prompt for t in dataset.tables)
             if schema is RouteDecision:
                 return RouteDecision(
-                    evidence_requirement="tables", route=RouteLabel.SQL, reason="Golden offline"
+                    policy_intent="none",
+                    policy_scope="unspecified",
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Golden offline",
                 )
             assert schema is PlanDecision
             return decision_from_sql(sql, prompt)
@@ -243,6 +247,8 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement={
                         "SQL": "tables",
                         "RAG": "documents",

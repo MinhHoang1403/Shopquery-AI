@@ -24,6 +24,8 @@ _strings = {
     "model": _models,
     "route": frozenset({"SQL", "RAG", "HYBRID", "UNSUPPORTED"}),
     "evidence_requirement": frozenset({"tables", "documents", "both", "unavailable", "unclear"}),
+    "policy_intent": frozenset({"none", "all", "qualified", "not_qualified"}),
+    "policy_scope": frozenset({"unspecified", "all_entities", "filtered_entities"}),
     "model_id": frozenset({"gemini", "inetcloud-knowledge"}),
     "requested_model": frozenset({"gemini", "inetcloud-knowledge"}),
     "used_model": frozenset({"gemini", "inetcloud-knowledge"}),

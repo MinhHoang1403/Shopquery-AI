@@ -132,7 +132,11 @@ def test_three_table_pipeline_keeps_exact_root_fact_oracle(workspace, monkeypatc
             ) and payments in prompt
             if response_model is RouteDecision:
                 return RouteDecision(
-                    evidence_requirement="tables", route=RouteLabel.SQL, reason="Offline synthetic"
+                    policy_intent="none",
+                    policy_scope="unspecified",
+                    evidence_requirement="tables",
+                    route=RouteLabel.SQL,
+                    reason="Offline synthetic",
                 )
             assert response_model is PlanDecision
             assert "At most three tables" in prompt
@@ -281,6 +285,8 @@ def test_authenticated_upload_three_tables_pipeline_and_owner_history(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement={
                         "SQL": "tables",
                         "RAG": "documents",
@@ -372,6 +378,8 @@ def test_guest_three_table_auto_relations_temp_and_pipelines(monkeypatch, model,
             def generate_structured(self, prompt, schema):
                 if schema is RouteDecision:
                     return RouteDecision(
+                        policy_intent="none",
+                        policy_scope="unspecified",
                         evidence_requirement={
                             "SQL": "tables",
                             "RAG": "documents",

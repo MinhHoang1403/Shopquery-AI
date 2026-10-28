@@ -101,6 +101,8 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
             calls.append(schema.__name__)
             if schema is RouteDecision:
                 return RouteDecision(
+                    policy_intent="none",
+                    policy_scope="unspecified",
                     evidence_requirement="both",
                     route=RouteLabel.HYBRID,
                     reason="Scripted policy test",
