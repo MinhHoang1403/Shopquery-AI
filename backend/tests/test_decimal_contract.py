@@ -10,6 +10,7 @@ from app.rag.pipeline import RagPipeline
 from app.routing.hybrid import HybridAnswerDraft, HybridPipeline
 from app.routing.router import RouteLabel
 from app.routing.service import ChatResult
+from app.text_to_sql.answer import ResultColumn, compose_sql_answer
 from app.text_to_sql.executor import _json_safe
 from app.text_to_sql.pipeline import SqlResult
 from app.text_to_sql.validator import ValidatedSql
@@ -92,8 +93,20 @@ def test_executor_to_http_and_grounding_preserve_decimal_strings(
     )
     result = pipeline.run("Tổng chính xác?")
     assert result.rows == [expected]
-    assert "12345678901234567890.12" in result.answer
-    assert "0.00" in result.answer and "Chưa có dữ liệu" in result.answer
+    assert "bảng dữ liệu" in result.answer  # No labels are supplied by this fake validator.
+    presented = compose_sql_answer(
+        rows,
+        (),
+        (
+            ResultColumn(key="large_id", label="Mã"),
+            ResultColumn(key="total", label="Tổng", numeric=True),
+            ResultColumn(key="zero", label="Số không", numeric=True),
+            ResultColumn(key="missing", label="Thiếu"),
+            ResultColumn(key="matched_row_count", label="Số dòng", numeric=True),
+        ),
+    )
+    assert "12.345.678.901.234.567.890,12" in presented
+    assert "0,00" in presented and "Chưa có dữ liệu" in presented
     assert gateway.prompt == ""  # SQL presentation no longer makes a paid generation.
 
     class Service:

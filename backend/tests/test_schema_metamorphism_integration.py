@@ -21,11 +21,14 @@ from app.datasets.relationships import RelationshipInput, verify_relationship
 from app.datasets.repository import DatasetInfo
 from app.guest.pipeline import GuestSqlDatabase
 from app.guest.worker import parse_guest_file
+from app.routing.hybrid_evidence import compose_answer, verified_classification
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.join_policy import ApprovedJoin
+from app.text_to_sql.pipeline import SqlResult
 from app.text_to_sql.planner import QueryPlanner
 from app.text_to_sql.query_plan import QueryPlan
+from tests.hybrid_fixtures import rule_block, scoped_chunk
 from tests.plan_fixtures import decision_from_sql
 
 pytestmark = pytest.mark.integration
@@ -192,6 +195,28 @@ def test_library_transformations_preserve_semantics_against_independent_pg_oracl
                 }
                 assert {r[key]: Decimal(r["total"]) for r in actual} == expected
                 assert all(r["n"] == 2 for r in actual)
+                threshold = Decimal("20.50") + variant
+                chunk = scoped_chunk(
+                    91, "library_policy.md", "Điều kiện", rule_block(key, fee, str(threshold)), 0.01
+                )
+                result = SqlResult(
+                    "",
+                    compiled.evidence_sql,
+                    actual,
+                    compiled.validated.fact_table,
+                    compiled.validated.count_metrics,
+                    compiled.result_columns,
+                )
+                draft = verified_classification(result, [chunk], context, "vi")
+                assert draft is not None
+                assert {item.entity_values[0]: item.status for item in draft.decisions} == {
+                    identity: "qualified" if total >= threshold else "not_qualified"
+                    for identity, total in expected.items()
+                }
+                assert draft.used_chunk_ids == [91]
+                summary = compose_answer(result, [chunk], draft, context)
+                assert "**1 đối tượng đạt yêu cầu**" in summary
+                assert "**1 đối tượng chưa đạt**" in summary
             else:
                 assert actual == [
                     {book_key: book_ids[1], "name": "Trùng tên", "total": str(values[3])}
