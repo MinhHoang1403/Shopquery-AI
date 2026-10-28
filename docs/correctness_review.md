@@ -1,5 +1,65 @@
 # Sửa correctness và trình bày kết quả sau bàn giao
 
+## Quyết định thiết kế thử nghiệm — 28/10/2026
+
+Benchmark độc lập khóa trước thiết kế tại commit `95a6b0d`, SHA-256 chuẩn LF
+`d5c6403e32984fce1825b26482f4b70b266551ce40e4c1dbe8587c020e44a69c`: 36 câu,
+8 development/8 regression/20 held-out, 5 lĩnh vực; nông nghiệp là schema mới.
+Nhãn task/evidence/route/intent/scope/execution đặt trước; held-out không đưa vào prompt.
+Đây là bộ đánh giá synthetic, không phải kết quả live hay điểm Spider/BIRD.
+
+| Phương án | Bằng chứng và rủi ro | Quyết định thử |
+| --- | --- | --- |
+| A: PR5 fields độc lập | Chặn một mâu thuẫn nhưng Knowledge chọn intent none dù route đúng; một classifier call | Baseline so sánh; chưa đạt |
+| B: một task typed và scope | Bỏ route/evidence/intent trùng lặp; backend ánh xạ tất định. Compact trước có prompt/schema không khớp nên chưa đánh giá công bằng; vẫn có thể false RAG/Hybrid | Candidate một: prompt và wire phải cùng contract; một call |
+| C: consistency/capability guard | Chặn mâu thuẫn rõ, scope chưa biết và nguồn thiếu; không xác minh ngữ nghĩa khi model sai nhất quán | Kết hợp vào B bằng kiểm tra deterministic, không thêm call |
+
+Chỉ chọn B+C để thử sau khóa benchmark. Các giá trị scope chưa rõ không được tự biến
+thành all_entities, owner và policy/coverage/SQL guards vẫn là authority; no keyword
+override, không thêm classifier. Nếu semantic test thất bại, không promote, không sửa
+prompt hàng loạt. Chi phí mục tiêu một generation như baseline; latency/tokens phải đo
+được, không giả định. Chưa quyết định production cho đến khi both-provider held-out,
+known contrasts, independent PostgreSQL oracle và live E2E đạt.
+
+Gap hội thoại độc lập: RAG có thể persist câu thiếu bằng chứng kèm citation và error=null;
+`contextual_question` hiện nhận là lượt thành công. Citation ID hợp lệ không chứng minh
+câu trả lời đầy đủ. Không dùng regex và không coi model tự gắn nhãn là factual verification;
+cần negative regression và xử lý legacy không ghi đè history trước khi cân nhắc sửa.
+
+### Kết quả đánh giá độc lập và quyết định phát hành
+
+`RELEASE_BLOCKED`: thử nghiệm B+C bị bác bỏ sau khi chạy tuần tự trên hai provider,
+không merge, deploy hoặc dọn image. Candidate dùng một task enum và một scope do model
+sinh; backend ánh xạ task sang route/evidence/intent và từ chối scope không rõ. Prompt
+và wire cùng hợp đồng. Không có fallback hoặc retry; mã candidate đã được gỡ khỏi source.
+Phép đo chỉ gọi Router trong API container với dữ liệu synthetic, không chạy SQL, không
+phải UI acceptance hay kết quả PostgreSQL oracle.
+
+| Kịch bản | Boundary/bằng chứng | Kết luận và trạng thái |
+| --- | --- | --- |
+| Áp dụng policy sau giải thích | Baseline Knowledge `267eda943194497d9bed0e125d2020ac`: RAG/documents thay vì HYBRID/both; candidate cùng mẫu đúng | Sai định tuyến baseline **CONFIRMED**; một mẫu cải thiện không chứng minh sửa tổng quát |
+| Chỉ giải thích policy sau Hybrid | Baseline và candidate đúng RAG trên mẫu đối chứng Knowledge; candidate cũng đúng trên Gemini | Mẫu kiểm đúng; không đủ chứng minh không false Hybrid |
+| Scope của tập đối tượng | Held-out `h07`, Knowledge `73dce125974943dbb91d4646bcf3bd7f`: HYBRID/both/not_qualified đúng, nhưng `filtered_entities` thay vì `all_entities` | **CONFIRMED semantic failure** ở Router; model có thể nhầm lựa chọn kết quả với giới hạn tập đầu vào. Không có SQL execution; nguyên nhân nội bộ của model UNKNOWN |
+| RAG refusal/history | Negative regression trong `test_conversation_context.py`: answer thiếu bằng chứng, citation hợp lệ, error=null vẫn vào history được gọi là successful | **APPLICATION_DEFECT**; test xfail strict để theo dõi, không tính là PASS. Không chứng minh đây là nguyên nhân trace routing lịch sử |
+| Knowledge timeout | Trace `21efd96c67cb41d69dd7e4fd6e71e5de`: timeout tại Router trước QueryPlan | **UPSTREAM_EVIDENCE_REQUIRED**; không có log server để phân biệt connect/read/pool/queue/inference |
+| Coverage, binder, typed literal, SQL safety và provenance | Bằng chứng lịch sử và các regression tương ứng ở các bảng bên dưới | Giữ guard; không suy lỗi ứng dụng hiện tại từ trace cũ nếu chưa tái hiện |
+
+Candidate khớp tất cả nhãn ở 6/7 mẫu Knowledge held-out đã chạy trước khi dừng;
+13 mẫu held-out Knowledge và toàn bộ held-out Gemini chưa chạy. Không tính đây là
+accuracy đầy đủ hoặc ước lượng ổn định dài hạn. Mẫu phát triển/hồi quy và baseline
+nhỏ, không được dùng làm oracle hay thay cho nghiệm thu. Một ý tưởng dùng model thứ
+hai để kiểm scope chỉ là giả thuyết: chưa có bằng chứng so sánh độ chính xác, chi phí,
+độ trễ và tác động privacy, nên chưa đưa vào production. Nếu sửa sau khi xem held-out,
+cần khóa một tập held-out mới độc lập, giữ lại mẫu đã xem như regression và không
+điều chỉnh nhãn chuẩn theo kết quả.
+
+Ngân sách cửa sổ đã đóng: **22 generation, 0 query embeddings, 0 document embeddings**,
+không có fallback/retry. Trong đó Knowledge 16 calls (9.815 input/4.643 output tokens),
+Gemini 6 calls (3.694 input/343 output tokens), theo metadata SDK; chi phí tiền tệ
+UNKNOWN. Thời gian quan sát Router: Knowledge baseline 2.970–4.290 ms/candidate
+1.986–4.333 ms; Gemini baseline 1.464 ms/candidate 1.062–1.742 ms. Các mẫu quá nhỏ
+để kết luận phân phối latency hoặc năng lực provider.
+
 ## Điều tra Knowledge routing tiếp theo — chưa promote
 
 Baseline b09ec4e/API4ab2c5a/Webde0572e. Nghiệm thu trên mạng công ty có9requests,

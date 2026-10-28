@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
+
 from app.conversations.context import contextual_question
 from app.conversations.repository import ConversationRecord, MessageRecord
 
@@ -33,6 +35,35 @@ def test_only_successful_same_owner_dataset_premise_is_forwarded():
 def test_failed_or_unsupported_turn_is_not_a_premise():
     for record in (snapshot(route="UNSUPPORTED"), snapshot(error="failed")):
         assert contextual_question("Còn lại?", record, record.owner_user_id, 13) == "Còn lại?"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Legacy RAG responses lack reliable answerability metadata; release is blocked",
+)
+def test_legacy_rag_refusal_with_citation_is_not_a_successful_premise():
+    """A cited refusal can have error=None and predates explicit answerability metadata."""
+    from dataclasses import replace
+
+    record = snapshot(route="RAG", verification_status=None)
+    answer = "Không thể xác định vì thiếu số liệu thực tế."
+    refusal = replace(
+        record.messages[1],
+        content=answer,
+        response_metadata={
+            "route": "RAG",
+            "answer": answer,
+            "sql": None,
+            "error": None,
+            "sources": [{"chunk_id": 50}],
+        },
+    )
+    record = replace(record, messages=(record.messages[0], refusal))
+    result = contextual_question(
+        "Vậy còn những đối tượng chưa đạt?", record, record.owner_user_id, 13
+    )
+    assert answer not in result
+    assert "Previous successful turns" not in result
 
 
 def test_hybrid_needs_backend_verified_metadata_even_when_http_successful():
