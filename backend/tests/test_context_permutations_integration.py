@@ -9,13 +9,17 @@ from app.core.errors import SqlUnsupportedError
 from app.datasets.context import build_dataset_sql_context
 from app.datasets.parser import ColumnSpec
 from app.datasets.repository import DatasetTableInfo
-from app.dependencies import build_dataset_chat_service
-from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.query_plan import PlanDecision
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from app.text_to_sql.validator import SqlValidator
 from tests import test_join_domains_integration as domain_tests
 from tests.join_domains import DOMAINS
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import (
+    proposal_for_evidence,
+    proposal_from_plan,
+    scoped_dataset_service,
+)
 from tests.test_join_domains_integration import golden_sql, oracle
 
 pytestmark = pytest.mark.integration
@@ -66,22 +70,23 @@ def test_context_permutations_and_multiple_unrelated_tables_keep_oracle(
     class Gateway:
         def generate_structured(self, prompt, schema):
             assert all(table.physical_table_name in prompt for table in tables)
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="tables",
-                    route=RouteLabel.SQL,
-                    reason="Offline permutation",
-                )
-            assert schema is PlanDecision
-            return decision_from_sql(golden_sql(domain, dataset, 3), prompt)
+            if schema is TaskProposal:
+                _task_route = RouteLabel.SQL
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            assert schema is TaskProposal
+            return proposal_from_plan(
+                decision_from_sql(golden_sql(domain, dataset, 3), prompt), _task_operation
+            )
 
         def generate_text(self, prompt):
             return "Offline synthetic answer"
 
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
-    result = build_dataset_chat_service(
+    result = scoped_dataset_service(
         settings.model_copy(update={"ai_default_model": model}), context
     ).chat(domain.question)
     assert result.route == RouteLabel.SQL and result.rows == expected

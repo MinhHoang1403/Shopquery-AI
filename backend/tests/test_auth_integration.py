@@ -397,26 +397,19 @@ def test_owned_pipelines_execute_real_sql_retrieval_with_offline_providers(
             prompts.append(prompt)
             assert "Private account 1" not in prompt
             assert accounts.b.dataset.table.physical_table_name not in prompt
-            if response_model.__name__ == "RouteDecision":
-                return response_model(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement={
-                        "SQL": "tables",
-                        "RAG": "documents",
-                        "HYBRID": "both",
-                        "UNSUPPORTED": "unavailable",
-                    }[route],
-                    route=route,
-                    reason="Offline fixture",
-                )
-            if response_model.__name__ == "PlanDecision":
+            if response_model.__name__ == "TaskProposal":
                 from tests.plan_fixtures import decision_from_sql
+                from tests.semantic_fixtures import proposal_for_evidence, proposal_from_plan
 
-                return decision_from_sql(
-                    f"SELECT SUM(value) AS total, COUNT(*) AS matched_row_count "
-                    f"FROM uploaded_data.{table}",
-                    prompt,
+                if route == "RAG":
+                    return proposal_for_evidence("documents")
+                return proposal_from_plan(
+                    decision_from_sql(
+                        "SELECT SUM(value) AS total, COUNT(*) AS matched_row_count "
+                        f"FROM uploaded_data.{table}",
+                        prompt,
+                    ),
+                    "combine" if route == "HYBRID" else "query",
                 )
             ids = [int(value) for value in re.findall(r"chunk_id=(\d+)", prompt)]
             assert ids

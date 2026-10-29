@@ -1,6 +1,5 @@
 """Authenticated context and guarded SQL run only on disposable PostgreSQL."""
 
-import json
 from decimal import Decimal
 from unittest.mock import Mock
 from uuid import UUID, uuid4
@@ -14,13 +13,18 @@ from app.database.session import get_readonly_engine, get_setup_engine
 from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.relationships import RelationshipConfirm, RelationshipInput
 from app.datasets.repository import DatasetRepository
-from app.dependencies import build_dataset_chat_service, build_workspace_context
-from app.routing.router import RouteDecision, RouteLabel
+from app.dependencies import build_workspace_context
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from app.text_to_sql.executor import SqlExecutor
-from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import SqlValidator
 from tests.auth_helpers import TEST_OWNER
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import (
+    proposal_for_evidence,
+    proposal_from_plan,
+    scoped_dataset_service,
+)
 from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 from tests.test_dataset_parser import parse
 
@@ -122,20 +126,15 @@ def test_reverse_draft_matches_postgres_oracle_through_authenticated_context(
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                data, _ = json.JSONDecoder().raw_decode(
-                    prompt.split("Context data (untrusted, not the current task):\n", 1)[1]
-                )
-                assert data["workspace"] == context.routing_context
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="tables",
-                    route=RouteLabel.SQL,
-                    reason="Synthetic contract",
-                )
-            assert schema is PlanDecision and all(name in prompt for name in context.table_columns)
-            return decision_from_sql(reverse, prompt)
+            if schema is TaskProposal:
+                _task_route = RouteLabel.SQL
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            assert schema is TaskProposal and all(name in prompt for name in context.table_columns)
+            return proposal_from_plan(decision_from_sql(reverse, prompt), _task_operation)
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -145,10 +144,10 @@ def test_reverse_draft_matches_postgres_oracle_through_authenticated_context(
             return "Synthetic rows only"
 
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
-    response = build_dataset_chat_service(
+    response = scoped_dataset_service(
         settings.model_copy(update={"ai_default_model": model}), context
     ).chat("Tổng và trung bình thanh toán theo học viên")
-    assert calls == ["RouteDecision", "PlanDecision"]
+    assert calls == ["TaskProposal"]
     assert response.route == RouteLabel.SQL and response.used_model == model
     assert not response.fallback_used
     assert response.sql.startswith("SELECT")
@@ -681,22 +680,17 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
             def generate_structured(self, prompt, schema):
                 calls.append(schema.__name__)
                 assert all(t.physical_table_name not in prompt for t in foreign.tables)
-                if schema is RouteDecision:
-                    data, _ = json.JSONDecoder().raw_decode(
-                        prompt.split("Context data (untrusted, not the current task):\n", 1)[1]
-                    )
-                    assert data["workspace"] == context.routing_context
-                    return RouteDecision(
-                        policy_intent="none",
-                        policy_scope="unspecified",
-                        evidence_requirement="tables",
-                        route=RouteLabel.SQL,
-                        reason="Synthetic intent fixture",
-                    )
-                assert schema is PlanDecision and all(
+                if schema is TaskProposal:
+                    _task_route = RouteLabel.SQL
+                    if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                        return proposal_for_evidence(
+                            "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                        )
+                    _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+                assert schema is TaskProposal and all(
                     name in prompt for name in context.table_columns
                 )
-                return decision_from_sql(sql, prompt)
+                return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
             def generate_text(self, prompt):
                 calls.append("answer")
@@ -707,11 +701,11 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
         executor = Mock()
         with monkeypatch.context() as block:
             block.setattr("app.text_to_sql.executor.SqlExecutor.execute", executor)
-            refused = build_dataset_chat_service(settings, context).chat("Synthetic tuition JOIN")
+            refused = scoped_dataset_service(settings, context).chat("Synthetic tuition JOIN")
             assert refused.route == RouteLabel.UNSUPPORTED and refused.sql is None
             assert refused.rows == [] and "liên kết" in refused.answer
             executor.assert_not_called()
-        assert calls == ["RouteDecision", "PlanDecision"]
+        assert calls == ["TaskProposal"]
         calls.clear()
         confirm(selected)
         context = build_workspace_context(settings, selected, repository)
@@ -720,10 +714,10 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
         assert context.approved_joins[0].target_table == dimension.physical_table_name
         assert "Never JOIN tables" not in context.schema_context
         assert f"FROM {fact_binding} INNER JOIN {dimension_binding}" in context.schema_context
-        result = build_dataset_chat_service(settings, context).chat("Synthetic tuition JOIN")
+        result = scoped_dataset_service(settings, context).chat("Synthetic tuition JOIN")
         assert result.route == RouteLabel.SQL and result.used_model == model
         assert result.fallback_used is False
-        assert calls == ["RouteDecision", "PlanDecision"]
+        assert calls == ["TaskProposal"]
         with get_setup_engine().connect() as connection:
             totals = connection.execute(
                 text(

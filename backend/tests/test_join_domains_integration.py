@@ -16,12 +16,12 @@ from app.database.session import get_readonly_engine, get_setup_engine
 from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.relationships import RelationshipConfirm, RelationshipInput
 from app.datasets.repository import DatasetRepository
-from app.dependencies import build_dataset_chat_service, build_workspace_context
+from app.dependencies import build_workspace_context
 from app.rag.pipeline import RagAnswerDraft
 from app.rag.upload_parser import parse_document_file
 from app.routing.hybrid import HybridAnswerDraft
-from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.query_plan import PlanDecision
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from tests.auth_helpers import TEST_OWNER
 from tests.hybrid_fixtures import (
     assert_decision_summary,
@@ -31,6 +31,11 @@ from tests.hybrid_fixtures import (
 )
 from tests.join_domains import DOMAINS, uploads
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import (
+    proposal_for_evidence,
+    proposal_from_plan,
+    scoped_dataset_service,
+)
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
 
@@ -161,16 +166,15 @@ def test_domain_golden_results_and_metamorphic_uploads(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             assert all(t.physical_table_name in prompt for t in dataset.tables)
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="tables",
-                    route=RouteLabel.SQL,
-                    reason="Golden offline",
-                )
-            assert schema is PlanDecision
-            return decision_from_sql(sql, prompt)
+            if schema is TaskProposal:
+                _task_route = RouteLabel.SQL
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            assert schema is TaskProposal
+            return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -180,7 +184,7 @@ def test_domain_golden_results_and_metamorphic_uploads(
 
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
     with diagnostic_request() as trace:
-        result = build_dataset_chat_service(
+        result = scoped_dataset_service(
             settings.model_copy(update={"ai_default_model": model}), context
         ).chat(domain.question)
     assert (
@@ -188,7 +192,7 @@ def test_domain_golden_results_and_metamorphic_uploads(
     )
     assert result.rows == expected and result.answer
     assert result.sql.count("JOIN") == tables_count - 1
-    assert calls == ["RouteDecision", "PlanDecision"]
+    assert calls == ["TaskProposal"]
     assert trace.events[-1]["sql_validated"] and trace.events[-1]["execution_reached"]
     assert trace.events[-1]["result_rows"] == len(expected)
     if domain.name == "logistics":
@@ -245,21 +249,17 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement={
-                        "SQL": "tables",
-                        "RAG": "documents",
-                        "HYBRID": "both",
-                        "UNSUPPORTED": "unavailable",
-                    }[route],
-                    route=route,
-                    reason="Golden document evidence",
+            if schema is TaskProposal:
+                _task_route = route
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
+                return proposal_from_plan(
+                    decision_from_sql(golden_sql(domain, dataset, 3), prompt), _task_operation
                 )
-            if schema is PlanDecision:
-                return decision_from_sql(golden_sql(domain, dataset, 3), prompt)
             ids = [int(value) for value in re.findall(r"\[chunk_id=(\d+)", prompt)]
             assert ids and "40.00" in prompt
             if schema is RagAnswerDraft:
@@ -276,7 +276,7 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
 
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
     monkeypatch.setattr("app.dependencies.build_embedding_gateway", lambda _: embedder)
-    result = build_dataset_chat_service(
+    result = scoped_dataset_service(
         settings.model_copy(update={"ai_default_model": model}), context
     ).chat("Synthetic question with KPI evidence")
     assert result.route == route and result.used_model == model and not result.fallback_used
@@ -288,4 +288,4 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
     if route != RouteLabel.UNSUPPORTED:
         assert len(result.sources) == 1 and result.sources[0].source_file == filename
     else:
-        assert result.sources == [] and calls == ["RouteDecision"]
+        assert result.sources == [] and calls == ["TaskProposal"]

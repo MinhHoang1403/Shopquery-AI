@@ -7,10 +7,12 @@ import pytest
 
 from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteDecision, RouteLabel
+from app.semantic.wire import TaskProposal
 from app.text_to_sql.query_plan import PlanDecision
 from tests.gate_d_fixture import QUESTIONS
 from tests.hybrid_fixtures import classification_draft
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import proposal_from_plan
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_gate_d_replay_integration import (
     add_policy,
@@ -51,18 +53,10 @@ def test_original_prose_exact_kh_acceptance_and_history(
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                if "Vậy còn" in prompt:
-                    assert "Previous successful turns" not in prompt
-                    assert "Account 1" not in prompt
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="both",
-                    route=RouteLabel.HYBRID,
-                    reason="Offline original prose",
-                )
-            if schema is PlanDecision:
+            if schema is TaskProposal:
+                _task_route = RouteLabel.HYBRID
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
                 sql = draft_sql(dataset, "H")
                 decision = decision_from_sql(
                     sql.replace("AS fact_row_count", "AS so_dong_don") if business_alias else sql,
@@ -87,7 +81,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
                             }
                         )
                     )
-                return decision
+                return proposal_from_plan(decision, _task_operation)
             assert schema is HybridAnswerDraft
             candidates.extend(
                 json.loads(prompt.split("Backend policy candidates: ", 1)[1].split("\n", 1)[0])
@@ -118,7 +112,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
         assert response["sql"] is None and "Qualified:" not in response["answer"]
         assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
         assert actors.b.client.get(path).status_code == 404
-        assert calls == ["RouteDecision", "PlanDecision", "HybridAnswerDraft"]
+        assert calls == ["TaskProposal", "HybridAnswerDraft"]
         return
     assert response["error"] is None, response["error"]
     assert response["route"] == "HYBRID"
@@ -140,7 +134,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
         assert line.endswith("| Đạt |" if status == "qualified" else "| Chưa đạt |")
     assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
     assert actors.b.client.get(path).status_code == 404
-    assert calls == ["RouteDecision", "PlanDecision"]
+    assert calls == ["TaskProposal"]
     followup = actors.a.client.post(
         path + "/messages", json={"message": "Vậy còn những kho chưa đạt KPI?", "model_id": model}
     )

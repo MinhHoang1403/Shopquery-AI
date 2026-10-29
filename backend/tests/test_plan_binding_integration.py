@@ -4,7 +4,6 @@ import pytest
 from sqlalchemy import text
 
 from app.database.session import get_readonly_engine
-from app.dependencies import _build_dataset_chat_service
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.plan_binding import bind_approved_grain
@@ -16,6 +15,7 @@ from app.text_to_sql.query_plan import (
     QueryPlan,
 )
 from tests.join_domains import DOMAINS
+from tests.semantic_fixtures import proposal_from_plan, scoped_dataset_service
 from tests.test_join_domains_integration import domain_workspace  # noqa: F401
 from tests.test_plan_providers import gateway_harness, response
 from tests.test_query_compiler import field, source
@@ -113,16 +113,13 @@ def test_dimension_identity_completion_matches_independent_postgresql(
     )
     replies = [
         response(
-            provider,
-            '{"route":"SQL","reason":"Independent fixture","evidence_requirement":"tables",'
-            '"policy_intent":"none","policy_scope":"unspecified"}',
-        ),
-        response(provider, PlanDecision(plan=plan).model_dump_json()),
+            provider, proposal_from_plan(PlanDecision(plan=plan), context=context).model_dump_json()
+        )
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, replies)
     try:
-        result = _build_dataset_chat_service(settings, context, gateway).chat(domain.question)
-        assert result.route == "SQL" and len(calls) == 2
+        result = scoped_dataset_service(settings, context, gateway).chat(domain.question)
+        assert result.route == "SQL" and len(calls) == 1
         assert plan.group_by == [key]
         bindings = f"FROM uploaded_data.{fact} f "
         if domain.star:

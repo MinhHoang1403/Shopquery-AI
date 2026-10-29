@@ -6,9 +6,13 @@ import pytest
 from sqlalchemy import text
 
 from app.database.session import get_setup_engine
-from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.query_plan import PlanDecision
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import (
+    proposal_for_evidence,
+    proposal_from_plan,
+)
 from tests.test_auth_integration import accounts  # noqa: F401
 
 pytestmark = pytest.mark.integration
@@ -110,16 +114,15 @@ def test_numbered_logistics_upload_sql_owner_csrf_and_history(
             calls.append(schema.__name__)
             assert "No approved table-to-table relationships" not in prompt
             assert "Safe three-table tree" in prompt or '"relationships": [' in prompt
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="tables",
-                    route=RouteLabel.SQL,
-                    reason="Offline synthetic logistics",
-                )
-            assert schema is PlanDecision and "Row count has zero arguments" in prompt
-            return decision_from_sql(sql, prompt)
+            if schema is TaskProposal:
+                _task_route = RouteLabel.SQL
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            assert schema is TaskProposal and "Row count has zero arguments" in prompt
+            return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
         def generate_text(self, prompt):
             calls.append("answer")
@@ -144,6 +147,6 @@ def test_numbered_logistics_upload_sql_owner_csrf_and_history(
     assert response["used_model"] == model and not response["fallback_used"]
     assert response["sql"].count("JOIN") == (2 if three_tables else 1)
     assert response["rows"] == [dict(r) for r in oracle]
-    assert calls == ["RouteDecision", "PlanDecision"]
+    assert calls == ["TaskProposal"]
     assert a.client.get(chat_path).json()["messages"][-1]["response"] == response
     assert b.client.get(chat_path).status_code == 404

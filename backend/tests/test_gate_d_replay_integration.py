@@ -15,11 +15,13 @@ from app.datasets.relationships import RelationshipConfirm, RelationshipInput
 from app.dependencies import build_workspace_context
 from app.rag.upload_parser import parse_document_file
 from app.routing.hybrid import HybridAnswerDraft
-from app.routing.router import RouteDecision, RouteLabel
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from app.text_to_sql.query_plan import PlanDecision
 from tests.gate_d_fixture import POLICY, QUESTIONS, uploads
 from tests.hybrid_fixtures import classification_draft, rule_block
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import proposal_from_plan
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
@@ -162,21 +164,10 @@ def test_gate_d_questions_oracle_and_authenticated_history(
     class Gateway:
         def generate_structured(self, prompt: str, schema: type[BaseModel]) -> BaseModel:
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                assert "Required FROM/JOIN fragment" not in prompt
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement={
-                        "SQL": "tables",
-                        "RAG": "documents",
-                        "HYBRID": "both",
-                        "UNSUPPORTED": "unavailable",
-                    }[RouteLabel.HYBRID if level == "H" else RouteLabel.SQL],
-                    route=RouteLabel.HYBRID if level == "H" else RouteLabel.SQL,
-                    reason="Scripted offline route, not model accuracy",
-                )
-            if schema is PlanDecision:
+            if schema is TaskProposal:
+                _task_route = RouteLabel.HYBRID if level == "H" else RouteLabel.SQL
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
                 assert QUESTIONS[level] in prompt
                 assert all(name in prompt for name in context.table_columns)
                 assert (
@@ -184,11 +175,14 @@ def test_gate_d_questions_oracle_and_authenticated_history(
                     in prompt
                 )
                 sql = draft_sql(dataset, level)
-                return decision_from_sql(
-                    sql.replace("AS fact_row_count", "AS delivery_count")
-                    if business_alias
-                    else sql,
-                    prompt,
+                return proposal_from_plan(
+                    decision_from_sql(
+                        sql.replace("AS fact_row_count", "AS delivery_count")
+                        if business_alias
+                        else sql,
+                        prompt,
+                    ),
+                    _task_operation,
                 )
             assert schema is HybridAnswerDraft
             if business_alias:
@@ -276,19 +270,15 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
     class Gateway:
         def generate_structured(self, prompt: str, schema: type[BaseModel]) -> BaseModel:
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="both",
-                    route=RouteLabel.HYBRID,
-                    reason="Offline hypothesis",
-                )
-            assert schema is PlanDecision
-            return (
+            if schema is TaskProposal:
+                _task_route = RouteLabel.HYBRID
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            assert schema is TaskProposal
+            return proposal_from_plan(
                 PlanDecision(plan=None, unsupported_reason="Private synthetic hypothesis")
                 if mutation == "unsupported"
-                else decision_from_sql(sql, prompt)
+                else decision_from_sql(sql, prompt),
+                _task_operation,
             )
 
         def generate_text(self, prompt: str) -> str:
@@ -303,7 +293,7 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
     assert (
         response["route"] == "UNSUPPORTED" and response["rows"] == [] and response["sources"] == []
     )
-    assert calls == ["RouteDecision", "PlanDecision"]
+    assert calls == ["TaskProposal"]
     assert not trace.facts["execution_reached"]
     assert any(e["stage"] == "document_retrieval" for e in trace.events)
     assert any(
@@ -327,16 +317,13 @@ def test_verified_rule_classification_does_not_request_model_verdict(
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="both",
-                    route=RouteLabel.HYBRID,
-                    reason="Offline evidence test",
+            if schema is TaskProposal:
+                _task_route = RouteLabel.HYBRID
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
+                return proposal_from_plan(
+                    decision_from_sql(draft_sql(dataset, "H"), prompt), _task_operation
                 )
-            if schema is PlanDecision:
-                return decision_from_sql(draft_sql(dataset, "H"), prompt)
             raise AssertionError("Verified policy verdict must not request a model draft")
 
         def generate_text(self, prompt):
@@ -360,4 +347,4 @@ def test_verified_rule_classification_does_not_request_model_verdict(
     before = list(calls)
     assert accounts.a.client.get(path).json()["messages"][-1]["response"] == response
     assert accounts.b.client.get(path).status_code == 404
-    assert calls == before == ["RouteDecision", "PlanDecision"]
+    assert calls == before == ["TaskProposal"]

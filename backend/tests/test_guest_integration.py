@@ -21,10 +21,11 @@ from app.guest.pipeline import GuestSqlDatabase, run_guest_chat
 from app.guest.worker import parse_guest_file, run_isolated
 from app.rag.pipeline import RagAnswerDraft
 from app.routing.hybrid import HybridAnswerDraft
-from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.query_plan import PlanDecision
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from tests.hybrid_fixtures import explanation_draft
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import proposal_for_evidence, proposal_from_plan
 
 pytestmark = pytest.mark.integration
 
@@ -42,26 +43,18 @@ class GuestGateway:
         self.route, self.unsafe = route, unsafe
 
     def generate_structured(self, prompt, schema):
-        if schema is RouteDecision:
+        if schema is TaskProposal:
             assert "Never JOIN tables" not in prompt
-            return RouteDecision(
-                policy_intent="none",
-                policy_scope="unspecified",
-                evidence_requirement={
-                    "SQL": "tables",
-                    "RAG": "documents",
-                    "HYBRID": "both",
-                    "UNSUPPORTED": "unavailable",
-                }[self.route],
-                route=self.route,
-                reason="Fake gateway, real isolated sources",
-            )
-        if schema is PlanDecision:
-            return decision_from_sql(
-                "SELECT count(*) FROM public.users"
-                if self.unsafe
-                else "SELECT SUM(fee) AS total FROM pg_temp.table_1",
-                prompt,
+            if self.route == RouteLabel.RAG:
+                return proposal_for_evidence("documents")
+            return proposal_from_plan(
+                decision_from_sql(
+                    "SELECT count(*) FROM public.users"
+                    if self.unsafe
+                    else "SELECT SUM(fee) AS total FROM pg_temp.table_1",
+                    prompt,
+                ),
+                "combine" if self.route == RouteLabel.HYBRID else "query",
             )
         if schema is RagAnswerDraft:
             return RagAnswerDraft(answer="Ngưỡng là 250.", used_chunk_ids=[1])

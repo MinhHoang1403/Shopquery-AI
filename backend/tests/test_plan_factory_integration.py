@@ -4,13 +4,14 @@ import pytest
 
 from app.database.guest_access import configure_guest_access
 from app.database.session import get_setup_engine
-from app.dependencies import _build_chat_service, _build_dataset_chat_service
+from app.dependencies import _build_chat_service
 from app.guest.pipeline import run_guest_chat
 from app.guest.worker import parse_guest_file
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.planner import QueryPlanner
 from app.text_to_sql.query_plan import PlanDecision, PlanExpression, PlanField, QueryPlan
 from tests.join_domains import DOMAINS
+from tests.semantic_fixtures import proposal_from_plan, scoped_dataset_service
 from tests.test_join_domains_integration import domain_workspace  # noqa: F401
 from tests.test_plan_providers import gateway_harness, response
 from tests.test_query_compiler import source
@@ -30,21 +31,17 @@ def test_real_provider_plan_through_authenticated_factory(monkeypatch, provider,
         )
     )
     responses = [
-        response(
-            provider,
-            '{"route":"SQL","reason":"Rows","evidence_requirement":"tables","policy_intent":"none","policy_scope":"unspecified"}',
-        ),
-        response(provider, decision.model_dump_json()),
+        response(provider, proposal_from_plan(decision, context=context).model_dump_json())
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, responses)
     try:
-        service = _build_dataset_chat_service(settings, context, gateway)
+        service = scoped_dataset_service(settings, context, gateway)
         result = service.chat("Count rows")
         assert result.rows == [{"rows": len(facts)}]
         assert isinstance(service._sql_pipeline._planner, QueryPlanner)
         assert isinstance(service._sql_pipeline._compiler, QueryCompiler)
-        assert len(calls) == 2
-        assert "GenerationDecision" in json.dumps(json.loads(calls[1].content))
+        assert len(calls) == 1
+        assert "TaskProposal" in json.dumps(json.loads(calls[0].content))
     finally:
         gateway.close()
 
@@ -56,6 +53,7 @@ def test_real_provider_plan_through_guest_factory(monkeypatch, provider):
     settings = get_settings()
     configure_guest_access(get_setup_engine())
     file = parse_guest_file("numbers.csv", b'Amount\n10.25\n0.00\n""\n', None, settings)
+    context = None
     decision = PlanDecision(
         plan=QueryPlan(
             source="t0",
@@ -66,16 +64,12 @@ def test_real_provider_plan_through_guest_factory(monkeypatch, provider):
         )
     )
     responses = [
-        response(
-            provider,
-            '{"route":"SQL","reason":"Rows","evidence_requirement":"tables","policy_intent":"none","policy_scope":"unspecified"}',
-        ),
-        response(provider, decision.model_dump_json()),
+        response(provider, proposal_from_plan(decision, context=context).model_dump_json())
     ]
     gateway, calls = gateway_harness(monkeypatch, provider, responses)
     try:
         result = run_guest_chat([file], "Sum amount", settings, gateway=gateway)
-        assert result.rows == [{"total": "10.25"}] and len(calls) == 2
+        assert result.rows == [{"total": "10.25"}] and len(calls) == 1
     finally:
         gateway.close()
 

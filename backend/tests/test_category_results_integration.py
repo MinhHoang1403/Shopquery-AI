@@ -12,10 +12,11 @@ from app.database.session import get_readonly_engine, get_setup_engine
 from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.relationships import RelationshipConfirm, RelationshipInput
 from app.datasets.repository import DatasetRepository
-from app.dependencies import _build_dataset_chat_service, build_workspace_context
+from app.dependencies import build_workspace_context
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.query_plan import PlanDecision, PlanExpression, PlanField, QueryPlan
 from tests.auth_helpers import TEST_OWNER
+from tests.semantic_fixtures import proposal_from_plan, scoped_dataset_service
 from tests.test_dataset_parser import parse
 from tests.test_plan_providers import gateway_harness, response
 from tests.test_query_compiler import field, source
@@ -99,14 +100,14 @@ def test_three_table_categories_merge_entities_and_keep_exact_fact_totals(monkey
                 [
                     response(
                         provider,
-                        '{"route":"SQL","reason":"Categories","evidence_requirement":"tables",'
-                        '"policy_intent":"none","policy_scope":"unspecified"}',
-                    ),
-                    response(provider, PlanDecision(plan=plan).model_dump_json()),
+                        proposal_from_plan(
+                            PlanDecision(plan=plan), context=context
+                        ).model_dump_json(),
+                    )
                 ],
             )
             try:
-                result = _build_dataset_chat_service(settings, context, gateway).chat(
+                result = scoped_dataset_service(settings, context, gateway).chat(
                     "Count bookings and sum amount by area and room class"
                 )
             finally:
@@ -115,7 +116,7 @@ def test_three_table_categories_merge_entities_and_keep_exact_fact_totals(monkey
         assert {
             (r["area"], r["room_class"]): (r["bookings"], Decimal(r["total"])) for r in result.rows
         } == oracle
-        assert sum(r["bookings"] for r in result.rows) == 2400 and len(calls) == 2
+        assert sum(r["bookings"] for r in result.rows) == 2400 and len(calls) == 1
         assert result.sql.count("JOIN") == 2
         assert {c.key for c in result.result_columns if c.numeric} == {"bookings", "total"}
         # A separate simple numeric filter must stay single-table for all paraphrases.
@@ -144,18 +145,18 @@ def test_three_table_categories_merge_entities_and_keep_exact_fact_totals(monkey
             [
                 response(
                     provider,
-                    '{"route":"SQL","reason":"Numeric filter","evidence_requirement":"tables",'
-                    '"policy_intent":"none","policy_scope":"unspecified"}',
-                ),
-                response(provider, PlanDecision(plan=filtered).model_dump_json()),
+                    proposal_from_plan(
+                        PlanDecision(plan=filtered), context=context
+                    ).model_dump_json(),
+                )
             ],
         )
         try:
-            answer = _build_dataset_chat_service(settings, context, gateway).chat(
+            answer = scoped_dataset_service(settings, context, gateway).chat(
                 "Hotels with more than 100 rooms"
             )
             assert sorted(r["name"] for r in answer.rows) == expected
-            assert "JOIN" not in answer.sql and len(calls) == 2
+            assert "JOIN" not in answer.sql and len(calls) == 1
         finally:
             gateway.close()
     finally:

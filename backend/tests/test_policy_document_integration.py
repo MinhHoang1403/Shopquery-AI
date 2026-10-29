@@ -15,10 +15,9 @@ from app.database.session import get_readonly_engine, get_setup_engine
 from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.relationships import RelationshipConfirm, RelationshipInput
 from app.datasets.repository import DatasetRepository
-from app.dependencies import _build_dataset_chat_service, build_workspace_context
+from app.dependencies import build_workspace_context
 from app.rag.repository import DocumentRepository
 from app.rag.upload_parser import parse_document_file
-from app.routing.router import RouteDecision, RouteLabel
 from tests.auth_helpers import TEST_OWNER
 from tests.test_dataset_parser import parse
 from tests.test_policy_document_scope import regulation
@@ -110,18 +109,10 @@ def test_complete_regulation_and_full_row_scope_have_independent_pg_evidence(
             DatasetRepository(get_setup_engine(), get_readonly_engine(), uuid4()).column_profiles(
                 dataset
             )
-        gateway = Mock(
-            generate_structured=Mock(
-                return_value=RouteDecision(
-                    evidence_requirement="both",
-                    route=RouteLabel.HYBRID,
-                    reason="synthetic typed intent",
-                    policy_intent="all",
-                    policy_scope="all_entities",
-                )
-            )
-        )
-        service = _build_dataset_chat_service(settings, context, gateway)
+        from tests.semantic_fixtures import proposal_for_evidence, scoped_dataset_service
+
+        gateway = Mock(generate_structured=Mock(return_value=proposal_for_evidence("both", "all")))
+        service = scoped_dataset_service(settings, context, gateway)
         if outside_period:
             with pytest.raises(ModelResponseError):
                 service.chat("Đánh giá chính sách cho toàn bộ đối tượng.")

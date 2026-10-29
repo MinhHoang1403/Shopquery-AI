@@ -15,7 +15,26 @@ from app.text_to_sql.validator import SqlValidator
 
 
 def decision_from_sql(sql: str, prompt: str) -> PlanDecision:
-    catalog = json.JSONDecoder().raw_decode(prompt.split("Authorized catalog JSON:\n", 1)[1])[0]
+    if "Authorized catalog JSON:\n" in prompt:
+        catalog = json.JSONDecoder().raw_decode(prompt.split("Authorized catalog JSON:\n", 1)[1])[0]
+    else:
+        data = json.JSONDecoder().raw_decode(prompt.split("Source/context data:\n", 1)[1])[0]
+        catalog = {**data["catalog"], "joins_enabled": bool(data["catalog"]["relationships"])}
+        columns_by_location = {
+            (table["name"], column["name"]): column["id"]
+            for table in catalog["tables"]
+            for column in catalog["columns"]
+            if column["id"].split(".")[0] == table["id"]
+        }
+        catalog["relationships"] = [
+            {
+                **edge,
+                "source": columns_by_location[(edge["source_table"], edge["source_column"])],
+                "target": columns_by_location[(edge["target_table"], edge["target_column"])],
+                "revision": "scripted-approved-revision",
+            }
+            for edge in catalog["relationships"]
+        ]
     names = {table["id"]: table["name"] for table in catalog["tables"]}
     columns = {
         column["id"]: (names[column["id"].split(".")[0]], column["name"])

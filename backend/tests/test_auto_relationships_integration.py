@@ -12,10 +12,14 @@ from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.relationships import RelationshipConfirm
 from app.datasets.repository import DatasetRepository
 from app.dependencies import build_workspace_context
-from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.query_plan import PlanDecision
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from tests.auth_helpers import TEST_OWNER
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import (
+    proposal_for_evidence,
+    proposal_from_plan,
+)
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 
@@ -171,19 +175,18 @@ def test_upload_chat_and_history_with_automatic_relation(
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
             assert "Never JOIN tables" not in prompt
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="tables",
-                    route=RouteLabel.SQL,
-                    reason="Offline synthetic",
-                )
-            assert schema is PlanDecision
+            if schema is TaskProposal:
+                _task_route = RouteLabel.SQL
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            assert schema is TaskProposal
             assert "Row count has zero arguments" in prompt
             assert '"name": "amount_paid"' in prompt
             assert "Never sum identifiers" in prompt
-            return decision_from_sql(sql, prompt)
+            return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
         def generate_text(self, prompt):
             raise AssertionError("SQL presentation must not call a generation provider")
@@ -198,7 +201,7 @@ def test_upload_chat_and_history_with_automatic_relation(
     response = response.json()["assistant_message"]["response"]
     assert response["route"] == "SQL" and response["used_model"] == model
     assert response["fallback_used"] is False and not response["error"]
-    assert calls == ["RouteDecision", "PlanDecision"]
+    assert calls == ["TaskProposal"]
     assert response["rows"] == [
         {"student_id": "S1", "student_name": "An", "total": "20.00", "fact_row_count": 2},
         {"student_id": "S2", "student_name": "Binh", "total": None, "fact_row_count": 1},

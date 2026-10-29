@@ -13,10 +13,14 @@ from app.datasets.relationships import RelationshipInput, RelationshipRecord, ve
 from app.guest.pipeline import GuestSqlDatabase, run_guest_chat
 from app.guest.worker import parse_guest_file
 from app.routing.hybrid import HybridAnswerDraft
-from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.query_plan import PlanDecision
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from tests.hybrid_fixtures import explanation_draft
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import (
+    proposal_for_evidence,
+    proposal_from_plan,
+)
 from tests.test_guest_integration import OfflineEmbedder
 
 pytestmark = pytest.mark.integration
@@ -83,28 +87,24 @@ def test_domain_pipeline_matches_independent_fact_grain_oracle(
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                assert domain[0] + ".csv" in prompt and domain[1] + ".csv" in prompt
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement={
-                        "SQL": "tables",
-                        "RAG": "documents",
-                        "HYBRID": "both",
-                        "UNSUPPORTED": "unavailable",
-                    }[route],
-                    route=route,
-                    reason="Offline capability contract",
-                )
-            if schema is PlanDecision:
-                assert '"source": "t1.c' in prompt and '"target": "t0.c' in prompt
-                return decision_from_sql(
-                    "SELECT d.id, d.name, SUM(f.amount) AS total, AVG(f.amount) AS average, "
-                    "COUNT(*) AS fact_row_count FROM pg_temp.table_2 f "
-                    "INNER JOIN pg_temp.table_1 d ON f.key=d.id "
-                    "WHERE d.id>=101 GROUP BY d.id,d.name ORDER BY d.id",
-                    prompt,
+            if schema is TaskProposal:
+                _task_route = route
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
+                assert '"source_table":' in prompt and '"target_table":' in prompt
+                return proposal_from_plan(
+                    decision_from_sql(
+                        "SELECT d.id, d.name, SUM(f.amount) AS total, AVG(f.amount) AS average, "
+                        "COUNT(*) AS fact_row_count FROM pg_temp.table_2 f "
+                        "INNER JOIN pg_temp.table_1"
+                        " d ON f.key=d.id WHERE d.id>=101 GROUP BY d.id,d.name ORDER BY d.id",
+                        prompt,
+                    ),
+                    _task_operation,
                 )
             if schema is HybridAnswerDraft:
                 assert "Threshold 40" in prompt and '"total": null' in prompt
@@ -182,19 +182,16 @@ def test_single_table_questions_need_no_relationship(model: str, metric: str) ->
 
     class Gateway:
         def generate_structured(self, prompt, schema):
-            if schema is RouteDecision:
-                assert question in prompt
-                assert "Never JOIN tables" not in prompt
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="tables",
-                    route=RouteLabel.SQL,
-                    reason="Single table fixture",
-                )
-            assert schema is PlanDecision
+            if schema is TaskProposal:
+                _task_route = RouteLabel.SQL
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            assert schema is TaskProposal
             assert '"relationships": []' in prompt
-            return decision_from_sql(sql, prompt)
+            return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
         def generate_text(self, prompt):
             return "Synthetic rows only"

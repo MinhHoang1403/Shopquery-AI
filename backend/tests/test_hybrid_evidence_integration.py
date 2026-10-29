@@ -7,14 +7,13 @@ from decimal import Decimal
 import pytest
 
 from app.dependencies import (
-    build_dataset_chat_service,
     build_document_repository,
     build_workspace_context,
 )
 from app.rag.upload_parser import parse_document_file
 from app.routing.hybrid import HybridAnswerDraft
-from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.query_plan import PlanDecision
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from tests.auth_helpers import TEST_OWNER
 from tests.hybrid_fixtures import (
     assert_decision_summary,
@@ -24,6 +23,11 @@ from tests.hybrid_fixtures import (
 )
 from tests.join_domains import DOMAINS
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import (
+    proposal_for_evidence,
+    proposal_from_plan,
+    scoped_dataset_service,
+)
 from tests.test_guest_integration import OfflineEmbedder
 from tests.test_join_domains_integration import domain_workspace, golden_sql, oracle  # noqa: F401
 
@@ -82,16 +86,18 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="both",
-                    route=RouteLabel.HYBRID,
-                    reason="Offline explicit policy",
+            if schema is TaskProposal:
+                _task_route = RouteLabel.HYBRID
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
+                return proposal_from_plan(
+                    decision_from_sql(golden_sql(domain, dataset, tables_count), prompt),
+                    _task_operation,
                 )
-            if schema is PlanDecision:
-                return decision_from_sql(golden_sql(domain, dataset, tables_count), prompt)
             assert schema is HybridAnswerDraft
             assert json.dumps(expected, ensure_ascii=False) in prompt
             ids = [int(i) for i in re.findall(r"\[chunk_id=(\d+)", prompt)]
@@ -112,7 +118,7 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
 
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
     monkeypatch.setattr("app.dependencies.build_embedding_gateway", lambda _: embedder)
-    response = build_dataset_chat_service(
+    response = scoped_dataset_service(
         settings.model_copy(update={"ai_default_model": model}),
         context,
     ).chat(domain.question + "; evaluate the explicit synthetic document rule")
@@ -121,5 +127,5 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
     assert response.sql.count("JOIN") == tables_count - 1
     assert_decision_summary(response.answer, expected, statuses, language="vi")
     assert len(response.sources) == 1 and response.sources[0].content == policy
-    assert calls == ["RouteDecision", "PlanDecision"]
+    assert calls == ["TaskProposal"]
     assert "Untrusted intermediate" not in response.answer

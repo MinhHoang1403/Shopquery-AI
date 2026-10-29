@@ -11,7 +11,9 @@ from app.auth.limits import ResourceControl
 from app.datasets.relationship_repository import RelationshipRepository
 from app.datasets.relationships import RelationshipConfirm, RelationshipInput
 from app.main import app
+from app.semantic.wire import TaskProposal
 from tests.hybrid_fixtures import explanation_draft
+from tests.semantic_fixtures import proposal_for_evidence, proposal_from_plan
 from tests.test_auth_integration import accounts as auth_accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 
@@ -129,8 +131,7 @@ def test_join_api_pipelines_and_persisted_history(
 ):
     from app.rag.pipeline import RagAnswerDraft
     from app.routing.hybrid import HybridAnswerDraft
-    from app.routing.router import RouteDecision, RouteLabel
-    from app.text_to_sql.query_plan import PlanDecision
+    from app.routing.router import RouteLabel
     from tests.plan_fixtures import decision_from_sql
     from tests.test_guest_integration import OfflineEmbedder
 
@@ -155,28 +156,24 @@ def test_join_api_pipelines_and_persisted_history(
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                assert fact in prompt and dim in prompt
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement={
-                        "SQL": "tables",
-                        "RAG": "documents",
-                        "HYBRID": "both",
-                        "UNSUPPORTED": "unavailable",
-                    }[RouteLabel(pipeline)],
-                    route=RouteLabel(pipeline),
-                    reason="Offline JOIN test",
-                )
-            if schema is PlanDecision:
+            if schema is TaskProposal:
+                _task_route = RouteLabel(pipeline)
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
                 bindings = (
                     f"FROM uploaded_data.{dim} d INNER JOIN uploaded_data.{fact} f"
                     if reverse
                     else f"FROM uploaded_data.{fact} f INNER JOIN uploaded_data.{dim} d"
                 )
-                return decision_from_sql(
-                    f"SELECT SUM(f.amount) AS total {bindings} ON f.key=d.value", prompt
+                return proposal_from_plan(
+                    decision_from_sql(
+                        f"SELECT SUM(f.amount) AS total {bindings} ON f.key=d.value", prompt
+                    ),
+                    _task_operation,
                 )
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(answer="Synthetic policy", used_chunk_ids=[chunk_id])
@@ -238,8 +235,7 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
 ) -> None:
     from app.rag.pipeline import RagAnswerDraft
     from app.routing.hybrid import HybridAnswerDraft
-    from app.routing.router import RouteDecision, RouteLabel
-    from app.text_to_sql.query_plan import PlanDecision
+    from app.routing.router import RouteLabel
     from tests.plan_fixtures import decision_from_sql
     from tests.test_guest_integration import OfflineEmbedder
 
@@ -248,25 +244,22 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
 
     class Gateway:
         def generate_structured(self, prompt, schema):
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement={
-                        "SQL": "tables",
-                        "RAG": "documents",
-                        "HYBRID": "both",
-                        "UNSUPPORTED": "unavailable",
-                    }[RouteLabel(pipeline)],
-                    route=RouteLabel(pipeline),
-                    reason="Negative synthetic case",
-                )
-            if schema is PlanDecision:
-                return decision_from_sql(
-                    "SELECT * FROM public.users"
-                    if pipeline == "SQL"
-                    else f"SELECT SUM(amount) AS total FROM uploaded_data.{fact}",
-                    prompt,
+            if schema is TaskProposal:
+                _task_route = RouteLabel(pipeline)
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
+                return proposal_from_plan(
+                    decision_from_sql(
+                        "SELECT * FROM public.users"
+                        if pipeline == "SQL"
+                        else f"SELECT SUM(amount) AS total FROM uploaded_data.{fact}",
+                        prompt,
+                    ),
+                    _task_operation,
                 )
             if schema is RagAnswerDraft:
                 return RagAnswerDraft(

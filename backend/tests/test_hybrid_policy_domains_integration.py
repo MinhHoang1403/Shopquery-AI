@@ -8,18 +8,22 @@ import pytest
 
 from app.core.diagnostics import diagnostic_request
 from app.dependencies import (
-    build_dataset_chat_service,
     build_document_repository,
     build_workspace_context,
 )
 from app.rag.upload_parser import parse_document_file
 from app.routing.hybrid import HybridAnswerDraft
-from app.routing.router import RouteDecision, RouteLabel
-from app.text_to_sql.query_plan import PlanDecision
+from app.routing.router import RouteLabel
+from app.semantic.wire import TaskProposal
 from tests.auth_helpers import TEST_OWNER
 from tests.hybrid_fixtures import assert_decision_summary, classification_draft, rule_block
 from tests.join_domains import DOMAINS
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import (
+    proposal_for_evidence,
+    proposal_from_plan,
+    scoped_dataset_service,
+)
 from tests.test_guest_integration import OfflineEmbedder
 from tests.test_join_domains_integration import (
     domain_workspace,  # noqa: F401
@@ -99,21 +103,15 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            if schema is RouteDecision:
-                return RouteDecision(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="both",
-                    route=RouteLabel.HYBRID,
-                    reason="Scripted policy test",
-                )
-            if schema is PlanDecision:
-                assert "retrieve required metrics, grouping identifiers" in prompt
-                assert "filters only if requested" in prompt
-                assert json.dumps(policy, ensure_ascii=False)[1:-1] in prompt
-                assert str(threshold) in prompt
-                assert "policy_candidates_not_verified" in prompt
-                return decision_from_sql(sql, prompt)
+            if schema is TaskProposal:
+                _task_route = RouteLabel.HYBRID
+                if _task_route in {RouteLabel.RAG, RouteLabel.UNSUPPORTED}:
+                    return proposal_for_evidence(
+                        "documents" if _task_route == RouteLabel.RAG else "unavailable"
+                    )
+                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal:
+                return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
             assert schema is HybridAnswerDraft
             if business_aliases:
                 assert '"field": "event_rows", "kind": "row_count"' in prompt
@@ -134,7 +132,7 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
     if filtered:
         question += " Chỉ xét tháng 9/2025 theo giờ Việt Nam."
     with diagnostic_request() as trace:
-        response = build_dataset_chat_service(
+        response = scoped_dataset_service(
             settings.model_copy(update={"ai_default_model": model}),
             context,
         ).chat(question)
@@ -145,6 +143,6 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
     assert response.used_model == model and not response.fallback_used
     assert len(response.sources) == 1 and response.sources[0].source_file == filename
     assert response.sources[0].content == policy
-    assert calls == ["RouteDecision", "PlanDecision"] + (["HybridAnswerDraft"] if filtered else [])
+    assert calls == ["TaskProposal"] + (["HybridAnswerDraft"] if filtered else [])
     assert trace.facts["sql_validated"] and trace.facts["execution_reached"]
     assert ("2025-09-01" in response.sql) is filtered

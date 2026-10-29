@@ -18,6 +18,7 @@ from app.rag.documents import load_markdown_documents
 from app.rag.repository import DocumentRepository
 from app.text_to_sql.executor import SqlExecutor, _json_safe
 from app.text_to_sql.validator import SqlValidator
+from tests.semantic_fixtures import proposal_from_plan
 from tests.test_sql_validator import VALID_QUERIES
 
 
@@ -89,7 +90,7 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
     )
     from app.text_to_sql.schema_context import default_sql_context
     from tests.test_plan_providers import response
-    from tests.test_providers import completion, harness
+    from tests.test_providers import harness
     from tests.test_query_compiler import field, source
 
     context = default_sql_context()
@@ -126,12 +127,7 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
     )
     gateway, calls = harness(
         monkeypatch,
-        [
-            completion(
-                '{"route":"SQL","reason":"Revenue","evidence_requirement":"tables","policy_intent":"none","policy_scope":"unspecified"}'
-            ),
-            response("knowledge", decision.model_dump_json()),
-        ],
+        [response("knowledge", proposal_from_plan(decision, context=context).model_dump_json())],
     )
     try:
         result = _build_chat_service(get_settings(), gateway).chat("Revenue per category")
@@ -149,7 +145,7 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
         ).all()
     assert [(r["category"], Decimal(r["revenue"])) for r in result.rows] == oracle
     assert sum(Decimal(r["revenue"]) for r in result.rows) == 151_687_001_000
-    assert len(calls) == 2
+    assert len(calls) == 1
 
 
 @pytest.mark.integration
