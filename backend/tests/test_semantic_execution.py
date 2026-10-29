@@ -468,3 +468,70 @@ def test_emitted_artifact_is_rechecked_against_the_scoped_task_before_execution(
             altered = replace(compiled, evidence_sql="SELECT 1")
         with pytest.raises(ModelResponseError):
             verify_compiled_task(requested, altered, compiler)
+
+
+def test_output_order_by_an_ambiguous_metric_source_cannot_choose_an_alias_silently():
+    from app.semantic.presentation import select_verified_rows
+    from app.semantic.task import Ordering, OutputSelection, Projection
+    from app.text_to_sql.answer import ResultColumn
+
+    output = OutputSelection(
+        fields=(
+            Projection(reference="t0.c0", alias="total", aggregate="sum"),
+            Projection(reference="t0.c0", alias="average", aggregate="avg"),
+        ),
+        classification="all",
+        ordering=(Ordering(field="t0.c0", direction="desc"),),
+    )
+    columns = (
+        ResultColumn(key="total", label="Total", data_type="NUMERIC"),
+        ResultColumn(key="average", label="Average", data_type="NUMERIC"),
+    )
+    with pytest.raises(ModelResponseError):
+        select_verified_rows(output, [{"total": "100", "average": "10"}], ["qualified"], columns)
+
+
+def test_demo_catalog_retains_its_declared_four_table_compiler_contract():
+    from app.semantic.coverage import prepare_task_plan, verify_compiled_task
+    from app.text_to_sql.compiler import QueryCompiler
+    from app.text_to_sql.query_plan import PlanDecision, PlanExpression, PlanField, QueryPlan
+    from app.text_to_sql.schema_context import default_sql_context
+    from tests.semantic_fixtures import proposal_from_plan
+    from tests.test_query_compiler import field, source
+
+    context = default_sql_context()
+    compiler = QueryCompiler(context, default_schema=True)
+    category = field(compiler, "categories", "category_code")
+    plan = QueryPlan(
+        source=source(compiler, "order_items"),
+        relationships=list(compiler.references.relationships),
+        expressions=[
+            PlanExpression(
+                operation="multiply",
+                arguments=[
+                    field(compiler, "order_items", "quantity"),
+                    field(compiler, "order_items", "unit_price"),
+                ],
+            ),
+            PlanExpression(operation="sum", arguments=["e0"]),
+        ],
+        fields=[
+            PlanField(reference=category, alias="category"),
+            PlanField(reference="e1", alias="revenue"),
+        ],
+        group_by=[category],
+    )
+    requested = proposal_from_plan(PlanDecision(plan=plan)).task("Revenue per category")
+    with semantic_request(
+        RequestIdentity(
+            UUID("f425b6ce-7ff0-4329-9948-4e9bf2e93642"),
+            None,
+            None,
+            requested.question,
+            "2026-10-29",
+        )
+    ):
+        bound = prepare_task_plan(requested, compiler)
+        compiled = compiler.compile(bound)
+        verify_compiled_task(requested, compiled, compiler)
+    assert compiled.validated.statement.count("JOIN") == 3

@@ -569,3 +569,30 @@ comparison là oracle độc lập. Paid usage0/0/0; runtime8080 và main/volume
 Các fixture protocol expectations được chuyển đúng boundary mới: SQL không còn do model
 sinh, nên test negative API phải gửi typed proposal sai nguồn/count/relationship/grain;
 raw SQL validator tests vẫn giữ nguyên để chứng minh guards tương ứng.
+
+### Checkpoint compiler contract và thứ tự trình bày (29/10/2026)
+
+CI `68a9112` (run40810745586): PostgreSQL753PASS/129FAIL, các jobs
+backend quality/frontend+E2E/observability PASS. Số failure tăng sau khi explicit policy
+được đưa vào các fixture cũ: chưa được coi là regression đã hoàn tất hoặc nghiệm thu.
+Phân loại bằng trace: nhiều ca so thứ tự SQL evidence với thứ tự output sau classification;
+một nhóm khác có dimension không có fact hoặc fact-date filter trái all-row policy và bị
+coverage từ chối. Các ca này còn cần xử lý yêu cầu/capability, không hạ guard để làm xanh CI.
+
+Đã tái hiện riêng một defect production: `prepare_task_plan` áp uploaded grain binder
+(max hai cạnh) vào declared demo graph bốn bảng. Failing unit test và CI revenue oracle
+cùng chỉ ra `No unique approved fact path`. Sửa chỉ dùng demo compiler contract khi
+constructor đã xác minh đúng `default_sql_context`; uploaded binder/SQL guards giữ nguyên.
+Targeted semantic execution44PASS; compiler/evaluation group63PASS trước thêm kiểm helper.
+
+Ordering trên một source có cả SUM/AVG trước đây chọn alias cuối ngầm định; nay ambiguous
+source bị từ chối và yêu cầu alias rõ. Negative test PASS. Oracle assertion cho policy
+tách equality theo identity khỏi `answer_row_indices` (output order), không đổi expected
+values hoặc locked gold. Helper có negative cho sai order và NULL/zero.
+
+Chuẩn bị evaluator held-out có dry-run mặc định, CI exact-source gate, reserve quota
+trước dispatch, không retry/fallback/SQL/embedding. Chưa chạy provider; agent usage0/0/0.
+Chưa merge/deploy/cleanup. Theo chỉ thị operator mới, sau acceptance sẽ giữ image hiện hành
+và một release rollback gần nhất cho mỗi app service; xóa đúng images không còn references,
+không đụng volumes/Langfuse/dự án khác. Chỉ còn branch công việc này và main, PR5 còn draft.
+8080/API/Web/DB healthy, GET8080/api/health200; immutable images vẫn baseline.

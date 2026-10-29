@@ -77,7 +77,14 @@ def prepare_task_plan(task: SemanticTask, compiler: QueryCompiler) -> QueryPlan:
         requirement = require_evidence(request, task)
         plan = task_query_plan(task)
         verify_coverage(requirement, request, task, plan)
-        return bind_approved_grain(plan, compiler.references)
+        # The declared demo compiler already validates its four-table relationship
+        # tree. Uploaded-data grain completion intentionally supports at most two
+        # edges and must not be applied to that distinct, constructor-checked graph.
+        return (
+            plan
+            if compiler.uses_declared_demo_schema
+            else bind_approved_grain(plan, compiler.references)
+        )
     except (ValueError, TypeError) as exc:
         raise ModelResponseError(
             "Semantic coverage is unresolved",

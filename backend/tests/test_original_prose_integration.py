@@ -12,7 +12,7 @@ from app.text_to_sql.query_plan import PlanDecision
 from tests.gate_d_fixture import QUESTIONS
 from tests.hybrid_fixtures import classification_draft
 from tests.plan_fixtures import decision_from_sql
-from tests.semantic_fixtures import proposal_for_evidence, proposal_from_plan
+from tests.semantic_fixtures import assert_policy_rows, proposal_for_evidence, proposal_from_plan
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_gate_d_replay_integration import (
     add_policy,
@@ -121,7 +121,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
     assert response["route"] == "HYBRID"
     assert response["verification_status"] == "verified_classification"
     # The omitted dimension key is a backend-issued output; never guessed from a label.
-    assert response["rows"] == expected
+    assert_policy_rows(response["rows"], expected, "kho_id", response["answer_row_indices"])
     assert response["used_model"] == model and not response["fallback_used"]
     assert "Đạt: KHO02, KHO03, KHO05." in response["answer"]
     assert response["sources"][0]["content"] == ORIGINAL.split("\n\n", 1)[1].strip()

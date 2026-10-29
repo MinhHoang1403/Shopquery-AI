@@ -21,7 +21,7 @@ from app.text_to_sql.query_plan import PlanDecision
 from tests.gate_d_fixture import POLICY, QUESTIONS, uploads
 from tests.hybrid_fixtures import classification_draft, rule_block
 from tests.plan_fixtures import decision_from_sql
-from tests.semantic_fixtures import proposal_from_plan
+from tests.semantic_fixtures import assert_policy_rows, proposal_from_plan
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_dataset_parser import parse
 from tests.test_guest_integration import OfflineEmbedder
@@ -215,8 +215,8 @@ def test_gate_d_questions_oracle_and_authenticated_history(
     assert response["rows"] == expected and response["used_model"] == model
     assert not response["fallback_used"]
     if level == "H":
-        assert "Policy semantics unverified" in response["answer"]
-        assert "Unverified: KHO01, KHO02, KHO03, KHO04, KHO05." in response["answer"]
+        assert response["verification_status"] == "explanation"
+        assert "không phải phân loại đã xác minh" in response["answer"]
         assert "Qualified:" not in response["answer"]
     else:
         assert response["rows"] == expected and response["answer"]
@@ -363,7 +363,8 @@ def test_verified_rule_classification_does_not_request_model_verdict(
     )
     assert sent.status_code == 200
     response = sent.json()["assistant_message"]["response"]
-    assert response["error"] is None and response["rows"] == expected
+    assert response["error"] is None
+    assert_policy_rows(response["rows"], expected, "kho_id", response["answer_row_indices"])
     assert "Đạt: KHO02, KHO03, KHO05." in response["answer"]
     assert "Chưa đạt: KHO01, KHO04." in response["answer"]
     assert response["used_model"] == model and not response["fallback_used"]

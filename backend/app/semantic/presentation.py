@@ -23,7 +23,16 @@ def select_verified_rows(
         if output.classification == "all" or status == output.classification
     ]
     metadata = {column.key: column for column in columns}
-    aliases = {field.reference: field.alias for field in output.fields}
+    aliases: dict[str, list[str]] = {}
+    for field in output.fields:
+        if field.reference is not None:
+            aliases.setdefault(field.reference, []).append(field.alias)
+
+    def order_key(field: str) -> str:
+        candidates = aliases.get(field, [])
+        if len(candidates) > 1:
+            raise verification_error("planning_scope_violation")
+        return candidates[0] if candidates else field
 
     def value(index: int, key: str):
         if key not in rows[index] or key not in metadata:
@@ -54,7 +63,7 @@ def select_verified_rows(
 
     def compare(left: int, right: int) -> int:
         for order in output.ordering:
-            key = aliases.get(order.field, order.field)
+            key = order_key(order.field)
             a, b = value(left, key), value(right, key)
             if a is None or b is None:
                 result = 0 if a is b else (-1 if a is None else 1)
@@ -73,7 +82,7 @@ def select_verified_rows(
 
     # Validate every requested sort key even when the selected set has 0/1 rows.
     for order in output.ordering:
-        key = aliases.get(order.field, order.field)
+        key = order_key(order.field)
         if key not in metadata:
             raise verification_error("planning_scope_violation")
         for index in indices:

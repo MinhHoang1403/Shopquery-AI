@@ -3,6 +3,22 @@
 from app.semantic.wire import TaskProposal
 
 
+def assert_policy_rows(rows, expected, identity_field, answer_row_indices=None):
+    """Check all evidence by identity, then the separate requested presentation order.
+
+    Policy SQL deliberately has no output ordering/limit before classification.
+    Expected values still come from the independent PostgreSQL oracle; this helper
+    only accounts for the explicit row-index presentation contract.
+    """
+    assert len(rows) == len(expected)
+    actual = {row[identity_field]: row for row in rows}
+    gold = {row[identity_field]: row for row in expected}
+    assert len(actual) == len(rows) and len(gold) == len(expected)
+    assert actual == gold
+    indices = range(len(rows)) if answer_row_indices is None else answer_row_indices
+    assert [rows[index] for index in indices] == expected
+
+
 def proposal(operation="query"):
     return {
         "operation": operation,

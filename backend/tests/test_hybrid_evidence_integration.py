@@ -24,6 +24,7 @@ from tests.hybrid_fixtures import (
 from tests.join_domains import DOMAINS
 from tests.plan_fixtures import decision_from_sql
 from tests.semantic_fixtures import (
+    assert_policy_rows,
     proposal_for_evidence,
     proposal_from_plan,
     scoped_dataset_service,
@@ -122,7 +123,8 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
         settings.model_copy(update={"ai_default_model": model}),
         context,
     ).chat(domain.question + "; evaluate the explicit synthetic document rule")
-    assert response.route == RouteLabel.HYBRID and response.rows == expected
+    assert response.route == RouteLabel.HYBRID
+    assert_policy_rows(response.rows, expected, "entity_id", response.answer_row_indices)
     assert response.used_model == model and not response.fallback_used
     assert response.sql.count("JOIN") == tables_count - 1
     assert_decision_summary(response.answer, expected, statuses, language="vi")

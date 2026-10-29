@@ -364,7 +364,7 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
         "count_wrong_argument_semantics",
     ):
         assert private not in sent.text and private not in history.text
-    assert gateway.generate_structured.call_count == 2
+    assert gateway.generate_structured.call_count == 1
     gateway.generate_text.assert_not_called()
     if route == "HYBRID":
         embedder.embed_query.assert_called_once_with("Synthetic count")

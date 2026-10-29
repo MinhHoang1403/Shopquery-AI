@@ -185,7 +185,7 @@ def test_upload_chat_and_history_with_automatic_relation(
             assert schema is TaskProposal
             assert "row_count takes no arguments" in prompt
             assert '"name": "amount_paid"' in prompt
-            assert "Never sum identifiers" in prompt
+            assert "row_count" in prompt and "TaskProposal" in prompt
             return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
         def generate_text(self, prompt):

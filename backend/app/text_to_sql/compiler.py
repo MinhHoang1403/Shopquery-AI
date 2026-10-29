@@ -70,6 +70,11 @@ class QueryCompiler:
     """Compile the bounded plan subset, then reuse all existing SQL safety checks."""
 
     @property
+    def uses_declared_demo_schema(self) -> bool:
+        """Only the constructor-validated demo catalog supports its four-table graph."""
+        return self._default_schema
+
+    @property
     def context(self) -> DatasetSqlContext:
         """Authorized request catalog; semantic binding must use this same snapshot."""
         return self._context
