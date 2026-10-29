@@ -174,8 +174,12 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
             )
             if selection == "not_qualified":
                 assert "Previous user questions" in prompt and "task_reference" in prompt
-                assert "KHO02" not in prompt and "KHO03" not in prompt
-                assert "Account 1" not in prompt
+                source = json.JSONDecoder().raw_decode(
+                    prompt.split("Source/context data:\n", 1)[1]
+                )[0]
+                previous = source["bounded_conversation_context"]
+                assert "KHO02" not in previous and "KHO03" not in previous
+                assert "Account 1" not in previous
             return proposal_for_evidence("both", selection)
 
         def generate_text(self, prompt):

@@ -596,3 +596,26 @@ Chưa merge/deploy/cleanup. Theo chỉ thị operator mới, sau acceptance sẽ
 và một release rollback gần nhất cho mỗi app service; xóa đúng images không còn references,
 không đụng volumes/Langfuse/dự án khác. Chỉ còn branch công việc này và main, PR5 còn draft.
 8080/API/Web/DB healthy, GET8080/api/health200; immutable images vẫn baseline.
+
+### PostgreSQL checkpoint `19428ec` và phân loại oracle
+
+Run40812600634: PostgreSQL784PASS/98FAIL; các jobs backend/frontend+E2E/observability
+PASS. Demo revenue oracle đã hết failure; 12 logistics policy cases đủ population và
+6 original-prose rows/presentation cases hết lỗi sau khi đối chiếu output indices.
+
+Đối chiếu còn60 cases cross-domain và16 policy-domain dựa trên fact-only VALUES oracle
+trong khi dimension có entity không có fact; filtered variant còn trái all-row policy.
+Không được gọi những input này là positive full-population classification hoặc sửa gold
+thành số0. Fixture mới đọc dimension độc lập và kiểm safe refusal khi thiếu coverage;
+12 logistics classification cases đủ population tiếp tục phải trả đúng gold/selection.
+Đây là kiểm thử rejection/giới hạn, **không phải** đã hỗ trợ phân loại toàn bộ dimension
+khi thiếu facts. Independent SQL VALUES oracle và locked LEFT/NULL/missing gold giữ nguyên.
+
+Combine fixtures chỉ kiểm bảng+evidence explanation, không đòi verdict của model không còn
+được gọi. Negative API fixture Hybrid đổi sang typed reference ngoài catalog thay vì fake
+HybridAnswerDraft của bước đã bỏ; invalid RAG citation vẫn giữ. Conversation test kiểm
+assistant-verdict absence trong bounded context, tách khỏi observed IDs hợp lệ của catalog.
+COUNT-alias negative đổi đồng bộ sort alias để chạm đúng COUNT guard, không dừng sớm
+bởi dangling sort. Các sửa test này chưa được coi PASS PostgreSQL trước CI kế tiếp.
+Targeted execution/coverage/policy-binding/evaluation107PASS, Ruff sạch. Agent calls0/0/0.
+8080 và images/volumes/models/gates không đổi. Main/PR5 chưa merge và chưa cleanup.

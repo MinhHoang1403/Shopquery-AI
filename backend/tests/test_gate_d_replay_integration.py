@@ -294,8 +294,21 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
                 plan = plan.model_copy(update={"grouping": "category"})
             elif mutation == "key":
                 plan = plan.model_copy(update={"relationships": ["r999"]})
+            # Rename the corresponding ordering label as well: this case targets
+            # COUNT provenance, not an accidentally dangling presentation alias.
+            aliases = {
+                old.alias: updated.alias for old, updated in zip(plan.fields, fields, strict=True)
+            }
+            ordering = [
+                item.model_copy(update={"field": aliases.get(item.field, item.field)})
+                for item in plan.sort
+            ]
             return proposal_from_plan(
-                PlanDecision(plan=plan.model_copy(update={"fields": fields, "expressions": nodes})),
+                PlanDecision(
+                    plan=plan.model_copy(
+                        update={"fields": fields, "expressions": nodes, "sort": ordering}
+                    )
+                ),
                 "apply_policy",
             )
 

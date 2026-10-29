@@ -5,7 +5,11 @@ import re
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import text
 
+from app.core.diagnostics import diagnostic_request
+from app.core.errors import ChatTurnError
+from app.database.session import get_setup_engine
 from app.dependencies import (
     build_document_repository,
     build_workspace_context,
@@ -49,7 +53,7 @@ THRESHOLDS = {
 @pytest.mark.parametrize("tables_count", [1, 2, 3])
 @pytest.mark.parametrize("model", ["gemini", "inetcloud-knowledge"])
 @pytest.mark.parametrize("natural", [False, True])
-def test_structured_hybrid_cross_domain_postgres_oracle(
+def test_policy_classification_requires_complete_entity_population(
     domain_workspace,  # noqa: F811
     monkeypatch,
     tables_count,
@@ -119,10 +123,30 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
 
     monkeypatch.setattr("app.ai.chat.build_generation_gateway", lambda *_: Gateway())
     monkeypatch.setattr("app.dependencies.build_embedding_gateway", lambda _: embedder)
-    response = scoped_dataset_service(
-        settings.model_copy(update={"ai_default_model": model}),
-        context,
-    ).chat(domain.question + "; evaluate the explicit synthetic document rule")
+    service = scoped_dataset_service(
+        settings.model_copy(update={"ai_default_model": model}), context
+    )
+    question = domain.question + "; evaluate the explicit synthetic document rule"
+    # The historical VALUES oracle contains matched facts only. Independently
+    # inspect the actual dimension before claiming that it covers every entity.
+    label = domain.labels[0] if tables_count == 3 else domain.labels[1]
+    table = next(table for table in dataset.tables if table.display_name == label)
+    with get_setup_engine().connect() as connection:
+        universe = set(
+            connection.scalars(
+                text(f'SELECT "{key}" FROM uploaded_data."{table.physical_table_name}"')
+            )
+        )
+    matched = {row["entity_id"] for row in expected}
+    assert matched <= universe
+    if matched != universe:
+        with diagnostic_request() as trace, pytest.raises(ChatTurnError) as failure:
+            service.chat(question)
+        assert failure.value.error_context.reason_code == "planning_scope_violation"
+        assert trace.facts["sql_validated"] and trace.facts["execution_reached"]
+        assert calls == ["TaskProposal"]  # no model verdict can repair missing evidence
+        return
+    response = service.chat(question)
     assert response.route == RouteLabel.HYBRID
     assert_policy_rows(response.rows, expected, "entity_id", response.answer_row_indices)
     assert response.used_model == model and not response.fallback_used

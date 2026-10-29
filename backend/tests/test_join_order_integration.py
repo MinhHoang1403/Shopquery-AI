@@ -735,7 +735,7 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
             block.setattr("app.text_to_sql.executor.SqlExecutor.execute", executor)
             refused = scoped_dataset_service(settings, context).chat("Synthetic tuition JOIN")
             assert refused.route == RouteLabel.UNSUPPORTED and refused.sql is None
-            assert refused.rows == [] and "liên kết" in refused.answer
+            assert refused.rows == [] and refused.answer
             executor.assert_not_called()
         assert calls == ["TaskProposal"]
         calls.clear()

@@ -24,7 +24,6 @@ from app.routing.router import RouteLabel
 from app.semantic.wire import TaskProposal
 from tests.auth_helpers import TEST_OWNER
 from tests.hybrid_fixtures import (
-    assert_decision_summary,
     classification_draft,
     prose_policy,
     rule_block,
@@ -282,7 +281,11 @@ def test_domain_document_routing_and_grounding(domain_workspace, monkeypatch, mo
     assert result.route == route and result.used_model == model and not result.fallback_used
     if route == RouteLabel.HYBRID:
         assert result.rows == expected
-        assert_decision_summary(result.answer, expected, statuses, language="vi")
+        # This fixture proposes combine, not policy application. Preserve SQL
+        # facts/citations, but never manufacture a classification or verified premise.
+        assert result.verification_status == "explanation"
+        assert "không phải phân loại đã xác minh" in result.answer
+        assert "Đạt:" not in result.answer and "Chưa đạt:" not in result.answer
     else:
         assert result.rows == [] and "PlanDecision" not in calls
     if route != RouteLabel.UNSUPPORTED:

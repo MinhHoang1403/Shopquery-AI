@@ -230,7 +230,7 @@ def test_join_api_pipelines_and_persisted_history(
 
 
 @pytest.mark.parametrize("pipeline", ["SQL", "RAG", "HYBRID"])
-def test_invalid_sql_or_citation_never_persists_invented_success(
+def test_invalid_query_or_rag_citation_never_persists_invented_success(
     relationship_accounts, monkeypatch, pipeline: str
 ) -> None:
     from app.rag.pipeline import RagAnswerDraft
@@ -251,6 +251,16 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
                         "documents" if _task_route == RouteLabel.RAG else "unavailable"
                     )
                 _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+            if schema is TaskProposal and pipeline == "HYBRID":
+                from app.text_to_sql.generation_contract import GenerationField
+                from tests.semantic_fixtures import proposal
+
+                data = proposal("combine")
+                data.update(
+                    fields=[GenerationField(reference="t999.c0", alias="outside").model_dump()],
+                    expressions=[],
+                )
+                return TaskProposal.model_validate(data)
             if schema is TaskProposal:
                 return proposal_from_plan(
                     decision_from_sql(

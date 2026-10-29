@@ -7,6 +7,7 @@ from decimal import Decimal
 import pytest
 
 from app.core.diagnostics import diagnostic_request
+from app.core.errors import ChatTurnError
 from app.dependencies import (
     build_document_repository,
     build_workspace_context,
@@ -16,7 +17,7 @@ from app.routing.hybrid import HybridAnswerDraft
 from app.routing.router import RouteLabel
 from app.semantic.wire import TaskProposal
 from tests.auth_helpers import TEST_OWNER
-from tests.hybrid_fixtures import assert_decision_summary, classification_draft, rule_block
+from tests.hybrid_fixtures import classification_draft, rule_block
 from tests.join_domains import DOMAINS
 from tests.plan_fixtures import decision_from_sql
 from tests.semantic_fixtures import (
@@ -49,7 +50,7 @@ POLICIES = {
 @pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
 @pytest.mark.parametrize("filtered", [False, True])
 @pytest.mark.parametrize("business_aliases", [False, True])
-def test_hybrid_policy_and_count_order_with_explicit_filter(
+def test_all_row_policy_rejects_partial_fact_scope_or_missing_entities(
     domain_workspace,  # noqa: F811
     monkeypatch,
     model,
@@ -131,18 +132,17 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
     question = domain.question + "; đối chiếu điều kiện trong tài liệu, không đoán ngưỡng."
     if filtered:
         question += " Chỉ xét tháng 9/2025 theo giờ Việt Nam."
-    with diagnostic_request() as trace:
-        response = scoped_dataset_service(
-            settings.model_copy(update={"ai_default_model": model}),
-            context,
+    # These fixtures have a fourth dimension with no facts. The old inner-only
+    # oracle omitted it and a model supplied an unverified classification. The
+    # semantic all-entity contract must refuse; a date subset also conflicts with
+    # the document's all-row metric. SQL value/filter correctness is exercised by
+    # the unchanged independent domain SQL golden tests, not a fabricated verdict.
+    with diagnostic_request() as trace, pytest.raises(ChatTurnError) as failure:
+        scoped_dataset_service(
+            settings.model_copy(update={"ai_default_model": model}), context
         ).chat(question)
-    assert response.route == RouteLabel.HYBRID and response.rows == expected
-    assert_decision_summary(
-        response.answer, expected, statuses, language="en" if filtered else "vi"
+    assert failure.value.error_context.reason_code == (
+        "policy_sql_scope_incomplete" if filtered else "planning_scope_violation"
     )
-    assert response.used_model == model and not response.fallback_used
-    assert len(response.sources) == 1 and response.sources[0].source_file == filename
-    assert response.sources[0].content == policy
-    assert calls == ["TaskProposal"] + (["HybridAnswerDraft"] if filtered else [])
-    assert trace.facts["sql_validated"] and trace.facts["execution_reached"]
-    assert ("2025-09-01" in response.sql) is filtered
+    assert bool(trace.facts["execution_reached"]) is (not filtered)
+    assert calls == ["TaskProposal"]
