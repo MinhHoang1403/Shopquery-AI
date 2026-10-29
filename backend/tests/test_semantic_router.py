@@ -273,3 +273,90 @@ def test_captured_query_policy_conflict_stays_rejected_without_repairing_its_col
     assert data["fields"][1] == {"reference": "t0.c2", "alias": "room_count"}
     with pytest.raises(ValueError, match="Conflicting task"):
         TaskProposal.model_validate(data).task("Synthetic filtered records.")
+
+
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+def test_wire_non_null_count_preserves_nullable_count_provenance(monkeypatch, provider):
+    from app.datasets.context import DatasetSqlContext
+    from app.text_to_sql.compiler import QueryCompiler
+    from app.text_to_sql.count_contract import CountKind, NonNullProof
+
+    context = DatasetSqlContext(
+        "Synthetic nullable values",
+        {"events": {"amount"}},
+        {"events": "uploaded_data"},
+        column_types={"events": {"amount": "NUMERIC"}},
+    )
+    data = proposal()
+    data.update(
+        fields=[
+            {"reference": "e0", "alias": "non_null_values"},
+            {"reference": "e1", "alias": "rows"},
+        ],
+        expressions=[
+            {
+                "operation": "non_null_count",
+                "arguments": ["column:t0.amount"],
+                "value": "",
+                "value_type": "none",
+            },
+            {"operation": "row_count", "arguments": [], "value": "", "value_type": "none"},
+        ],
+    )
+    selected, calls = gateway(monkeypatch, provider, data)
+    try:
+        task = (
+            QueryRouter(selected, context=context)
+            .route("Count rows and separately non-null values.")
+            .task
+        )
+        assert [node.operation for node in task.expressions] == ["value_count", "row_count"]
+        compiled = QueryCompiler(context).compile(task_query_plan(task))
+        assert [count.kind for count in compiled.validated.count_metrics] == [
+            CountKind.NON_NULL_VALUE_COUNT,
+            CountKind.ROW_COUNT,
+        ]
+        assert compiled.validated.count_metrics[0].non_null_proof == NonNullProof.UNKNOWN
+        body = json.loads(calls[0].content)
+        schema = (
+            body["response_format"]["json_schema"]["schema"]
+            if provider == "knowledge"
+            else body["generationConfig"]["responseSchema"]
+        )
+        assert '"non_null_count"' in json.dumps(schema) and '"value_count"' not in json.dumps(
+            schema
+        )
+        assert len(calls) == 1
+    finally:
+        selected.close()
+
+
+def test_wire_non_null_count_cannot_claim_a_row_count_alias_without_proof():
+    from app.core.errors import SqlUnsupportedError
+    from app.datasets.context import DatasetSqlContext
+    from app.text_to_sql.compiler import QueryCompiler
+
+    context = DatasetSqlContext(
+        "Synthetic nullable values",
+        {"events": {"amount"}},
+        {"events": "uploaded_data"},
+        column_types={"events": {"amount": "NUMERIC"}},
+    )
+    data = proposal()
+    data.update(
+        fields=[{"reference": "e0", "alias": "fact_row_count"}],
+        expressions=[
+            {
+                "operation": "non_null_count",
+                "arguments": ["column:t0.amount"],
+                "value": "",
+                "value_type": "none",
+            }
+        ],
+    )
+    task = TaskProposal.model_validate(data).task(
+        "Synthetic count", column_references={"column:t0.amount": "t0.c0"}
+    )
+    with pytest.raises(SqlUnsupportedError) as error:
+        QueryCompiler(context).compile(task_query_plan(task))
+    assert error.value.aggregate_reason == "count_wrong_argument_semantics"

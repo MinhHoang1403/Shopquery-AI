@@ -21,11 +21,32 @@ from app.text_to_sql.generation_contract import (
     GenerationField,
     apply_catalog_schema,
 )
-from app.text_to_sql.query_plan import PlanExpression, PlanSort, QueryPlan
+from app.text_to_sql.query_plan import ExpressionOperation, PlanExpression, PlanSort, QueryPlan
 
 PREDICATE_OPERATIONS = frozenset(
     {"eq", "ne", "gt", "gte", "lt", "lte", "in", "is_null", "is_not_null", "and", "or"}
 )
+
+
+def _count_operation_schema(schema: dict) -> None:
+    schema["enum"] = [
+        "non_null_count" if item == "value_count" else item for item in schema["enum"]
+    ]
+    schema["description"] = (
+        "row_count counts records with zero arguments. non_null_count counts only non-NULL "
+        "values of one column; names and identifiers do not prove equivalence to record count."
+    )
+
+
+class TaskExpression(GenerationExpression):
+    """Clarify nullable-value counting on the wire; preserve the compiler's operator."""
+
+    operation: ExpressionOperation = Field(json_schema_extra=_count_operation_schema)
+
+    @field_validator("operation", mode="before")
+    @classmethod
+    def canonical_count(cls, value: str) -> str:
+        return "value_count" if value == "non_null_count" else value
 
 
 class TaskProposal(BaseModel):
@@ -41,7 +62,7 @@ class TaskProposal(BaseModel):
     source: str
     grouping: Literal["entity", "category", "records"]
     fields: list[GenerationField] = Field(max_length=30)
-    expressions: list[GenerationExpression] = Field(max_length=80)
+    expressions: list[TaskExpression] = Field(max_length=80)
     group_by: list[str] = Field(max_length=30)
     relationships: list[str] = Field(max_length=3)
     where: str = Field(max_length=32, pattern=r"^(?:e[0-9]+|t[0-9]+\.c[0-9]+)?$")

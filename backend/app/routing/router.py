@@ -192,7 +192,9 @@ copy the whole issued column address, never infer its ordinal or use an output a
 Expressions form a flat DAG e0,e1,...;
 each references earlier nodes or issued columns. fields only reference values, with unique aliases.
 Literal nodes carry typed string value and value_type. Nonliteral nodes have value='' and
-value_type=none. row_count takes no arguments; value_count takes one direct source column.
+value_type=none. row_count counts records and takes no arguments. non_null_count counts only
+non-NULL values of one direct source column. Identifiers and names do not prove NOT NULL;
+do not substitute a nullable-value count for the requested number of records.
 SUM/AVG/MIN/MAX and arithmetic/date operations belong in expression nodes, not fields.
 where references the complete input boolean predicate tree; having references output aggregate
 predicates. Boolean AND/OR take predicate references. Comparisons take a value reference then

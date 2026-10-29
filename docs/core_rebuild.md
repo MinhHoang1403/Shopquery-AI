@@ -760,3 +760,27 @@ Không phải retry/repair tự động hoặc fallback, không reset ngân sác
 gồm unchanged/missing prior failure refusal, persistence/close/reservation và duplicate
 dispatch blocked. Cumulative agent vẫn15/0/0, chưa gọi lại model trong lúc sửa/harness test.
 Chờ exact-source CI trước native replays/new cases. Main8080/volumes/images/config không đổi.
+
+### Seen p05 replay: conversion/compile không phải semantic PASS
+
+CI `c1c2f08` run40819506394 đạt4/4. One seen replay p05 sau changed contract đã
+chuyển DTO và compile thành công, nhưng model dùng value_count(delivery_id), không phải
+row_count. Compiled CountMetric=non_null_value_count, proof=nullable_or_unknown; catalog
+không chứng minh ID non-NULL. Independent manual review ghi FAIL_NO_ROW_EQUIVALENCE_PROOF
+cho count intent, không chấm câu hỏi đếm lượt là PASS. Không có SQL execution/oracle live
+ở harness này. Cumulative16generation/0query/0document; original failures vẫn giữ.
+
+Wire clarification chung: TaskExpression phát hành enum non_null_count và mô tả rõ
+chỉ đếm giá trị khác NULL; hạ deterministic về existing value_count. row_count vẫn
+zero arguments để đếm records. Khôi phục invariant COUNT đã có trong legacy planner vào
+request contract hợp nhất: identifier/name không chứng minhNOTNULL. Không thêm ví dụ
+NLP/domain, không suy COUNTkind từ alias, không đổi value_count thành row_count để vá kết quả.
+Existing compiler/COUNT proof kinds/NULL semantics giữ nguyên; internal canonical/history
+operator value_count tương thích. Đây là làm rõ transport intent, hiệu quả model lựa chọn
+operator cần live verification; không gọi là đã khắc phục semantic failure.
+
+Hai actualSDK fixtures non_null_count trướcFAIL/sauPASS; compiled metric vẫn NON_NULL/UNKNOWN,
+row_count vẫn ROW_COUNT/STAR. COUNT nullable giả danh fact_row_count vẫn bị existing guard
+count_wrong_argument_semantics chặn.141targeted router/routing/contracts/execution testsPASS,
+Ruff sạch. Chưa gọi model sau sửa; chờ CI exact source. Main/runtime/images/data giữ nguyên;
+merge/deploy/cleanup chưa thực hiện.
