@@ -722,3 +722,28 @@ chưa được chứng minh live, không đảm bảo model không chọn sai co
 Static SQL fixture adapter cập nhật cho catalog có named addresses, giữ independent
 expected values. Held-out gold/hashes không sửa. Chưa merge/deploy/cleanup; semantic gate
 vẫn BLOCKED cho đến nghiệm thu source mới. Main8080/volumes/models/gates/Langfuse giữ nguyên.
+
+### Verified policy metric → output-order binding
+
+Manual grading DTO p10 phát hiện output sort e0=SUM(source amount), fields/source còn
+chờ bind từ policy. bind_policy_task tạo metric_value nhưng giữ ordering e0, gây
+select_verified_rows từ chối vì e0 không phải cột kết quả. Đây là defect integration
+backend có proof độc lập với model: hai targeted tests asc/desc trướcFAIL/sauPASS.
+
+Sửa ngay bind_policy_task: chỉ khi source và aggregate của ordering expression trùng
+CHÍNH XÁC metric đã được complete policy/catalog verification xác nhận, hạ presentation
+reference về alias metric_value. Không sửa predicate/population, direction/nulls/limit;
+không thực hiện sort/limit trước classification. AVG thay SUM, source column khác, literal
+và e99 bị policy_metric_unbound trước SQL. Existing compiler/executor/guards không đổi.
+
+189targeted execution/router/evidence/policy tests PASS, Ruff sạch. Thêm hai PostgreSQL
+execution oracle cases dùng locked7facts/5entities và explicit E1-E3 population: giữ đủ
+3metric rows (gồm zero), classify theo document, rồi lấy first qualified theoSUM asc/desc;
+so với manual PostgreSQL HAVING+ORDER+LIMIT độc lập. Mới collect6oracle tests, chưa chạy
+local để tránh mainDB; đợi CI. Locked data/gold không thay.
+
+CI8c7bd42 run40818245468: PostgreSQL/frontend/observability PASS; backend1700PASS/1FAIL
+ở assertion schema vẫn đòi selection thay vì policy_selection. Đã cập nhật assertion
+đúng wire contract mới, không nới semantic/authority requirements. Agent vẫn15/0/0,
+không dispatch provider trong lúc sửa. Chưa nghiệm thu live named-address contract.
+Release/merge/cleanup tiếp tục BLOCKED; main8080 và protected data không đổi.

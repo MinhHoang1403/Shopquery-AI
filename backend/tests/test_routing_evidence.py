@@ -42,7 +42,7 @@ def test_classification_without_proven_full_scope_refuses_before_hybrid(service_
 
 def test_automatic_wire_contract_requires_task_without_authority_flags():
     schema = TaskProposal.model_json_schema()
-    assert {"operation", "source", "where", "having", "selection", "unresolved"}.issubset(
+    assert {"operation", "source", "where", "having", "policy_selection", "unresolved"}.issubset(
         schema["required"]
     )
     assert not {"verified", "policy_scope", "owner_user_id"} & schema["properties"].keys()

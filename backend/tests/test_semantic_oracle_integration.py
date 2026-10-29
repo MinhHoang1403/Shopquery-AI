@@ -211,3 +211,98 @@ def test_policy_oracle_distinguishes_missing_facts_from_zero_and_null(oracle_dat
     assert by_id["E4"]["fact_count"] == 0 and by_id["E4"]["total"] is None
     assert by_id["E5"]["fact_count"] == 1 and by_id["E5"]["value_count"] == 0
     assert by_id["E2"]["total"] == Decimal("0.00") and by_id["E2"]["fact_count"] == 2
+
+
+@pytest.mark.parametrize("direction,expected_id", [("asc", "E1"), ("desc", "E3")])
+def test_bound_policy_expression_order_matches_independent_postgres_selection(
+    oracle_database, direction, expected_id
+):
+    from dataclasses import replace
+
+    from app.routing.hybrid import HybridPipeline
+    from app.semantic.task import Ordering, PolicyRequirement
+    from app.text_to_sql.join_policy import ApprovedJoin
+    from app.text_to_sql.query_plan import PlanExpression
+    from tests.hybrid_fixtures import prose_policy, scoped_chunk
+
+    selected = context()
+    selected = replace(
+        selected,
+        table_columns={**selected.table_columns, "entities": {"entity_id"}},
+        allowed_schemas={**selected.allowed_schemas, "entities": "pg_temp"},
+        column_types={**selected.column_types, "entities": {"entity_id": "TEXT"}},
+        approved_joins=(
+            ApprovedJoin(
+                "entity-edge", "events", "entity_id", "entities", "entity_id", "isolated-oracle"
+            ),
+        ),
+    )
+    refs = SchemaReferences.from_context(selected)
+    amount = next(key for key, source in refs.columns.items() if source == ("events", "amount"))
+    identity = next(
+        key for key, source in refs.columns.items() if source == ("entities", "entity_id")
+    )
+    chunk = scoped_chunk(
+        41,
+        "policy.md",
+        "Policy",
+        prose_policy("entity_id", "amount", GOLD["policy"]["threshold"]),
+        0.1,
+    )
+    chunk = replace(
+        chunk, document_scope=replace(chunk.document_scope, dataset_id=71, owner_user_id=OWNER)
+    )
+    request = SemanticTask(
+        operation="apply_policy",
+        question="Select the first qualifying entity by the verified metric.",
+        population=Population(
+            grouping="entity",
+            predicates=Predicate(
+                reference=identity,
+                operator="in",
+                values=tuple(
+                    ScalarValue(data_type="TEXT", value=key) for key in ("E1", "E2", "E3")
+                ),
+            ),
+        ),
+        output=OutputSelection(
+            classification="qualified",
+            ordering=(Ordering(field="e0", direction=direction),),
+            limit=1,
+        ),
+        expressions=(PlanExpression(operation="sum", arguments=[amount]),),
+        policy=PolicyRequirement(description="Apply the saved policy to the selected entities."),
+    )
+    gateway = Mock()
+    sql = TextToSqlPipeline(
+        Mock(), QueryCompiler(selected), SqlExecutor(oracle_database, 3000, 100), gateway
+    )
+    hybrid = HybridPipeline(sql, Mock(retrieve=Mock(return_value=[chunk])), gateway, selected)
+    with semantic_request(RequestIdentity(OWNER, None, 71, request.question, "2032-10-15")):
+        result = hybrid.run(request.question, task=request)
+    indices = (
+        range(len(result.rows)) if result.answer_row_indices is None else result.answer_row_indices
+    )
+    visible = [result.rows[index] for index in indices]
+    with oracle_database.connect() as connection:
+        connection.execute(text("SET TRANSACTION READ ONLY"))
+        independent = (
+            connection.execute(
+                text(
+                    "SELECT d.entity_id, SUM(f.amount) AS total FROM entities d "
+                    "JOIN events f ON f.entity_id=d.entity_id "
+                    "WHERE d.entity_id IN ('E1','E2','E3') GROUP BY d.entity_id "
+                    "HAVING SUM(f.amount) >= CAST(:threshold AS NUMERIC) "
+                    f"ORDER BY SUM(f.amount) {direction}, d.entity_id LIMIT 1"
+                ),
+                {"threshold": GOLD["policy"]["threshold"]},
+            )
+            .mappings()
+            .one()
+        )
+    assert result.verification_status == "verified_classification"
+    assert len(result.rows) == 3 and len(visible) == 1
+    assert visible[0]["entity_id"] == independent["entity_id"] == expected_id
+    assert Decimal(visible[0]["metric_value"]) == independent["total"]
+    assert {row["entity_id"]: row["metric_value"] for row in result.rows}["E2"] == "0.00"
+    gateway.generate_structured.assert_not_called()

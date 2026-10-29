@@ -581,3 +581,87 @@ def test_dimension_measure_cannot_rebase_an_explicit_fact_relationship_tree():
     assert any(
         event["stage"] == "join_graph" and event["status"] == "failure" for event in trace.events
     )
+
+
+@pytest.mark.parametrize("direction,expected", [("asc", (1,)), ("desc", (2,))])
+def test_unbound_policy_metric_order_is_bound_before_selecting_the_verified_subset(
+    direction, expected
+):
+    from app.semantic.task import Ordering
+    from app.text_to_sql.compiler import SchemaReferences
+    from app.text_to_sql.query_plan import PlanExpression
+
+    chunk, context, _ = fixture()
+    owner = UUID("f425b6ce-7ff0-4329-9948-4e9bf2e93642")
+    context = replace(context, dataset_id=71, owner_user_id=owner, table_row_counts={"random_d": 3})
+    chunk = replace(
+        chunk, document_scope=replace(chunk.document_scope, dataset_id=71, owner_user_id=owner)
+    )
+    amount = next(
+        ref
+        for ref, column in SchemaReferences.from_context(context).columns.items()
+        if column == ("random_f", "amount")
+    )
+    request = task("not_qualified").model_copy(
+        update={
+            "expressions": (PlanExpression(operation="sum", arguments=[amount]),),
+            "output": task("not_qualified").output.model_copy(
+                update={"ordering": (Ordering(field="e0", direction=direction),), "limit": 1}
+            ),
+        }
+    )
+    rows = [
+        {"entity_id": "U1", "metric_value": "40.00"},
+        {"entity_id": "U2", "metric_value": "0.00"},
+        {"entity_id": "U3", "metric_value": "10.00"},
+    ]
+    sql, executor, gateway = pipeline(context, rows)
+    executor.execute.side_effect = [
+        [{"entity_count": 3}],
+        [{"entity_id": row["entity_id"]} for row in rows],
+        rows,
+    ]
+    with semantic_request(RequestIdentity(owner, None, 71, request.question, "2026-10-29")):
+        result = HybridPipeline(
+            sql, Mock(retrieve=Mock(return_value=[chunk])), gateway, context
+        ).run(request.question, task=request)
+    assert result.verification_status == "verified_classification"
+    assert result.answer_row_indices == expected and result.rows == rows
+    assert result.task.output.ordering[0].field == "metric_value"
+    assert executor.execute.call_count == 3
+    gateway.generate_structured.assert_not_called()
+
+
+@pytest.mark.parametrize("mutation", ["aggregate", "column", "literal", "unknown"])
+def test_unbound_policy_sort_cannot_substitute_an_unverified_metric(mutation):
+    from app.semantic.task import Ordering
+    from app.text_to_sql.compiler import SchemaReferences
+    from app.text_to_sql.query_plan import PlanExpression
+
+    chunk, context, _ = fixture()
+    refs = SchemaReferences.from_context(context)
+    amount = next(ref for ref, column in refs.columns.items() if column == ("random_f", "amount"))
+    node = PlanExpression(operation="sum", arguments=[amount])
+    if mutation == "aggregate":
+        node = PlanExpression(operation="avg", arguments=[amount])
+    elif mutation == "column":
+        node = PlanExpression(
+            operation="sum", arguments=[next(ref for ref in refs.columns if ref != amount)]
+        )
+    elif mutation == "literal":
+        node = PlanExpression(operation="literal", value="40", value_type="NUMERIC")
+    request = task().model_copy(
+        update={
+            "expressions": (node,),
+            "output": task().output.model_copy(
+                update={
+                    "ordering": (
+                        Ordering(field="e99" if mutation == "unknown" else "e0", direction="asc"),
+                    )
+                }
+            ),
+        }
+    )
+    with pytest.raises(ModelResponseError) as error:
+        bind_policy_task(request, [chunk], context)
+    assert error.value.error_context.reason_code == "policy_metric_unbound"

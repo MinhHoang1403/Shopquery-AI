@@ -104,6 +104,7 @@ def bind_policy_task(
     fields = task.output.fields
     grouping = task.population.group_by
     expressions = task.expressions
+    ordering = task.output.ordering
     if not fields:
         if grouping and grouping != (reverse[identity],):
             raise verification_error("planning_scope_violation")
@@ -113,6 +114,25 @@ def bind_policy_task(
         )
         grouping = (reverse[identity],)
         metric_alias = "metric_value"
+        bound_ordering = []
+        for order in ordering:
+            if order.field.startswith("e") and order.field[1:].isdigit():
+                index = int(order.field[1:])
+                node = expressions[index] if index < len(expressions) else None
+                if (
+                    node is None
+                    or node.operation != prose.aggregate
+                    or node.arguments != [reverse[metric]]
+                    or node.value is not None
+                    or node.value_type is not None
+                ):
+                    raise verification_error("policy_metric_unbound")
+                # The document/catalog already proved this exact metric lineage.
+                # Rebind its presentation address only; no population/order/limit
+                # is applied until the complete policy evaluation has succeeded.
+                order = order.model_copy(update={"field": metric_alias})
+            bound_ordering.append(order)
+        ordering = tuple(bound_ordering)
     else:
         metric_alias = task.policy.metric
         if metric_alias is None:
@@ -124,7 +144,7 @@ def bind_policy_task(
         relationships=tuple(base.relationships),
         predicates=task.population.predicates,
     )
-    output = task.output.model_copy(update={"fields": fields})
+    output = task.output.model_copy(update={"fields": fields, "ordering": ordering})
     if output.predicates is not None or task.policy.applicability is not None:
         # These clauses require a separately bound policy applicability/output
         # evaluator. Never discard a represented condition during classification.
