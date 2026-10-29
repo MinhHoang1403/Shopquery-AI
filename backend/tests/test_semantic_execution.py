@@ -535,3 +535,45 @@ def test_demo_catalog_retains_its_declared_four_table_compiler_contract():
         compiled = compiler.compile(bound)
         verify_compiled_task(requested, compiled, compiler)
     assert compiled.validated.statement.count("JOIN") == 3
+
+
+def test_dimension_measure_cannot_rebase_an_explicit_fact_relationship_tree():
+    from app.core.errors import SqlUnsupportedError
+    from app.text_to_sql.compiler import SchemaReferences
+
+    chunk, context, _ = fixture()
+    original = bind_policy_task(task(), [chunk], context).task
+    context = replace(
+        context,
+        table_columns={
+            **context.table_columns,
+            "random_d": context.table_columns["random_d"] | {"budget"},
+        },
+        column_types={
+            **context.column_types,
+            "random_d": {**context.column_types["random_d"], "budget": "NUMERIC"},
+        },
+    )
+    dimension_value = next(
+        key
+        for key, location in SchemaReferences.from_context(context).columns.items()
+        if location == ("random_d", "budget")
+    )
+    # Reissue all catalog references after the schema addition; only the metric
+    # location changes, while the explicit original fact -> dimension edge remains.
+    before = SchemaReferences.from_context(fixture()[1])
+    after = SchemaReferences.from_context(context)
+    mapping = {
+        key: next(ref for ref, target in after.columns.items() if target == location)
+        for key, location in before.columns.items()
+    }
+    data = original.model_dump()
+    data["population"]["group_by"] = [mapping[ref] for ref in original.population.group_by]
+    for field in data["output"]["fields"]:
+        field["reference"] = (
+            dimension_value if field["aggregate"] == "sum" else mapping[field["reference"]]
+        )
+    with pytest.raises(SqlUnsupportedError) as error:
+        bind_policy_task(SemanticTask.model_validate(data), [chunk], context)
+    assert error.value.code == "join_graph"
+    assert error.value.error_context.validation_branch == "missing_path"

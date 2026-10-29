@@ -329,10 +329,16 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
         assert not any(e["stage"] == "document_retrieval" for e in trace.events)
     else:
         assert any(e["stage"] == "document_retrieval" for e in trace.events)
-    if mutation in {"star_alias", "column_alias", "nullable_row", "dimension_sum"}:
+    if mutation in {"star_alias", "column_alias", "nullable_row"}:
         assert any(
             e["stage"] == code and (reason is None or e["reason"] == reason) for e in trace.events
         )
+    elif mutation == "dimension_sum":
+        # Typed binding infers the measure's fact root before SQL compilation.
+        # A dimension measure conflicts with the explicitly requested original
+        # fact tree, so the graph guard must reject it before the aggregate guard.
+        assert response["error_context"]["validation_branch"] == "missing_path"
+        assert any(e["stage"] == "plan_binding" for e in trace.events)
     elif mutation == "grain":
         assert response["error_context"]["reason_code"] == "planning_scope_violation"
     elif mutation == "key":

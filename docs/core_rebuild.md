@@ -619,3 +619,13 @@ COUNT-alias negative đổi đồng bộ sort alias để chạm đúng COUNT gu
 bởi dangling sort. Các sửa test này chưa được coi PASS PostgreSQL trước CI kế tiếp.
 Targeted execution/coverage/policy-binding/evaluation107PASS, Ruff sạch. Agent calls0/0/0.
 8080 và images/volumes/models/gates không đổi. Main/PR5 chưa merge và chưa cleanup.
+
+### PostgreSQL `80d41e8`: còn một assertion về thứ tự guard
+
+Run40813304313: 881PASS/1FAIL PostgreSQL; backend/frontend+E2E/observability PASS.
+Không gọi đây là full PASS. Ca còn lại dimension_sum đã từ chối trước execution nhưng
+assertion đòi legacy join_aggregate/dimension_column. Unit reproduction độc lập xác nhận
+existing binder suy fact từ measure và không tìm được approved tree khớp original explicit
+fact edges: join_graph/validation_branch=missing_path. Test này kiểm đúng branch và stage
+plan_binding; COUNT provenance negatives vẫn bắt buộc old aggregate reason tương ứng.
+Targeted group108PASS, Ruff sạch. Không thay production guards để xử lý assertion này.
