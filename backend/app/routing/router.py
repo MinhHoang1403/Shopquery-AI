@@ -10,7 +10,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage, record_facts, record_refusal
-from app.core.errors import ErrorContext, ModelResponseError
+from app.core.errors import ErrorContext, ModelResponseError, conversion_context
 from app.datasets.context import DatasetSqlContext
 from app.semantic.request import bind_request
 from app.semantic.task import RequestContext, SemanticTask
@@ -225,7 +225,9 @@ Current request:
                 raise ModelResponseError(
                     "Semantic proposal is invalid",
                     error_context=ErrorContext(
-                        phase="domain_conversion", error_category="contract_conversion"
+                        phase="domain_conversion",
+                        error_category="contract_conversion",
+                        **conversion_context(exc),
                     ),
                 ) from exc
             route = {

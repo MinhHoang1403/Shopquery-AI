@@ -636,3 +636,34 @@ refusal này. Unit reproduction có diagnostic_request xác nhận event thực 
 join_graph/failure (diagnostic_stage dùng exception.code), và private exception giữ
 missing_path. Sửa test kiểm public UNSUPPORTED + không execution và safe trace event;
 không thay production response/privacy. Unit mới1PASS, Ruff PASS.
+
+### Exact-source CI đạt; fresh Knowledge conversion failure (29/10/2026)
+
+`bc1e360` run40814465224: **4/4 CI PASS**. Backend1690PASS/898deselected;
+PostgreSQL882PASS/1706deselected; frontend102PASS/15files và E2E offline PASS.
+Receipt exact SHA được kiểm trước paid dispatch; working tree sạch tại dispatch.
+
+Knowledge GET/models từ chính container baseline8080:200, configured knowledge listed,
+0generation. Private provider settings của local harness khớp API đang chạy; không đổi
+endpoint/key/model/auth/timeout, retry1/fallbackOFF trong harness.
+
+Fresh synthetic task evaluation dừng ở5requests: p01-p04 chuyển thành task, p05 COUNT+SUM
+phát sinh contract_conversion tại Router/domain_conversion trước SQL. Correlation
+`0be74f0429dd4b44a6a98703a3f376cf`. Chưa chấm4ca đầu là SQL/RAG/Hybrid execution PASS.
+Usage measured SDK:5663input/7036output/12699total tokens, latency6288/8017/8862/12764/10274ms.
+Agent cumulative5generation/0query/0document; Knowledge pricing UNKNOWN, không coi miễn phí.
+Gemini live và các pipeline live chưa chạy; không dùng fallback che failure.
+
+Original failed DTO không được harness giữ trước conversion, và Router bỏ safe structural
+validation metadata. Đây là diagnostic gap được tái hiện bằng failing unit test. Sửa
+Router dùng existing conversion_context scrubber; không ghi raw response/question vào
+telemetry. Test trướcFAIL/sauPASS và privacy assertion giữ nguyên. Harness riêng chỉ giữ
+DTO synthetic đã được duyệt trong ignored private evidence, ngay trước conversion, không
+thêm call. Chuẩn bị **một** reproduction diagnostic riêng p05 trong cùng trần120, có ledger
+key riêng chống tự lặp; original held-out failure vẫn giữ, diagnostic không thay score.
+Chưa dispatch diagnostic trước exact-source CI mới. Không đoán nguyên nhân semantic từ
+error category; nguyên nhân chi tiết p05 hiện UNKNOWN.
+
+Release **BLOCKED** ở semantic gate dù CIbc1e360 PASS. Chưa merge/deploy/cleanup hoặc
+xóa code/branches/PR/images. Main8080 vẫn baseline;14appimages/2referenced/12unreferenced
+đã kiểm kê đọc, chưa xóa. Không đổi volumes/data/models/gates/Langfuse.

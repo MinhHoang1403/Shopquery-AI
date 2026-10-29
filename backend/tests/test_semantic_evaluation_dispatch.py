@@ -45,3 +45,41 @@ def test_synthetic_catalog_types_and_approved_relations_are_explicit():
         for edge in catalog.approved_joins:
             assert edge.source_column in catalog.table_columns[edge.source_table]
             assert edge.target_column in catalog.table_columns[edge.target_table]
+
+
+def test_capture_records_the_synthetic_dto_before_failed_conversion_without_an_extra_call():
+    from unittest.mock import Mock
+
+    from app.core.errors import ModelResponseError
+    from app.routing.router import QueryRouter
+    from app.semantic.wire import TaskProposal
+    from tests.semantic_fixtures import proposal
+
+    data = proposal()
+    data["sort"] = [{"field": "missing_alias", "direction": "asc", "nulls": "last"}]
+    gateway = Mock(generate_structured=Mock(return_value=TaskProposal.model_validate(data)))
+    capture = evaluation.ProposalCapture(gateway)
+    with pytest.raises(ModelResponseError):
+        QueryRouter(capture).route("Synthetic count and sum")
+    assert capture.proposals == [data]
+    gateway.generate_structured.assert_called_once()
+
+
+def test_diagnostic_cannot_dispatch_without_a_recorded_failed_case(monkeypatch, tmp_path):
+    monkeypatch.setattr(evaluation, "CACHE", tmp_path)
+    receipt = tmp_path / "ci.json"
+    receipt.write_text(json.dumps({"source": "a" * 40, "postgres": "PASS"}))
+    with pytest.raises(SystemExit):
+        run(
+            monkeypatch,
+            "--live",
+            "--max-cases",
+            "28",
+            "--diagnostic-case",
+            "p05",
+            "--ci-receipt",
+            str(receipt),
+            "--env-file",
+            str(tmp_path / "absent.env"),
+        )
+    assert not (tmp_path / "core_provider_budget.json").exists()

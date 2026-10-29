@@ -130,3 +130,16 @@ def test_policy_can_wait_for_backend_metric_binding_without_losing_known_populat
     assert task.policy.metric is None and task.population.source is None
     with pytest.raises(ValueError):
         task_query_plan(task)
+
+
+def test_domain_conversion_preserves_safe_structural_diagnostics_without_response_text():
+    data = proposal()
+    data["sort"] = [{"field": "private_missing_alias", "direction": "asc", "nulls": "last"}]
+    gateway = Mock(generate_structured=Mock(return_value=TaskProposal.model_validate(data)))
+    with pytest.raises(ModelResponseError) as error:
+        QueryRouter(gateway).route("PRIVATE_QUESTION")
+    context = error.value.error_context.model_dump_json()
+    assert error.value.error_context.validation_branch == "response_contract"
+    assert error.value.error_context.validation_type == "value_error"
+    assert "private_missing_alias" not in context and "PRIVATE_QUESTION" not in context
+    gateway.generate_structured.assert_called_once()

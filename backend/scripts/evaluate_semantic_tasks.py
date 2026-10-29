@@ -34,6 +34,23 @@ INTEGER = {"room_count"}
 TIMESTAMP = {"started_at"}
 
 
+class ProposalCapture:
+    """Capture authorized synthetic DTOs locally before domain conversion.
+
+    Never attach this data to telemetry. Capturing the already returned DTO costs
+    no additional provider call and lets a conversion failure become a regression.
+    """
+
+    def __init__(self, gateway):
+        self.gateway = gateway
+        self.proposals = []
+
+    def generate_structured(self, prompt, schema):
+        result = self.gateway.generate_structured(prompt, schema)
+        self.proposals.append(result.model_dump(mode="json"))
+        return result
+
+
 def catalog(name: str, description: dict) -> DatasetSqlContext:
     columns, types = {}, {}
     for declaration in description["tables"]:
@@ -80,6 +97,9 @@ def main() -> int:
     parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--ci-receipt", type=Path)
+    parser.add_argument(
+        "--diagnostic-case", help="One bounded reproduction of a recorded failed case"
+    )
     parser.add_argument("--live", action="store_true")
     args = parser.parse_args()
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -128,10 +148,21 @@ def main() -> int:
         parser.error("Budget ledger requires reconciliation before dispatch")
     output_path = CACHE / f"semantic_evaluation_{args.provider}.json"
     evidence = json.loads(output_path.read_text()) if output_path.exists() else {"runs": []}
+    cases = suite["cases"][: args.max_cases]
+    if args.diagnostic_case:
+        cases = [case for case in cases if case["id"] == args.diagnostic_case]
+        if len(cases) != 1 or not any(
+            run["case"] == args.diagnostic_case and run.get("error") for run in evidence["runs"]
+        ):
+            parser.error("Diagnostic requires one previously recorded failed synthetic case")
     gateway = build_generation_gateway(settings, args.provider)
     try:
-        for case in suite["cases"][: args.max_cases]:
-            key = args.provider + ":population:" + case["id"]
+        for case in cases:
+            key = (
+                args.provider
+                + (":diagnostic:" if args.diagnostic_case else ":population:")
+                + case["id"]
+            )
             if key in ledger["dispatches"]:
                 parser.error("Case already dispatched; no automatic repeat of closed evaluations")
             if ledger["generation"] >= LIMIT:
@@ -143,6 +174,7 @@ def main() -> int:
             save(ledger_path, ledger)
             start = perf_counter()
             result = {"case": case["id"], "provider": args.provider, "source": source}
+            capture = ProposalCapture(gateway)
             try:
                 with (
                     diagnostic_request() as trace,
@@ -156,8 +188,10 @@ def main() -> int:
                         )
                     ),
                 ):
-                    decision = QueryRouter(gateway, context=selected).route(case["question"])
+                    decision = QueryRouter(capture, context=selected).route(case["question"])
                 result.update(
+                    synthetic_proposals=capture.proposals,
+                    diagnostic=bool(args.diagnostic_case),
                     task=decision.task.model_dump(mode="json"),
                     route=decision.route,
                     dimensions=grade_structural_dimensions(
