@@ -92,7 +92,7 @@ def test_structured_hybrid_cross_domain_postgres_oracle(
                     return proposal_for_evidence(
                         "documents" if _task_route == RouteLabel.RAG else "unavailable"
                     )
-                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+                _task_operation = "apply_policy" if _task_route == RouteLabel.HYBRID else "query"
             if schema is TaskProposal:
                 return proposal_from_plan(
                     decision_from_sql(golden_sql(domain, dataset, tables_count), prompt),

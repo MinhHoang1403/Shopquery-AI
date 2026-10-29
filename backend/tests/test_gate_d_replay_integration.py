@@ -170,10 +170,7 @@ def test_gate_d_questions_oracle_and_authenticated_history(
             if schema is TaskProposal:
                 assert QUESTIONS[level] in prompt
                 assert all(name in prompt for name in context.table_columns)
-                assert (
-                    "Do not apply document thresholds as SQL filters or infer absent policies"
-                    in prompt
-                )
+                assert "Output selection all/qualified/" in prompt
                 sql = draft_sql(dataset, level)
                 return proposal_from_plan(
                     decision_from_sql(
@@ -250,35 +247,56 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
 ) -> None:
     accounts, dataset, _, embedder = gate_d_workspace  # noqa: F811
     dataset = add_policy(accounts, dataset, embedder)
-    sql = draft_sql(dataset, "H")
-    if mutation == "star_alias":
-        sql = sql.replace("AS fact_row_count", "AS fact_value_count")
-    elif mutation == "column_alias":
-        sql = sql.replace("COUNT(*)", "COUNT(f.phi_giao_vnd)").replace(
-            "AS fact_row_count", "AS matched_row_count"
-        )
-    elif mutation == "nullable_row":
-        sql = sql.replace("COUNT(*)", "COUNT(f.phi_giao_vnd)")
-    elif mutation == "dimension_sum":
-        sql = sql.replace("SUM(f.phi_giao_vnd)", "SUM(d.tham_nien_nam)")
-    elif mutation == "grain":
-        sql = sql.replace("k.kho_id,", "").replace(",k.kho_id", "")
-    elif mutation == "key":
-        sql = sql.replace("f.tai_xe_id=d.tai_xe_id", "f.don_id=d.tai_xe_id")
     calls: list[str] = []
 
     class Gateway:
         def generate_structured(self, prompt: str, schema: type[BaseModel]) -> BaseModel:
             calls.append(schema.__name__)
-            if schema is TaskProposal:
-                _task_route = RouteLabel.HYBRID
-                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
             assert schema is TaskProposal
+            if mutation == "unsupported":
+                from tests.semantic_fixtures import proposal_for_evidence
+
+                return proposal_for_evidence("unavailable")
+            from app.text_to_sql.query_plan import PlanExpression
+
+            plan = decision_from_sql(draft_sql(dataset, "H"), prompt).plan
+            fields = list(plan.fields)
+            nodes = list(plan.expressions)
+            count_index = next(i for i, n in enumerate(nodes) if n.operation == "row_count")
+            total_index = next(i for i, n in enumerate(nodes) if n.operation == "sum")
+            if mutation == "star_alias":
+                fields = [
+                    f.model_copy(update={"alias": "fact_value_count"})
+                    if f.alias == "fact_row_count"
+                    else f
+                    for f in fields
+                ]
+            elif mutation in {"column_alias", "nullable_row"}:
+                nodes[count_index] = PlanExpression(
+                    operation="value_count", arguments=nodes[total_index].arguments
+                )
+                if mutation == "column_alias":
+                    fields = [
+                        f.model_copy(update={"alias": "matched_row_count"})
+                        if f.alias == "fact_row_count"
+                        else f
+                        for f in fields
+                    ]
+            elif mutation == "dimension_sum":
+                catalog = json.JSONDecoder().raw_decode(
+                    prompt.split("Source/context data:\n", 1)[1]
+                )[0]["catalog"]
+                dimension_value = next(
+                    c["id"] for c in catalog["columns"] if c["name"] == "tham_nien_nam"
+                )
+                nodes[total_index] = PlanExpression(operation="sum", arguments=[dimension_value])
+            elif mutation == "grain":
+                plan = plan.model_copy(update={"grouping": "category"})
+            elif mutation == "key":
+                plan = plan.model_copy(update={"relationships": ["r999"]})
             return proposal_from_plan(
-                PlanDecision(plan=None, unsupported_reason="Private synthetic hypothesis")
-                if mutation == "unsupported"
-                else decision_from_sql(sql, prompt),
-                _task_operation,
+                PlanDecision(plan=plan.model_copy(update={"fields": fields, "expressions": nodes})),
+                "apply_policy",
             )
 
         def generate_text(self, prompt: str) -> str:
@@ -290,15 +308,22 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
     with diagnostic_request() as trace:
         result = accounts.a.client.post(path + "/messages", json={"message": QUESTIONS["H"]})
     response = result.json()["assistant_message"]["response"]
-    assert (
-        response["route"] == "UNSUPPORTED" and response["rows"] == [] and response["sources"] == []
-    )
+    assert response["rows"] == [] and response["sources"] == [] and response["sql"] is None
+    assert response["route"] == "UNSUPPORTED" or response["error"] is not None
     assert calls == ["TaskProposal"]
     assert not trace.facts["execution_reached"]
-    assert any(e["stage"] == "document_retrieval" for e in trace.events)
-    assert any(
-        e["stage"] == code and (reason is None or e["reason"] == reason) for e in trace.events
-    )
+    if mutation == "unsupported":
+        assert not any(e["stage"] == "document_retrieval" for e in trace.events)
+    else:
+        assert any(e["stage"] == "document_retrieval" for e in trace.events)
+    if mutation in {"star_alias", "column_alias", "nullable_row", "dimension_sum"}:
+        assert any(
+            e["stage"] == code and (reason is None or e["reason"] == reason) for e in trace.events
+        )
+    elif mutation == "grain":
+        assert response["error_context"]["reason_code"] == "planning_scope_violation"
+    elif mutation == "key":
+        assert response["error_context"]["validation_branch"] == "unknown_relationship"
     assert "Private synthetic" not in response["answer"]
 
 
@@ -319,7 +344,7 @@ def test_verified_rule_classification_does_not_request_model_verdict(
             calls.append(schema.__name__)
             if schema is TaskProposal:
                 _task_route = RouteLabel.HYBRID
-                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+                _task_operation = "apply_policy" if _task_route == RouteLabel.HYBRID else "query"
             if schema is TaskProposal:
                 return proposal_from_plan(
                     decision_from_sql(draft_sql(dataset, "H"), prompt), _task_operation
@@ -343,7 +368,7 @@ def test_verified_rule_classification_does_not_request_model_verdict(
     assert "Chưa đạt: KHO01, KHO04." in response["answer"]
     assert response["used_model"] == model and not response["fallback_used"]
     assert response["sources"][0]["content"] == policy
-    assert response["verification_status"] == "unverified"
+    assert response["verification_status"] == "verified_classification"
     before = list(calls)
     assert accounts.a.client.get(path).json()["messages"][-1]["response"] == response
     assert accounts.b.client.get(path).status_code == 404

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from uuid import UUID
 
+from app.core.diagnostics import record_facts
 from app.core.errors import ErrorContext, ModelResponseError
 from app.semantic.planning import task_query_plan, verify_task_plan
 from app.semantic.request import bind_request
@@ -64,6 +65,7 @@ def verify_coverage(
     if current != requirement:
         raise ValueError("Evidence requirement belongs to a different request or task")
     verify_task_plan(task, plan)
+    record_facts(coverage_status="represented")
 
 
 def prepare_task_plan(task: SemanticTask, compiler: QueryCompiler) -> QueryPlan:
@@ -115,3 +117,4 @@ def verify_compiled_task(
                 reason_code="planning_scope_violation",
             ),
         )
+    record_facts(coverage_status="compiled")

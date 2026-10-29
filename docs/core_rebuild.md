@@ -535,3 +535,37 @@ push để CI kiểm, không merge khi các gate trên chưa đạt. Không Dock
 không thay model/default/fallback/gate, không migrate hoặc tác động volume. API/Web/DB chính
 healthy, `/api/health` qua8080 HTTP200; immutable images vẫn baseline ghi đầu tài liệu.
 CI của `3e50467` không được dùng để nghiệm thu checkpoint này.
+
+### CI và sửa contract tiếp nối
+
+CI `a42c46f` (run40808584588): backend/frontend+E2E/observability PASS;
+PostgreSQL382PASS/500FAIL. Bốn tests independent semantic PostgreSQL oracle đều PASS.
+Fixture gateway còn giả lập RouteDecision+PlanDecision và direct factory thiếu envelope
+là các nhóm lỗi chính. Migrate fixture sang TaskProposal một request, giữ SQL/rows oracle,
+COUNT/Decimal/JOIN/owner expectations và test database safety guard.
+CI `616036b` (run40809809963): PostgreSQL790PASS/92FAIL; ba jobs còn lại PASS.
+Không bỏ/xfail failure, không dùng số này để tuyên bố acceptance.
+
+Trong lúc đối chiếu phát hiện thêm bằng failing reproduction:
+
+- `combine` từng tự trình bày verdict số khi không có policy-application coverage. Nay chỉ
+  compose bảng+document excerpts deterministic, không thêm call hoặc nâng trust. Chỉ
+  `apply_policy` mới yêu cầu classification. Test mới trướcFAIL/sauPASS.
+- Task policy có explicit source/fields bị buộc qua prose-only metric inference nên từ
+  chối structured rules dù binder đã xác minh được. `_bind_explicit_policy` tái sử dụng
+  compiler, verified_policies và verified_classification để chứng minh metric/identity;
+  chỉ bổ sung identity do existing approved-grain binder xác minh duy nhất. Không nới
+  COUNT/JOIN/grain/WHERE/HAVING guards. Explicit metadata không tự trở thành proof.
+- Context chặn rendered answer dài dù typed task reference đã bounded. Nay chỉ cho đường
+  typed reference hợp lệ vượt guard legacy2000characters; không chuyển assistant answer
+  vào prompt, không tăng task-reference12000characters budget. Test trướcFAIL/sauPASS.
+- Thêm enum-only semantic_operation/coverage_status vào diagnostics metadata; raw question,
+  task, SQL, rows và credentials vẫn bị loại.
+
+Targeted source/policy/context/observability checkpoint176PASS, Ruff app/tests PASS.
+Tests post-compile artifact mutation (WHERE/LIMIT/parameters/evidence SQL) đều bị chặn;
+compiler correctness vẫn phải dựa independent PostgreSQL oracle, không gọi consistency
+comparison là oracle độc lập. Paid usage0/0/0; runtime8080 và main/volumes không thay đổi.
+Các fixture protocol expectations được chuyển đúng boundary mới: SQL không còn do model
+sinh, nên test negative API phải gửi typed proposal sai nguồn/count/relationship/grain;
+raw SQL validator tests vẫn giữ nguyên để chứng minh guards tương ứng.

@@ -220,8 +220,8 @@ class SemanticTask(Contract):
                 not self.population.source or not self.output.fields
             ):
                 raise ValueError("Query needs an explicit source and selected fields")
-            if self.operation == "query" and (self.policy or classification != "none"):
-                raise ValueError("SQL cannot assert policy classification")
+            if self.operation in {"query", "combine"} and (self.policy or classification != "none"):
+                raise ValueError("Only policy application can request classification")
             if self.operation == "apply_policy":
                 if self.policy is None or classification == "none":
                     raise ValueError("Policy task needs explicit policy and selection")

@@ -143,8 +143,8 @@ def test_three_table_pipeline_keeps_exact_root_fact_oracle(workspace, monkeypatc
                     )
                 _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
             assert response_model is TaskProposal
-            assert "At most three tables" in prompt
-            assert "source fact to target dimension" in prompt
+            assert "Use only approved N:1 edges" in prompt
+            assert "one root fact" in prompt
             return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
         def generate_text(self, prompt):
@@ -323,7 +323,7 @@ def test_authenticated_upload_three_tables_pipeline_and_owner_history(
     response = result.json()["assistant_message"]["response"]
     assert response["route"] == route and response["error"] is None
     assert response["used_model"] == model and response["fallback_used"] is False
-    assert len(calls) == {"SQL": 2, "RAG": 2, "HYBRID": 3}[route]
+    assert len(calls) == {"SQL": 1, "RAG": 2, "HYBRID": 1}[route]
     if route != "RAG":
         assert response["sql"].count("JOIN") == 2
         assert [r["fact_row_count"] for r in response["rows"]] == [3, 2, 2]

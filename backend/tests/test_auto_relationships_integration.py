@@ -183,7 +183,7 @@ def test_upload_chat_and_history_with_automatic_relation(
                     )
                 _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
             assert schema is TaskProposal
-            assert "Row count has zero arguments" in prompt
+            assert "row_count takes no arguments" in prompt
             assert '"name": "amount_paid"' in prompt
             assert "Never sum identifiers" in prompt
             return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)

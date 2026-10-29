@@ -26,6 +26,10 @@ _strings = {
     "evidence_requirement": frozenset({"tables", "documents", "both", "unavailable", "unclear"}),
     "policy_intent": frozenset({"none", "all", "qualified", "not_qualified"}),
     "policy_scope": frozenset({"unspecified", "all_entities", "filtered_entities"}),
+    "semantic_operation": frozenset(
+        {"query", "explain", "apply_policy", "combine", "unsupported", "clarify"}
+    ),
+    "coverage_status": frozenset({"represented", "compiled", "population_complete"}),
     "rag_answerability_claim": frozenset(
         {"answered", "partially_answered", "insufficient_evidence", "unsupported", "unverified"}
     ),

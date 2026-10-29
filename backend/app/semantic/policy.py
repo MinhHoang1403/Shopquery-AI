@@ -37,6 +37,8 @@ def bind_policy_task(
     task = SemanticTask.model_validate(task.model_dump())
     if task.operation != "apply_policy" or task.unresolved or task.population is None:
         raise verification_error("planning_scope_violation")
+    if task.output.fields and task.population.source is not None:
+        return _bind_explicit_policy(task, chunks, context)
     candidates = numeric_policies(chunks)
     if len(candidates) != 1:
         raise verification_error(
@@ -155,6 +157,12 @@ def bind_policy_task(
     ]
     if len(identity_fields) != 1:
         raise verification_error("policy_identity_unbound")
+    return _bound_universe(bound, identity_fields[0], identity, context)
+
+
+def _bound_universe(bound, identity_field, identity, context) -> BoundPolicyTask:
+    refs = SchemaReferences.from_context(context)
+    reverse = {location: key for key, location in refs.columns.items()}
     if bound.population.predicates is not None:
         # A full table count is not evidence of the filtered subset's size.
         count = None
@@ -182,7 +190,7 @@ def bind_policy_task(
 
     universe = SemanticTask(
         operation="query",
-        question=task.question,
+        question=bound.question,
         population=Population(
             source=next(key for key, name in refs.tables.items() if name == identity[0]),
             grouping="records",
@@ -192,4 +200,76 @@ def bind_policy_task(
             fields=(Projection(reference=reverse[identity], alias="entity_id"),)
         ),
     )
-    return BoundPolicyTask(bound, identity_fields[0], count, universe)
+    return BoundPolicyTask(bound, identity_field, count, universe)
+
+
+def _bind_explicit_policy(task, chunks, context) -> BoundPolicyTask:
+    """Verify explicit catalog lineage with the existing policy binder, not name guesses."""
+    from app.routing.hybrid_evidence import verified_classification
+
+    if (
+        task.population.grouping != "entity"
+        or task.output.predicates is not None
+        or task.policy.applicability is not None
+    ):
+        raise verification_error("planning_scope_violation")
+    compiler = QueryCompiler(context)
+    plan = bind_approved_grain(task_query_plan(task), compiler.references)
+    aliases = {field.alias for field in task.output.fields}
+    additions = [field for field in plan.fields if field.alias not in aliases]
+    if any(
+        field.aggregate is not None or field.reference not in compiler.references.columns
+        for field in additions
+    ):
+        raise verification_error("planning_scope_violation")
+    # The existing binder may add only uniquely approved identity columns. Preserve
+    # every represented predicate/projection and record that completion in the receipt.
+    task = SemanticTask.model_validate(
+        {
+            **task.model_dump(),
+            "population": {
+                **task.population.model_dump(),
+                "source": plan.source,
+                "group_by": plan.group_by,
+                "relationships": plan.relationships,
+            },
+            "output": {
+                **task.output.model_dump(),
+                "fields": [
+                    *(field.model_dump() for field in task.output.fields),
+                    *(
+                        Projection(alias=field.alias, reference=field.reference).model_dump()
+                        for field in additions
+                    ),
+                ],
+            },
+        }
+    )
+    compiled = compiler.compile(bind_approved_grain(task_query_plan(task), compiler.references))
+    evidence = SqlResult(
+        "",
+        compiled.evidence_sql,
+        [],
+        compiled.validated.fact_table,
+        compiled.validated.count_metrics,
+    )
+    verified_policies(evidence, chunks, context, require_verified=True)
+    draft = verified_classification(evidence, chunks, context, "vi")
+    if draft is None or len(draft.identity_fields) != 1:
+        raise verification_error("policy_identity_unbound")
+    if task.policy.metric is not None and task.policy.metric != draft.metric_field:
+        raise verification_error("policy_metric_unbound")
+    identity_field = draft.identity_fields[0]
+    projection = next(
+        (field for field in task.output.fields if field.alias == identity_field), None
+    )
+    if projection is None or projection.reference not in compiler.references.columns:
+        raise verification_error("policy_identity_unbound")
+    identity = identity_source(*compiler.references.columns[projection.reference], context)
+    bound = SemanticTask.model_validate(
+        {
+            **task.model_dump(),
+            "policy": {**task.policy.model_dump(), "metric": draft.metric_field},
+        }
+    )
+    return _bound_universe(bound, identity_field, identity, context)

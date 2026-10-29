@@ -37,7 +37,7 @@ def contextual_question(
             and metadata.get("answer") == message.content
             and len(pending.content) <= 800
             and bool(message.content.strip())
-            and len(message.content) <= 2000
+            and (len(message.content) <= 2000 or metadata.get("semantic_reference") is not None)
         )
         if "turn_user_message_id" in metadata:
             reply_id = metadata["turn_user_message_id"]

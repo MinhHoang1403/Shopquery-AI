@@ -6,13 +6,13 @@ import re
 import pytest
 
 from app.routing.hybrid import HybridAnswerDraft
-from app.routing.router import RouteDecision, RouteLabel
+from app.routing.router import RouteLabel
 from app.semantic.wire import TaskProposal
 from app.text_to_sql.query_plan import PlanDecision
 from tests.gate_d_fixture import QUESTIONS
 from tests.hybrid_fixtures import classification_draft
 from tests.plan_fixtures import decision_from_sql
-from tests.semantic_fixtures import proposal_from_plan
+from tests.semantic_fixtures import proposal_for_evidence, proposal_from_plan
 from tests.test_auth_integration import accounts  # noqa: F401
 from tests.test_gate_d_replay_integration import (
     add_policy,
@@ -55,7 +55,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
             calls.append(schema.__name__)
             if schema is TaskProposal:
                 _task_route = RouteLabel.HYBRID
-                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+                _task_operation = "apply_policy" if _task_route == RouteLabel.HYBRID else "query"
             if schema is TaskProposal:
                 sql = draft_sql(dataset, "H")
                 decision = decision_from_sql(
@@ -81,7 +81,10 @@ def test_original_prose_exact_kh_acceptance_and_history(
                             }
                         )
                     )
-                return proposal_from_plan(decision, _task_operation)
+                proposal = proposal_from_plan(decision, _task_operation)
+                if prompt.rsplit("Current request:\n", 1)[-1].startswith("Vậy còn"):
+                    proposal.selection = "not_qualified"
+                return proposal
             assert schema is HybridAnswerDraft
             candidates.extend(
                 json.loads(prompt.split("Backend policy candidates: ", 1)[1].split("\n", 1)[0])
@@ -112,11 +115,11 @@ def test_original_prose_exact_kh_acceptance_and_history(
         assert response["sql"] is None and "Qualified:" not in response["answer"]
         assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
         assert actors.b.client.get(path).status_code == 404
-        assert calls == ["TaskProposal", "HybridAnswerDraft"]
+        assert calls == ["TaskProposal"]
         return
     assert response["error"] is None, response["error"]
     assert response["route"] == "HYBRID"
-    assert response["verification_status"] == "unverified"
+    assert response["verification_status"] == "verified_classification"
     # The omitted dimension key is a backend-issued output; never guessed from a label.
     assert response["rows"] == expected
     assert response["used_model"] == model and not response["fallback_used"]
@@ -146,7 +149,7 @@ def test_original_prose_exact_kh_acceptance_and_history(
     }
     assert answer["sources"][0]["chunk_id"] == response["sources"][0]["chunk_id"]
     assert answer["verification_status"] == "verified_classification"
-    assert calls == ["RouteDecision", "PlanDecision", "RouteDecision"]
+    assert calls == ["TaskProposal", "TaskProposal"]
 
 
 @pytest.mark.parametrize("model", ["inetcloud-knowledge", "gemini"])
@@ -163,22 +166,17 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
     class Gateway:
         def generate_structured(self, prompt, schema):
             calls.append(schema.__name__)
-            assert schema is RouteDecision
-            if "Vậy còn" in prompt:
-                assert "Previous successful turns" in prompt
-                assert set(re.search(r"(?<!Chưa )Đạt: ([^.]+)\.", prompt)[1].split(", ")) == {
-                    "KHO02",
-                    "KHO03",
-                    "KHO05",
-                }
-                assert "Account 1" not in prompt
-            return RouteDecision(
-                policy_intent="none",
-                policy_scope="unspecified",
-                evidence_requirement="both",
-                route=RouteLabel.HYBRID,
-                reason="Verified premise",
+            assert schema is TaskProposal
+            selection = (
+                "not_qualified"
+                if prompt.rsplit("Current request:\n", 1)[-1].startswith("Vậy còn")
+                else "all"
             )
+            if selection == "not_qualified":
+                assert "Previous user questions" in prompt and "task_reference" in prompt
+                assert "KHO02" not in prompt and "KHO03" not in prompt
+                assert "Account 1" not in prompt
+            return proposal_for_evidence("both", selection)
 
         def generate_text(self, prompt):
             raise AssertionError("Verified policy uses backend arithmetic, not model verdicts")
@@ -206,4 +204,4 @@ def test_verified_policy_premise_survives_real_history_and_retrieves_fresh_evide
         assert response["sources"][0]["content"] == ORIGINAL.split("\n\n", 1)[1].strip()
         assert actors.a.client.get(path).json()["messages"][-1]["response"] == response
         assert actors.b.client.get(path).status_code == 404
-    assert calls == ["RouteDecision", "RouteDecision"]
+    assert calls == ["TaskProposal", "TaskProposal"]

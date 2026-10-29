@@ -112,7 +112,9 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
                 _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
             if schema is TaskProposal:
                 # Input list is reversed below: payments becomes table_1, students table_2.
-                assert '"source": "t0.c' in prompt and '"target": "t1.c' in prompt
+                assert (
+                    '"source_table": "table_1"' in prompt and '"target_table": "table_2"' in prompt
+                )
                 return proposal_from_plan(
                     decision_from_sql(
                         "SELECT SUM(f.amount) AS total FROM pg_temp.table_1 f INNER JOIN "
@@ -147,7 +149,7 @@ def test_guest_join_remapping_chat_both_selections_without_persistence(monkeypat
         relationships=(record,),
     )
     assert result.route == route and result.used_model == model and selected == [model]
-    assert len(calls) == {RouteLabel.SQL: 2, RouteLabel.RAG: 2, RouteLabel.HYBRID: 3}[route]
+    assert len(calls) == {RouteLabel.SQL: 1, RouteLabel.RAG: 2, RouteLabel.HYBRID: 1}[route]
     if route != RouteLabel.RAG:
         assert result.rows == [{"total": "50"}]
     if route != RouteLabel.SQL:

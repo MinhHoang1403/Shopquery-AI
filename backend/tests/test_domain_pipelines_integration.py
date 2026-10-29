@@ -133,7 +133,7 @@ def test_domain_pipeline_matches_independent_fact_grain_oracle(
         assert (None if row["average"] is None else Decimal(row["average"])) == expected_avg
     assert result.rows[1]["total"] is None
     assert result.rows[2]["total"] == "0.00"
-    assert len(calls) == (2 if route == RouteLabel.SQL else 3)
+    assert len(calls) == 1
     assert bool(result.sources) is (route == RouteLabel.HYBRID)
     if result.sources:
         assert result.sources[0].source_file == "rules.md"

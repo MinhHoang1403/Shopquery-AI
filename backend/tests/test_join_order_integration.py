@@ -690,6 +690,38 @@ def test_tuition_schema_context_uses_only_selected_confirmed_relationship(
                 assert schema is TaskProposal and all(
                     name in prompt for name in context.table_columns
                 )
+                if not context.approved_joins:
+                    from app.text_to_sql.compiler import QueryCompiler
+                    from app.text_to_sql.query_plan import (
+                        PlanDecision,
+                        PlanExpression,
+                        PlanField,
+                        QueryPlan,
+                    )
+
+                    references = QueryCompiler(context).references
+                    column_ids = {location: key for key, location in references.columns.items()}
+                    source_id = next(
+                        key
+                        for key, name in references.tables.items()
+                        if name == fact.physical_table_name
+                    )
+                    identity = column_ids[(dimension.physical_table_name, "student_id")]
+                    name = column_ids[(dimension.physical_table_name, "student_name")]
+                    amount = column_ids[(fact.physical_table_name, "amount_paid")]
+                    return proposal_from_plan(
+                        PlanDecision(
+                            plan=QueryPlan(
+                                source=source_id,
+                                fields=[
+                                    PlanField(reference=name, alias="student_name"),
+                                    PlanField(reference="e0", alias="total"),
+                                ],
+                                expressions=[PlanExpression(operation="sum", arguments=[amount])],
+                                group_by=[identity, name],
+                            )
+                        )
+                    )
                 return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
             def generate_text(self, prompt):

@@ -130,7 +130,13 @@ def test_default_factory_plan_revenue_matches_independent_seed_oracle(database, 
         [response("knowledge", proposal_from_plan(decision, context=context).model_dump_json())],
     )
     try:
-        result = _build_chat_service(get_settings(), gateway).chat("Revenue per category")
+        from tests.semantic_fixtures import ScopedChatFixture
+
+        result = ScopedChatFixture(
+            _build_chat_service(get_settings(), gateway),
+            context,
+            get_settings().demo_reference_date,
+        ).chat("Revenue per category")
     finally:
         gateway.close()
     with database.connect() as connection:

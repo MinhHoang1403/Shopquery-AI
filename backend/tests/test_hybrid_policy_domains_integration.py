@@ -109,7 +109,7 @@ def test_hybrid_policy_and_count_order_with_explicit_filter(
                     return proposal_for_evidence(
                         "documents" if _task_route == RouteLabel.RAG else "unavailable"
                     )
-                _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
+                _task_operation = "apply_policy" if _task_route == RouteLabel.HYBRID else "query"
             if schema is TaskProposal:
                 return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
             assert schema is HybridAnswerDraft

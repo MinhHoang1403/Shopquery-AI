@@ -306,3 +306,165 @@ def test_guest_request_is_explicitly_temporary_without_a_fake_authenticated_owne
         else:
             request = bind_request(context, ("query",))
             assert request.principal == "guest" and request.owner_user_id is None
+
+
+def test_combine_explanation_cannot_present_an_unrequested_policy_classification():
+    from app.routing.hybrid_policy import complete_policy_evidence
+
+    chunk, context, _ = fixture()
+    owner = UUID("f425b6ce-7ff0-4329-9948-4e9bf2e93642")
+    context = replace(context, dataset_id=71, owner_user_id=owner)
+    chunk = replace(
+        chunk, document_scope=replace(chunk.document_scope, dataset_id=71, owner_user_id=owner)
+    )
+    bound = bind_policy_task(task(), complete_policy_evidence([chunk]), context).task
+    combined = SemanticTask.model_validate(
+        {
+            **bound.model_dump(),
+            "operation": "combine",
+            "policy": None,
+            "output": {**bound.output.model_dump(), "classification": "none"},
+        }
+    )
+    sql, executor, gateway = pipeline(context, [{"entity_id": "U1", "metric_value": "40.00"}])
+    with semantic_request(RequestIdentity(owner, None, 71, combined.question, "2026-10-29")):
+        result = HybridPipeline(
+            sql, Mock(retrieve=Mock(return_value=[chunk])), gateway, context
+        ).run(combined.question, task=combined)
+    assert result.verification_status == "explanation"
+    assert "Đạt: U1" not in result.answer and "Qualified: U1" not in result.answer
+    gateway.generate_structured.assert_not_called()
+
+
+def test_explicit_policy_plan_keeps_row_count_provenance_and_does_not_need_prose_metric_inference():
+    from app.routing.hybrid_policy import complete_policy_evidence
+    from app.semantic.task import OutputSelection, PolicyRequirement, Population, Projection
+    from app.text_to_sql.compiler import SchemaReferences
+    from tests.hybrid_fixtures import rule_block, scoped_chunk
+
+    chunk, context, _ = fixture()
+    chunk = scoped_chunk(41, "rule.md", "Policy", rule_block("ref_unit", "amount", "40.00"), 0.1)
+    refs = SchemaReferences.from_context(context)
+    identity = next(k for k, v in refs.columns.items() if v == ("random_d", "ref_unit"))
+    amount = next(k for k, v in refs.columns.items() if v == ("random_f", "amount"))
+    source = next(k for k, v in refs.tables.items() if v == "random_f")
+    request = SemanticTask(
+        operation="apply_policy",
+        question=task().question,
+        population=Population(source=source, grouping="entity", group_by=(identity,)),
+        output=OutputSelection(
+            fields=(
+                Projection(reference=identity, alias="entity_id"),
+                Projection(reference=amount, alias="total", aggregate="sum"),
+                Projection(alias="fact_row_count", aggregate="row_count"),
+            ),
+            classification="all",
+        ),
+        policy=PolicyRequirement(description="Apply the saved rule", metric="total"),
+    )
+    bound = bind_policy_task(request, complete_policy_evidence([chunk]), context)
+    assert bound.task.output.fields == request.output.fields
+    assert bound.identity_field == "entity_id"
+
+
+@pytest.mark.parametrize("mutation", ["metric", "fact_filter", "having", "applicability"])
+def test_explicit_policy_task_does_not_gain_authority_from_valid_shape(mutation):
+    from app.semantic.task import Predicate, ScalarValue
+
+    chunk, context, _ = fixture()
+    bound = bind_policy_task(task(), [chunk], context).task
+    data = bound.model_dump()
+    if mutation == "metric":
+        data["output"]["fields"][1]["aggregate"] = "avg"
+    elif mutation == "fact_filter":
+        from app.text_to_sql.compiler import SchemaReferences
+
+        reference = next(
+            key
+            for key, location in SchemaReferences.from_context(context).columns.items()
+            if location == ("random_f", "amount")
+        )
+        data["population"]["predicates"] = Predicate(
+            reference=reference,
+            operator="gt",
+            values=(ScalarValue(data_type="NUMERIC", value="0"),),
+        ).model_dump()
+    else:
+        predicate = Predicate(
+            reference=bound.output.fields[0].reference,
+            operator="eq",
+            values=(ScalarValue(data_type="TEXT", value="U1"),),
+        ).model_dump()
+        if mutation == "having":
+            data["output"]["predicates"] = predicate
+        else:
+            data["policy"]["applicability"] = predicate
+    with pytest.raises(ModelResponseError):
+        bind_policy_task(SemanticTask.model_validate(data), [chunk], context)
+
+
+def test_semantic_telemetry_is_enum_only_without_task_or_question_contents():
+    from app.core.observability import safe_metadata
+
+    assert safe_metadata(
+        {
+            "semantic_operation": "apply_policy",
+            "coverage_status": "population_complete",
+            "question": "PRIVATE",
+            "task": {"source": "PRIVATE"},
+        }
+    ) == {"semantic_operation": "apply_policy", "coverage_status": "population_complete"}
+    assert safe_metadata({"semantic_operation": "PRIVATE", "coverage_status": "PRIVATE"}) == {}
+
+
+@pytest.mark.parametrize("mutation", ["where", "limit", "parameters", "evidence"])
+def test_emitted_artifact_is_rechecked_against_the_scoped_task_before_execution(mutation):
+    from app.semantic.coverage import prepare_task_plan, verify_compiled_task
+    from app.semantic.task import Predicate, ScalarValue
+    from app.text_to_sql.compiler import QueryCompiler
+
+    chunk, context, _ = fixture()
+    owner = UUID("f425b6ce-7ff0-4329-9948-4e9bf2e93642")
+    context = replace(context, dataset_id=71, owner_user_id=owner)
+    task_data = bind_policy_task(
+        task(),
+        [chunk],
+        replace(
+            context,
+            dataset_id=chunk.document_scope.dataset_id,
+            owner_user_id=chunk.document_scope.owner_user_id,
+        ),
+    ).task.model_dump()
+    task_data.update(operation="query", policy=None)
+    task_data["output"]["classification"] = "none"
+    task_data["population"]["predicates"] = Predicate(
+        reference=task_data["output"]["fields"][0]["reference"],
+        operator="eq",
+        values=(ScalarValue(data_type="TEXT", value="U1"),),
+    ).model_dump()
+    requested = SemanticTask.model_validate(task_data)
+    compiler = QueryCompiler(context)
+    with semantic_request(RequestIdentity(owner, None, 71, requested.question, "2026-10-29")):
+        compiled = compiler.compile(prepare_task_plan(requested, compiler))
+        from sqlglot import parse_one
+
+        root = parse_one(compiled.validated.statement, read="postgres")
+        if mutation == "where":
+            root.set("where", None)
+            altered = replace(
+                compiled,
+                validated=replace(compiled.validated, statement=root.sql(dialect="postgres")),
+            )
+        elif mutation == "limit":
+            altered = replace(
+                compiled,
+                validated=replace(
+                    compiled.validated, statement=root.limit(1).sql(dialect="postgres")
+                ),
+            )
+        elif mutation == "parameters":
+            altered = replace(compiled, parameters={key: "U2" for key in compiled.parameters})
+        else:
+            altered = replace(compiled, evidence_sql="SELECT 1")
+        with pytest.raises(ModelResponseError):
+            verify_compiled_task(requested, altered, compiler)

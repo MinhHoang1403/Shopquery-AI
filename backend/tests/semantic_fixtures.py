@@ -61,6 +61,10 @@ def proposal_from_plan(decision, operation="query", context=None):
         return proposal_for_evidence("unavailable")
     plan = decision.plan
     data = proposal(operation)
+    if operation == "apply_policy":
+        data.update(
+            selection="all", policy_description="Apply the saved policy to these source metrics."
+        )
     expressions = list(plan.expressions)
     fields = []
     for field in plan.fields:

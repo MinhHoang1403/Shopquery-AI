@@ -121,7 +121,7 @@ def test_numbered_logistics_upload_sql_owner_csrf_and_history(
                         "documents" if _task_route == RouteLabel.RAG else "unavailable"
                     )
                 _task_operation = "combine" if _task_route == RouteLabel.HYBRID else "query"
-            assert schema is TaskProposal and "Row count has zero arguments" in prompt
+            assert schema is TaskProposal and "row_count takes no arguments" in prompt
             return proposal_from_plan(decision_from_sql(sql, prompt), _task_operation)
 
         def generate_text(self, prompt):

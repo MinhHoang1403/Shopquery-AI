@@ -255,7 +255,11 @@ Current request:
                 else "unspecified"
             )
             record_facts(
-                route=route, evidence_requirement=evidence, policy_intent=intent, policy_scope=scope
+                route=route,
+                evidence_requirement=evidence,
+                policy_intent=intent,
+                policy_scope=scope,
+                semantic_operation=task.operation,
             )
             if route == RouteLabel.UNSUPPORTED:
                 record_refusal("router_unsupported")

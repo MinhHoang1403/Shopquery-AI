@@ -157,3 +157,28 @@ def test_document_answer_claim_cannot_mint_a_verified_task_reference():
     data["task"] = {"operation": "explain", "question": data["request"]["question"]}
     with pytest.raises(ValidationError):
         TaskReference.model_validate(data)
+
+
+def test_long_answer_does_not_invalidate_a_bounded_server_task_reference():
+    conversation, context, response, *_ = completed_reference()
+    metadata = response.model_dump(mode="json")
+    metadata["answer"] = "A long rendered result table. " * 100
+    conversation = replace(
+        conversation,
+        messages=(
+            conversation.messages[0],
+            replace(
+                conversation.messages[1], content=metadata["answer"], response_metadata=metadata
+            ),
+        ),
+    )
+    current = "Which units do not qualify?"
+    contextual = contextual_question(
+        current,
+        conversation,
+        conversation.owner_user_id,
+        conversation.dataset_id,
+        catalog_revision(context),
+    )
+    assert '"task_reference"' in contextual
+    assert metadata["answer"] not in contextual

@@ -14,6 +14,7 @@ from app.datasets.context import DatasetSqlContext
 from app.rag.pipeline import RagPipeline, Source
 from app.routing.hybrid_coverage import Selection, resolve_coverage
 from app.routing.hybrid_evidence import (
+    EvidenceNote,
     HybridAnswerDraft,
     VerificationStatus,
     compose_answer,
@@ -180,6 +181,7 @@ class HybridPipeline:
                     or set(map(str, actual)) != set(map(str, identities))
                 ):
                     raise verification_error("planning_scope_violation")
+                record_facts(coverage_status="population_complete")
         with diagnostic_stage("policy_verification"):
             try:
                 policies = policy_evidence(sql_result, chunks, self._context)
@@ -238,7 +240,25 @@ Document evidence:
                     if question.lower().startswith(("which ", "what ", "how ", "why "))
                     else "vi"
                 )
-                draft = verified_classification(sql_result, chunks, self._context, language)
+                if task is not None and task.operation == "combine":
+                    # A request for records plus document explanation is not a
+                    # request to classify entities. No extra model call or verdict.
+                    draft = HybridAnswerDraft(
+                        mode="explanation",
+                        language=language,
+                        identity_fields=[],
+                        metric_field=None,
+                        rule_id=None,
+                        decisions=[],
+                        notes=[
+                            EvidenceNote(chunk_id=c.chunk_id, quote=c.content[:4000])
+                            for c in chunks
+                            if c.content.strip()
+                        ],
+                        used_chunk_ids=[c.chunk_id for c in chunks if c.content.strip()],
+                    )
+                else:
+                    draft = verified_classification(sql_result, chunks, self._context, language)
                 if draft is None:
                     if coverage is not None or bound is not None:
                         raise verification_error("policy_not_verified")

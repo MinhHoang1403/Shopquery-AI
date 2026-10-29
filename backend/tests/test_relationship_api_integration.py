@@ -203,7 +203,7 @@ def test_join_api_pipelines_and_persisted_history(
     response = result.json()["assistant_message"]["response"]
     assert response["error"] is None and response["route"] == pipeline
     assert response["used_model"] == model and selected == [model]
-    assert len(calls) == {"SQL": 2, "RAG": 2, "HYBRID": 3}[pipeline]
+    assert len(calls) == {"SQL": 1, "RAG": 2, "HYBRID": 1}[pipeline]
     if pipeline == "SQL":
         assert response["answer"] == "Trong phạm vi dữ liệu truy vấn, **Tổng Amount** là **5**."
         assert response["result_columns"] == [
@@ -291,7 +291,6 @@ def test_invalid_sql_or_citation_never_persists_invented_success(
 def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
     relationship_accounts, monkeypatch, caplog, model: str, route: str
 ) -> None:
-    from app.routing.router import RouteDecision, RouteLabel
     from app.text_to_sql.query_plan import PlanDecision
 
     a = relationship_accounts.a
@@ -317,28 +316,20 @@ def test_aggregate_subreason_is_logged_but_not_exposed_or_persisted(
     def structured(prompt, schema):
         from app.text_to_sql.query_plan import PlanField, QueryPlan
 
-        if schema is RouteDecision:
-            return RouteDecision(
-                policy_intent="none",
-                policy_scope="unspecified",
-                evidence_requirement={
-                    "SQL": "tables",
-                    "RAG": "documents",
-                    "HYBRID": "both",
-                    "UNSUPPORTED": "unavailable",
-                }[RouteLabel(route)],
-                route=RouteLabel(route),
-                reason="Synthetic aggregate refusal",
-            )
-        assert schema is PlanDecision
-        catalog = json.JSONDecoder().raw_decode(prompt.split("Authorized catalog JSON:\n")[1])[0]
+        assert schema is TaskProposal
+        catalog = json.JSONDecoder().raw_decode(prompt.split("Source/context data:\n")[1])[0][
+            "catalog"
+        ]
         source = next(table["id"] for table in catalog["tables"] if table["name"] == fact)
-        return PlanDecision(
-            plan=QueryPlan(
-                source=source,
-                fields=[PlanField(alias="fact_value_count", aggregate="row_count")],
-                relationships=[relation["id"] for relation in catalog["relationships"]],
-            )
+        return proposal_from_plan(
+            PlanDecision(
+                plan=QueryPlan(
+                    source=source,
+                    fields=[PlanField(alias="fact_value_count", aggregate="row_count")],
+                    relationships=[relation["id"] for relation in catalog["relationships"]],
+                )
+            ),
+            "combine" if route == "HYBRID" else "query",
         )
 
     gateway.generate_structured.side_effect = structured
