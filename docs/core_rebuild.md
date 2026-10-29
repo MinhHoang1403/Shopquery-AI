@@ -629,3 +629,10 @@ existing binder suy fact từ measure và không tìm được approved tree kh�
 fact edges: join_graph/validation_branch=missing_path. Test này kiểm đúng branch và stage
 plan_binding; COUNT provenance negatives vẫn bắt buộc old aggregate reason tương ứng.
 Targeted group108PASS, Ruff sạch. Không thay production guards để xử lý assertion này.
+
+CI `b6d0ab6` (40813906703) vẫn881PASS/1FAIL: assertion cuối đọc private error_context
+trên public UNSUPPORTED response. Service cố ý không đưa internal binding details vào
+refusal này. Unit reproduction có diagnostic_request xác nhận event thực tế
+join_graph/failure (diagnostic_stage dùng exception.code), và private exception giữ
+missing_path. Sửa test kiểm public UNSUPPORTED + không execution và safe trace event;
+không thay production response/privacy. Unit mới1PASS, Ruff PASS.

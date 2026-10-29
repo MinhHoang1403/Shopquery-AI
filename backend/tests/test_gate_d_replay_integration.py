@@ -337,8 +337,8 @@ def test_gate_d_hypotheses_stay_fail_closed_after_evidence_before_execution(
         # Typed binding infers the measure's fact root before SQL compilation.
         # A dimension measure conflicts with the explicitly requested original
         # fact tree, so the graph guard must reject it before the aggregate guard.
-        assert response["error_context"]["validation_branch"] == "missing_path"
-        assert any(e["stage"] == "plan_binding" for e in trace.events)
+        assert response["route"] == "UNSUPPORTED" and response["error"] is None
+        assert any(e["stage"] == "join_graph" and e["status"] == "failure" for e in trace.events)
     elif mutation == "grain":
         assert response["error_context"]["reason_code"] == "planning_scope_violation"
     elif mutation == "key":

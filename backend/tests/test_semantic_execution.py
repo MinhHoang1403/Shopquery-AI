@@ -538,6 +538,7 @@ def test_demo_catalog_retains_its_declared_four_table_compiler_contract():
 
 
 def test_dimension_measure_cannot_rebase_an_explicit_fact_relationship_tree():
+    from app.core.diagnostics import diagnostic_request
     from app.core.errors import SqlUnsupportedError
     from app.text_to_sql.compiler import SchemaReferences
 
@@ -573,7 +574,10 @@ def test_dimension_measure_cannot_rebase_an_explicit_fact_relationship_tree():
         field["reference"] = (
             dimension_value if field["aggregate"] == "sum" else mapping[field["reference"]]
         )
-    with pytest.raises(SqlUnsupportedError) as error:
+    with diagnostic_request() as trace, pytest.raises(SqlUnsupportedError) as error:
         bind_policy_task(SemanticTask.model_validate(data), [chunk], context)
     assert error.value.code == "join_graph"
     assert error.value.error_context.validation_branch == "missing_path"
+    assert any(
+        event["stage"] == "join_graph" and event["status"] == "failure" for event in trace.events
+    )
