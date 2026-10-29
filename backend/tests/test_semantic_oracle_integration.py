@@ -364,3 +364,91 @@ def test_compact_generation_measures_and_condition_execute_against_independent_o
     assert actual == [independent] == [{"row_count": 5, "non_null_values": 5, "total": "150.00"}]
     gateway.generate_structured.assert_called_once()
     gateway.generate_text.assert_not_called()
+
+
+@pytest.mark.parametrize("provider", ["inetcloud-knowledge", "gemini"])
+def test_captured_provider_filter_executes_against_independent_postgres_oracle(
+    oracle_database, provider
+):
+    from app.routing.router import QueryRouter
+    from app.semantic.wire import TaskProposal
+
+    captures = json.loads(
+        Path(__file__)
+        .with_name("fixtures")
+        .joinpath("semantic_provider_proposals.json")
+        .read_text(encoding="utf-8")
+    )["records"]
+    captured = next(c for c in captures if c["provider"] == provider and c["case"] == "p14")
+    # Independent boundary values include the strict threshold, NULL, and two matches.
+    with oracle_database.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TEMP TABLE hotels(hotel_id TEXT PRIMARY KEY, name TEXT, "
+                "province TEXT, room_count BIGINT)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO hotels VALUES ('H1','A','North',119),('H2','B','South',120),"
+                "('H3','C','North',121),('H4','D','South',200),('H5','E','North',NULL)"
+            )
+        )
+    selected = DatasetSqlContext(
+        "Synthetic provider execution replay, no live generation",
+        {"hotels": {"hotel_id", "name", "province", "room_count"}},
+        {"hotels": "pg_temp"},
+        dataset_id=71,
+        owner_user_id=OWNER,
+        column_types={
+            "hotels": {
+                "hotel_id": "TEXT",
+                "name": "TEXT",
+                "province": "TEXT",
+                "room_count": "BIGINT",
+            }
+        },
+    )
+    gateway = Mock(
+        generate_structured=Mock(return_value=TaskProposal.model_validate(captured["proposal"]))
+    )
+    pipeline = TextToSqlPipeline(
+        Mock(), QueryCompiler(selected), SqlExecutor(oracle_database, 3000, 100), gateway
+    )
+    with semantic_request(RequestIdentity(OWNER, None, 71, captured["question"], "2026-10-29")):
+        task = QueryRouter(gateway, context=selected).route(captured["question"]).task
+        result = pipeline.run(captured["question"], task=task)
+    with oracle_database.connect() as connection:
+        connection.execute(text("SET TRANSACTION READ ONLY"))
+        expected = connection.execute(
+            text("SELECT name, room_count FROM hotels WHERE room_count > 120 ORDER BY name")
+        ).all()
+    name_alias = "name" if provider == "inetcloud-knowledge" else "hotel_name"
+    assert (
+        sorted((r[name_alias], r["room_count"]) for r in result.rows)
+        == expected
+        == [("C", 121), ("D", 200)]
+    )
+    assert result.answer
+    gateway.generate_structured.assert_called_once()
+    gateway.generate_text.assert_not_called()
+
+
+def test_district_literal_mismatch_is_not_an_equivalent_postgres_population(oracle_database):
+    # Counterexample, not a claim that these are pre-existing source rows or a repair map.
+    with oracle_database.connect() as connection:
+        connection.execute(text("SET TRANSACTION READ ONLY"))
+        populations = {}
+        for value in ("quận 3", "3"):
+            populations[value] = (
+                connection.execute(
+                    text(
+                        "SELECT branch_id FROM (VALUES ('B1','quận 3'),('B2','3')) "
+                        "AS source(branch_id,district) WHERE district = :value"
+                    ),
+                    {"value": value},
+                )
+                .scalars()
+                .all()
+            )
+    assert populations == {"quận 3": ["B1"], "3": ["B2"]}

@@ -1,0 +1,138 @@
+{
+  "description": "Authorized synthetic captures; observed proposals, never correctness gold. p17 intentionally preserves a known literal mismatch.",
+  "records": [
+    {
+      "provider": "inetcloud-knowledge",
+      "case": "p14",
+      "source": "ec877cacf1ea286e5cca1ea3f08de07ee1dd9765",
+      "question": "Liệt kê tên và số phòng của các khách sạn trên 120 phòng.",
+      "proposal": {
+        "operation": "query",
+        "reason": "",
+        "subject": "hotels",
+        "source": "t0",
+        "grouping": "entity",
+        "fields": [
+          {
+            "reference": "column:t0.name",
+            "alias": "name",
+            "aggregation": "none"
+          },
+          {
+            "reference": "column:t0.room_count",
+            "alias": "room_count",
+            "aggregation": "none"
+          }
+        ],
+        "expressions": [],
+        "conditions": [
+          {
+            "kind": "comparison",
+            "left": "column:t0.room_count",
+            "operator": "gt",
+            "values": [
+              "120"
+            ],
+            "value_type": "BIGINT",
+            "children": []
+          }
+        ],
+        "group_by": [],
+        "relationships": [],
+        "where": "p0",
+        "having": "",
+        "sort": [],
+        "limit": 0,
+        "policy_description": "",
+        "policy_metric": "",
+        "selection": "none",
+        "unresolved": []
+      }
+    },
+    {
+      "provider": "inetcloud-knowledge",
+      "case": "p17",
+      "source": "ec877cacf1ea286e5cca1ea3f08de07ee1dd9765",
+      "question": "Chỉ xét các chi nhánh ở quận 3, những chi nhánh nào đạt tiêu chí của hướng dẫn?",
+      "proposal": {
+        "operation": "apply_policy",
+        "reason": "",
+        "subject": "branches",
+        "source": "",
+        "grouping": "entity",
+        "fields": [],
+        "expressions": [],
+        "conditions": [
+          {
+            "kind": "comparison",
+            "left": "column:t0.district",
+            "operator": "eq",
+            "values": [
+              "3"
+            ],
+            "value_type": "TEXT",
+            "children": []
+          }
+        ],
+        "group_by": [],
+        "relationships": [],
+        "where": "p0",
+        "having": "",
+        "sort": [],
+        "limit": 0,
+        "policy_description": "Guide defines an assessment based on loan counts at branches",
+        "policy_metric": "",
+        "selection": "qualified",
+        "unresolved": []
+      }
+    },
+    {
+      "provider": "gemini",
+      "case": "p14",
+      "source": "ec877cacf1ea286e5cca1ea3f08de07ee1dd9765",
+      "question": "Liệt kê tên và số phòng của các khách sạn trên 120 phòng.",
+      "proposal": {
+        "operation": "query",
+        "reason": "",
+        "subject": "hotels",
+        "source": "t0",
+        "grouping": "entity",
+        "fields": [
+          {
+            "reference": "column:t0.name",
+            "alias": "hotel_name",
+            "aggregation": "none"
+          },
+          {
+            "reference": "column:t0.room_count",
+            "alias": "room_count",
+            "aggregation": "none"
+          }
+        ],
+        "expressions": [],
+        "conditions": [
+          {
+            "kind": "comparison",
+            "left": "column:t0.room_count",
+            "operator": "gt",
+            "values": [
+              "120"
+            ],
+            "value_type": "BIGINT",
+            "children": []
+          }
+        ],
+        "group_by": [],
+        "relationships": [],
+        "where": "p0",
+        "having": "",
+        "sort": [],
+        "limit": 0,
+        "policy_description": "",
+        "policy_metric": "",
+        "selection": "none",
+        "unresolved": []
+      }
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 """Compact condition/projection transport; no provider or production database."""
 
+import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +15,42 @@ from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.count_contract import CountKind
 from tests.semantic_fixtures import proposal
 from tests.test_semantic_router import gateway
+
+
+@pytest.mark.parametrize("provider", ["inetcloud-knowledge", "gemini"])
+def test_captured_provider_filter_preserves_source_operator_and_literal(provider):
+    captures = json.loads(
+        Path(__file__)
+        .with_name("fixtures")
+        .joinpath("semantic_provider_proposals.json")
+        .read_text(encoding="utf-8")
+    )["records"]
+    captured = next(c for c in captures if c["provider"] == provider and c["case"] == "p14")
+    task = TaskProposal.model_validate(captured["proposal"]).task(
+        captured["question"],
+        column_references={"column:t0.name": "t0.c1", "column:t0.room_count": "t0.c3"},
+    )
+    assert [p.reference for p in task.output.fields] == ["t0.c1", "t0.c3"]
+    predicate = task.population.predicates
+    assert (predicate.reference, predicate.operator) == ("t0.c3", "gt")
+    assert [(v.data_type, v.value) for v in predicate.values] == [("BIGINT", "120")]
+    assert task.output.classification == "none" and task.output.limit is None
+
+
+def test_captured_district_failure_stays_a_mismatch_without_verified_mapping():
+    captures = json.loads(
+        Path(__file__)
+        .with_name("fixtures")
+        .joinpath("semantic_provider_proposals.json")
+        .read_text(encoding="utf-8")
+    )["records"]
+    captured = next(c for c in captures if c["case"] == "p17")
+    task = TaskProposal.model_validate(captured["proposal"]).task(
+        captured["question"], column_references={"column:t0.district": "t0.c1"}
+    )
+    # This test records the failure; conversion success must never count as entailment.
+    assert task.population.predicates.values[0].value == "3"
+    assert task.population.predicates.values[0].value != "quận 3"
 
 
 def comparison(left="t0.c0", operator="gt", values=None, value_type="NUMERIC"):
