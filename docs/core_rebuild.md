@@ -784,3 +784,10 @@ row_count vẫn ROW_COUNT/STAR. COUNT nullable giả danh fact_row_count vẫn b
 count_wrong_argument_semantics chặn.141targeted router/routing/contracts/execution testsPASS,
 Ruff sạch. Chưa gọi model sau sửa; chờ CI exact source. Main/runtime/images/data giữ nguyên;
 merge/deploy/cleanup chưa thực hiện.
+
+CI `3b83274` run40820928621: backend PASS; PostgreSQL872PASS/12FAIL, tất cả12 failures
+là brittle gateway assertions đòi nguyên văn phrase `row_count takes no arguments`
+trong prompt trước khi gửi scripted proposal. Không phải execution/oracle failure.
+Cập nhật hai fixture tests kiểm hai tên count operation trong request contract; giữ
+nguyên scripted plans, independent rows/count/NULL/owner/CSRF/history assertions.
+Không đổi production text để chiều theo assertion. Chờ exact-source CI sau sửa test.
