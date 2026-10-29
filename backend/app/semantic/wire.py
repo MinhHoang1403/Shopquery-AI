@@ -31,7 +31,9 @@ PREDICATE_OPERATIONS = frozenset(
 class TaskProposal(BaseModel):
     """Wire-only DTO; no ownership, permission, threshold or verification fields."""
 
-    model_config = ConfigDict(extra="forbid", json_schema_extra=apply_catalog_schema)
+    model_config = ConfigDict(
+        extra="forbid", populate_by_name=True, json_schema_extra=apply_catalog_schema
+    )
 
     operation: Literal["query", "explain", "apply_policy", "combine", "unsupported", "clarify"]
     reason: str = Field(max_length=500)
@@ -48,7 +50,11 @@ class TaskProposal(BaseModel):
     limit: int = Field(strict=True, ge=0, le=1000)
     policy_description: str = Field(max_length=2000)
     policy_metric: str = Field(max_length=63)
-    selection: Literal["none", "all", "qualified", "not_qualified"]
+    selection: Literal["none", "all", "qualified", "not_qualified"] = Field(
+        alias="policy_selection",
+        description="Document-policy verdict selection, only for apply_policy; otherwise none. "
+        "Ordinary SQL WHERE conditions never use this field.",
+    )
     unresolved: list[str] = Field(max_length=20)
 
     @field_validator("where", "having")
@@ -58,9 +64,26 @@ class TaskProposal(BaseModel):
             QueryPlan.predicate_reference(value)
         return value
 
-    def task(self, question: str) -> SemanticTask:
+    def task(
+        self, question: str, *, column_references: dict[str, str] | None = None
+    ) -> SemanticTask:
         """Preserve AND/OR/typed literals and output predicates, never infer a population."""
-        nodes = [node.expression() for node in self.expressions]
+
+        def canonical(reference: str) -> str:
+            if reference.startswith("column:"):
+                if column_references is None or reference not in column_references:
+                    raise ValueError("Column address was not issued for this request")
+                return column_references[reference]
+            return reference
+
+        # Only the backend-issued lookup changes wire addresses into compiler IDs.
+        # Never infer a column from a model's output alias or repair its choice.
+        nodes = [
+            node.model_copy(
+                update={"arguments": [canonical(arg) for arg in node.arguments]}
+            ).expression()
+            for node in self.expressions
+        ]
         # Check all DAG edges, including nodes not selected for output. Otherwise a
         # malformed/cyclic wire node could disappear during canonicalization.
         for index, node in enumerate(nodes):
@@ -99,6 +122,7 @@ class TaskProposal(BaseModel):
         mapping: dict[str, str] = {}
 
         def expression(reference: str) -> str:
+            reference = canonical(reference)
             if reference in mapping:
                 return mapping[reference]
             if not reference.startswith("e"):

@@ -1,0 +1,48 @@
+{
+  "provider": "inetcloud-knowledge",
+  "source": "5dcb98ccf983ad69dabc853d1534f9196d615ee5",
+  "proposal": {
+    "operation": "query",
+    "reason": "",
+    "subject": "hotels",
+    "source": "t0",
+    "grouping": "entity",
+    "fields": [
+      {
+        "reference": "t0.c1",
+        "alias": "name"
+      },
+      {
+        "reference": "t0.c2",
+        "alias": "room_count"
+      }
+    ],
+    "expressions": [
+      {
+        "operation": "literal",
+        "arguments": [],
+        "value": "120",
+        "value_type": "BIGINT"
+      },
+      {
+        "operation": "gt",
+        "arguments": [
+          "t0.c3",
+          "e0"
+        ],
+        "value": "",
+        "value_type": "none"
+      }
+    ],
+    "group_by": [],
+    "relationships": [],
+    "where": "e1",
+    "having": "",
+    "sort": [],
+    "limit": 0,
+    "policy_description": "",
+    "policy_metric": "",
+    "selection": "qualified",
+    "unresolved": []
+  }
+}

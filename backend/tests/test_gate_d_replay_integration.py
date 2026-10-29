@@ -170,7 +170,7 @@ def test_gate_d_questions_oracle_and_authenticated_history(
             if schema is TaskProposal:
                 assert QUESTIONS[level] in prompt
                 assert all(name in prompt for name in context.table_columns)
-                assert "Output selection all/qualified/" in prompt
+                assert "policy_selection all/qualified/" in prompt
                 sql = draft_sql(dataset, level)
                 return proposal_from_plan(
                     decision_from_sql(

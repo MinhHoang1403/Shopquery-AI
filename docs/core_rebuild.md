@@ -687,3 +687,38 @@ Thêm chọn một case chưa dispatch từ immutable suite để có thể ki�
 không replay các ca cũ. Đây là kiểm soát harness, không semantic repair hoặc tăng retry.
 Chưa dispatch ca mới trước CI mới; Knowledge p05 root invariant vẫn UNKNOWN, release
 và cleanup vẫn BLOCKED. Main/runtime/models/gates/volumes giữ nguyên.
+
+### Captured semantic failure và wire correction có giới hạn
+
+CI `5dcb98c` run40816352942 đạt4/4. Kiểm các case chưa dispatch p06-p14, mỗi case1attempt,
+dừng ở p14 lỗi conversion; không gửi lại p05. Cumulative15generation/0query/0document,
+14unique cases +1diagnostic; p05 và p14 là fresh failures, diagnostic p05 cũng failed.
+12DTO đã chuyển thành task; không gọi đây là SQL/RAG/Hybrid execution PASS. Các qualifier
+UNKNOWN giữ nguyên để chấm độc lập, không nâng từ route/schema đúng thành semantic PASS.
+
+Captured p14 proof: operation=query, selection=qualified; fields alias room_count lại
+tham chiếu t0.c2=hotels.province trong khi WHERE dùng t0.c3=hotels.room_count. Query-policy
+conflict gây ValueError trước SQL; projection sai cũng là model semantic failure riêng.
+Không quy lỗi cho SQL compiler/JOIN và không tự sửa column dựa trên alias. Captured DTO
+synthetic được giữ thành regression fixture semantic_conversion_rejection.json; original
+p05 detailed invariant vẫn UNKNOWN do mất capture, không suy p14 là bằng chứng cho p05.
+
+Sửa wire contract chung, không thêm ví dụ/domain/question vào production prompt:
+- Schema field policy_selection nói rõ document-policy verdict only; Python selection
+  vẫn nhận internal legacy name để tương thích scripted fixtures, không đổi API/history.
+- Catalog phát hành column:tN.<sql_column_name>, backend map chính xác về compiler tN.cN.
+  Map do server xây, không nhận từ model; không đoán ordinal/alias, không sửa sai source.
+  Canonical references còn dùng cho persisted task references và direct test adapters.
+- Projection/expressions/grouping/ordering cùng hạ qua map; literal values/predicate tree
+  giữ nguyên. Unknown/cross-catalog named refs bị chặn. Compiler/executor/guards không đổi.
+
+84targeted tests PASS, gồm hai actual SDK MockTransport, named predicates/sort/literal,
+foreign address negative, schema policy_selection và original conflicting DTO rejection.
+Knowledge schema có scoped enums; Gemini giữ compatibility serializer đã có (không dynamic
+enums), nhận named catalog trong prompt và backend kiểm map. Không tự thêm schema features
+để tránh tái mở400. Đây là correction của transport clarity; hiệu quả giảm model misbinding
+chưa được chứng minh live, không đảm bảo model không chọn sai column dù dùng tên.
+
+Static SQL fixture adapter cập nhật cho catalog có named addresses, giữ independent
+expected values. Held-out gold/hashes không sửa. Chưa merge/deploy/cleanup; semantic gate
+vẫn BLOCKED cho đến nghiệm thu source mới. Main8080/volumes/models/gates/Langfuse giữ nguyên.

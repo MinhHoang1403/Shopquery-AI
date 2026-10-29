@@ -143,3 +143,133 @@ def test_domain_conversion_preserves_safe_structural_diagnostics_without_respons
     assert error.value.error_context.validation_type == "value_error"
     assert "private_missing_alias" not in context and "PRIVATE_QUESTION" not in context
     gateway.generate_structured.assert_called_once()
+
+
+def test_generation_column_addresses_are_named_and_lower_only_through_the_issued_catalog():
+    from app.datasets.context import DatasetSqlContext
+
+    context = DatasetSqlContext(
+        "Synthetic catalog",
+        {"sites": {"site_id", "name", "province", "room_count"}},
+        {"sites": "uploaded_data"},
+        column_types={
+            "sites": {"site_id": "TEXT", "name": "TEXT", "province": "TEXT", "room_count": "BIGINT"}
+        },
+    )
+
+    def respond(prompt, schema):
+        catalog = json.JSONDecoder().raw_decode(prompt.split("Source/context data:\n")[1])[0][
+            "catalog"
+        ]
+        rooms = next(
+            column["id"] for column in catalog["columns"] if column["name"] == "room_count"
+        )
+        assert rooms == "column:t0.room_count"
+        data = proposal()
+        data.update(
+            fields=[{"reference": rooms, "alias": "capacity"}],
+            expressions=[],
+            sort=[{"field": rooms, "direction": "desc", "nulls": "last"}],
+        )
+        assert "policy_selection" in schema.model_json_schema()["properties"]
+        assert "selection" not in schema.model_json_schema()["properties"]
+        return schema.model_validate(data)
+
+    result = QueryRouter(
+        Mock(generate_structured=Mock(side_effect=respond)), context=context
+    ).route("List capacities.")
+    assert result.task.output.fields[0].reference == "t0.c2"
+    assert result.task.output.ordering[0].field == "t0.c2"
+
+
+def test_named_column_from_another_catalog_cannot_be_guessed_or_repaired_from_its_alias():
+    data = proposal()
+    data.update(
+        fields=[{"reference": "column:t99.room_count", "alias": "room_count"}], expressions=[]
+    )
+    selected = Mock(generate_structured=Mock(return_value=TaskProposal.model_validate(data)))
+    with pytest.raises(ModelResponseError):
+        QueryRouter(selected).route("List capacities.")
+    selected.generate_structured.assert_called_once()
+
+
+@pytest.mark.parametrize("provider", ["knowledge", "gemini"])
+def test_actual_sdk_named_column_and_predicate_lower_without_ordinal_guessing(
+    monkeypatch, provider
+):
+    from app.datasets.context import DatasetSqlContext
+
+    context = DatasetSqlContext(
+        "Synthetic catalog",
+        {"sites": {"name", "province", "room_count"}},
+        {"sites": "uploaded_data"},
+        column_types={"sites": {"name": "TEXT", "province": "TEXT", "room_count": "BIGINT"}},
+    )
+    data = proposal()
+    data.update(
+        fields=[
+            {"reference": "column:t0.name", "alias": "name"},
+            {"reference": "column:t0.room_count", "alias": "room_count"},
+        ],
+        expressions=[
+            {"operation": "literal", "arguments": [], "value": "120", "value_type": "BIGINT"},
+            {
+                "operation": "gt",
+                "arguments": ["column:t0.room_count", "e0"],
+                "value": "",
+                "value_type": "none",
+            },
+        ],
+        where="e1",
+    )
+    selected, calls = gateway(monkeypatch, provider, data)
+    try:
+        task = (
+            QueryRouter(selected, context=context)
+            .route("List capacities above the threshold.")
+            .task
+        )
+        assert [field.reference for field in task.output.fields] == ["t0.c0", "t0.c2"]
+        assert task.population.predicates.reference == "t0.c2"
+        assert task.population.predicates.operator == "gt"
+        assert task.population.predicates.values[0].value == "120"
+        body = json.loads(calls[0].content)
+        schema = (
+            body["response_format"]["json_schema"]["schema"]
+            if provider == "knowledge"
+            else body["generationConfig"]["responseSchema"]
+        )
+        if provider == "knowledge":
+            assert "column:t0.room_count" in json.dumps(schema)
+        # Gemini's existing compatibility serializer omits dynamic schema
+        # enrichment. It still receives the exact named catalog, and backend
+        # lowering verifies the scoped address after parsing the SDK response.
+        assert "column:t0.room_count" in json.dumps(body)
+        assert (
+            "policy_selection" in schema["properties"] and "selection" not in schema["properties"]
+        )
+        assert len(calls) == 1
+    finally:
+        selected.close()
+
+
+def test_ordinary_query_cannot_gain_a_policy_verdict_by_renaming_the_wire_field():
+    data = proposal()
+    data.pop("selection")
+    data["policy_selection"] = "qualified"
+    with pytest.raises(ValueError, match="Conflicting task"):
+        TaskProposal.model_validate(data).task("Synthetic records meeting a numeric filter.")
+
+
+def test_captured_query_policy_conflict_stays_rejected_without_repairing_its_column_alias():
+    from pathlib import Path
+
+    data = json.loads(
+        Path(__file__)
+        .with_name("fixtures")
+        .joinpath("semantic_conversion_rejection.json")
+        .read_text()
+    )["proposal"]
+    assert data["fields"][1] == {"reference": "t0.c2", "alias": "room_count"}
+    with pytest.raises(ValueError, match="Conflicting task"):
+        TaskProposal.model_validate(data).task("Synthetic filtered records.")

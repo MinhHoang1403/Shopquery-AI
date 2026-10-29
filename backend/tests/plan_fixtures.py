@@ -20,6 +20,20 @@ def decision_from_sql(sql: str, prompt: str) -> PlanDecision:
     else:
         data = json.JSONDecoder().raw_decode(prompt.split("Source/context data:\n", 1)[1])[0]
         catalog = {**data["catalog"], "joins_enabled": bool(data["catalog"]["relationships"])}
+        # Static SQL fixtures use compiler IDs; the request wire names its columns.
+        # Reconstruct only this test catalog's sorted ordinal bindings, never infer
+        # a production column from an output alias or a natural-language question.
+        for table in catalog["tables"]:
+            addressed = sorted(
+                (
+                    column
+                    for column in catalog["columns"]
+                    if column["id"].startswith(f"column:{table['id']}.")
+                ),
+                key=lambda column: column["name"],
+            )
+            for index, column in enumerate(addressed):
+                column["id"] = f"{table['id']}.c{index}"
         columns_by_location = {
             (table["name"], column["name"]): column["id"]
             for table in catalog["tables"]
