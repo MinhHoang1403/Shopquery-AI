@@ -747,3 +747,16 @@ CI8c7bd42 run40818245468: PostgreSQL/frontend/observability PASS; backend1700PAS
 đúng wire contract mới, không nới semantic/authority requirements. Agent vẫn15/0/0,
 không dispatch provider trong lúc sửa. Chưa nghiệm thu live named-address contract.
 Release/merge/cleanup tiếp tục BLOCKED; main8080 và protected data không đổi.
+
+### PostgreSQL ordering oracle đạt; kiểm lại sau actual contract change
+
+`f933946` CI40818916432 đạt4/4, gồm hai oracle PostgreSQL ordering mới (ascE1/descE3
+sau qualified subset; giữ đủ3rows/E2zero). Chưa native live verification của source này.
+Bổ sung harness seen-replay riêng: chỉ một case đã fail, khi fingerprint của core
+router/wire/policy/presentation thực sự khác source lỗi cũ, một attempt và một dispatch
+key mỗi fingerprint/case/provider; docs/test-only commits và CRLF không mở lại lượt.
+Original failures giữ nguyên; seen replay được đánh dấu, không đưa vào fresh score.
+Không phải retry/repair tự động hoặc fallback, không reset ngân sách.13harness testsPASS
+gồm unchanged/missing prior failure refusal, persistence/close/reservation và duplicate
+dispatch blocked. Cumulative agent vẫn15/0/0, chưa gọi lại model trong lúc sửa/harness test.
+Chờ exact-source CI trước native replays/new cases. Main8080/volumes/images/config không đổi.

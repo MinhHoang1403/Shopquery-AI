@@ -9,6 +9,7 @@ import argparse
 import json
 import re
 import subprocess
+from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 from uuid import NAMESPACE_URL, uuid5
@@ -32,6 +33,24 @@ LIMIT = 120
 NUMERIC = {"fee", "amount", "weight_kg", "hours"}
 INTEGER = {"room_count"}
 TIMESTAMP = {"started_at"}
+CONTRACT_PATHS = (
+    "backend/app/routing/router.py",
+    "backend/app/semantic/wire.py",
+    "backend/app/semantic/policy.py",
+    "backend/app/semantic/presentation.py",
+)
+
+
+def contract_digest(revision: str | None = None) -> str:
+    digest = sha256()
+    for name in CONTRACT_PATHS:
+        content = (
+            subprocess.check_output(["git", "show", f"{revision}:{name}"], cwd=ROOT.parent)
+            if revision
+            else ROOT.parent.joinpath(name).read_bytes()
+        )
+        digest.update(name.encode() + b"\0" + content.replace(b"\r\n", b"\n"))
+    return digest.hexdigest()
 
 
 class ProposalCapture:
@@ -100,6 +119,9 @@ def main() -> int:
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--case-id", help="Evaluate one not-yet-dispatched locked case")
     selection.add_argument(
+        "--regression-case", help="One seen replay after a changed core contract"
+    )
+    selection.add_argument(
         "--diagnostic-case", help="One bounded reproduction of a recorded failed case"
     )
     parser.add_argument("--live", action="store_true")
@@ -151,6 +173,7 @@ def main() -> int:
     output_path = CACHE / f"semantic_evaluation_{args.provider}.json"
     evidence = json.loads(output_path.read_text()) if output_path.exists() else {"runs": []}
     cases = suite["cases"][: args.max_cases]
+    fingerprint = contract_digest()
     if args.case_id:
         cases = [case for case in suite["cases"] if case["id"] == args.case_id]
         if len(cases) != 1:
@@ -161,6 +184,22 @@ def main() -> int:
             run["case"] == args.diagnostic_case and run.get("error") for run in evidence["runs"]
         ):
             parser.error("Diagnostic requires one previously recorded failed synthetic case")
+    if args.regression_case:
+        cases = [case for case in suite["cases"] if case["id"] == args.regression_case]
+        failures = [
+            run
+            for run in evidence["runs"]
+            if run["case"] == args.regression_case and run.get("error")
+        ]
+        if (
+            len(cases) != 1
+            or not failures
+            or not any(
+                (run.get("contract_digest") or contract_digest(run["source"])) != fingerprint
+                for run in failures
+            )
+        ):
+            parser.error("Seen replay requires a failed case and an actual changed core contract")
     gateway = build_generation_gateway(settings, args.provider)
     try:
         for case in cases:
@@ -169,6 +208,8 @@ def main() -> int:
                 + (":diagnostic:" if args.diagnostic_case else ":population:")
                 + case["id"]
             )
+            if args.regression_case:
+                key = args.provider + ":regression:" + fingerprint + ":" + case["id"]
             if key in ledger["dispatches"]:
                 parser.error("Case already dispatched; no automatic repeat of closed evaluations")
             if ledger["generation"] >= LIMIT:
@@ -179,7 +220,13 @@ def main() -> int:
             ledger["dispatches"].append(key)
             save(ledger_path, ledger)
             start = perf_counter()
-            result = {"case": case["id"], "provider": args.provider, "source": source}
+            result = {
+                "case": case["id"],
+                "provider": args.provider,
+                "source": source,
+                "contract_digest": fingerprint,
+                "seen_replay": bool(args.regression_case),
+            }
             capture = ProposalCapture(gateway)
             try:
                 with (
