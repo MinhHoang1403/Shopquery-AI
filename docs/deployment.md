@@ -112,29 +112,25 @@ bật containers đã có, dùng chính file/env/project và `up -d --no-build -
 --pull never`; không dùng `down -v`. Runtime/image thay đổi phải dùng controlled release,
 không coi một restart là triển khai source mới.
 
-Rollback trước đợt correction: API `sha256:d8ad8aa5e3425b803bcec9c61a5e84dd5e950a2e07dc978d70c64d7c33dcbbb2`,
-source `3fe4cc2`; rollback Web `sha256:ae181335b61aa738f6b0b1c2c1c450fe46a5ba26b4688d5c294d541975696a58`,
-source `02d5cbb`. Private configs nằm trong
-`C:/Users/admin/.codex/backups/shopquery-ai/correctness-20261027`; `.env.release.before`
-giữ cả hai image trước cutover, `.env.release.rollback-api-new-web` giữ API trước/Web mới.
-Không promote hai candidates đã bị loại `d7f2d822` và `6a632447`.
+Rollback giữ sau closeout29/10: API
+`sha256:4a80e003aeb9ea008afcc5b557084db105ad4507130695a5b7fa1d378bc586e7`
+(source `e2722da8973883bdeb5cb837e9614001f9be490a`) và Web
+`sha256:9b735b38e62a19f9e1f8426b10c1774bedc30ae07d23cbda6cae75db1237a23f`
+(source `b75a844b959ccd0d268a11ac10f99ab0326813d4`). Đây là cặp rollback đã ghi trong
+bàn giao28/10 và đã kiểm identity/tồn tại, không phải một lượt smoke rollback mới.
+Private config ở `C:/Users/admin/.codex/backups/shopquery-ai/evidence-routing-20261028/`.
+Chỉ dùng `.env.release.rollback` sau khi xác minh đúng hai digests trên và effective
+Compose; các private configs/images trước đó chỉ là lịch sử, không còn cam kết tồn tại.
 
-Trước rollback kiểm exact image/config, active leases/Guest work và thời điểm được duyệt.
-Rollback application source khác main cần đối chiếu với chính Git revision của image;
-strict verifier so main sẽ báo source drift có chủ đích, không được đổi guard để báo PASS.
-Chỉ recreate service cần rollback và refresh Nginx sau API; không undo main data. Lượt
-rollback API sau schema400 đã kiểm identity/config, leases, Guest và 88 modules với Git
-revision cũ (chỉ chuẩn hóa CRLF/LF khi so Git blobs), rồi phục hồi bản sửa sau CI/duyệt mới.
-Các rollback cũ52701da8/069e7f67 vẫn giữ; GitHub không thay backup volumes/secrets.
+Không restart/rollback khi có active leases hoặc Guest work; cần thời điểm gián đoạn
+được operator duyệt. Không undo main data. Các API/Web cũ khác đã xóa theo exactID
+trong closeout; danh sách ở [PROJECT_CLOSEOUT](PROJECT_CLOSEOUT.md). Không dùng configs
+lịch sử để pull/build/promote candidate. Git history không phải backup dữ liệu/secrets.
 
-Rollback tức thời hiện giữ API `sha256:4a80e003aeb9ea008afcc5b557084db105ad4507130695a5b7fa1d378bc586e7`
-(e2722da), Web `sha256:9b735b38e62a19f9e1f8426b10c1774bedc30ae07d23cbda6cae75db1237a23f`
-(b75a844). Private configs: `C:/Users/admin/.codex/backups/shopquery-ai/evidence-routing-20261028/`,
-`.env.release.rollback` giữ cả hai trước đợt; `classification-window/.env.release.rollback`
-giữ API4a80e003/Webb2188879 trước API-only promotion. Các rollback5675513a/d8ad8aa5/ae181335
-và model images còn giữ. Ba rejected/superseded API images07045862/d7f2d822/6a632447 đã
-xóa exacttags khôngforce sau kiểm toàn bộ container references và runtime accepted;
-private candidate configs cũ chỉ là lịch sử, không dùng deploy. Không prune cache/volumes.
+Closeout không rebuild/redeploy. Strict verifier byte-exact hiện báo ba file Python
+khác CRLF/LF so với image; nội dung chuẩn hóa LF của đủ88modules bằng nhau, OCI revision
+và effective config đều đúng. Không sửa verifier/guard hoặc runtime để làm xanh kết quả.
+Chi tiết hạn chế, fingerprint và known Windows test failure ở [bàn giao cuối](PROJECT_CLOSEOUT.md).
 
 ## Dữ liệu và backups
 
@@ -152,7 +148,7 @@ Không prune volumes, models hoặc private config khi cleanup.
 - [System acceptance](v2_final_acceptance.md): phạm vi SQL/RAG/Hybrid, guards và giới hạn Knowledge/BGE.
 - [Observability acceptance](observability_acceptance.md):6 câu UI, oracle/citation 23,
   234 observations,10 generation/3 query/0 document,32601 generation tokens; cửa sổ đã đóng.
-- [Operational handoff](operational_handoff.md): inventory, cleanup, scripts, branches và exact-head CI cuối.
+- [Operational handoff](PROJECT_CLOSEOUT.md): inventory, cleanup, scripts, branches và exact-head CI cuối.
 
 Nhật ký deployment/preflight/cutover cũ được giữ nguyên tại
 [Git baseline 24ab3c8](https://github.com/MinhHoang1403/Shopquery-AI/blob/24ab3c8d89d63c2d6b80ec3932c45c3c82edd1b8/docs/deployment.md).

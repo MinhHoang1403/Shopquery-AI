@@ -7,7 +7,9 @@ workspace, đặt câu hỏi và đối chiếu câu trả lời với bảng k�
 Phù hợp cho phân tích nội bộ trong các phạm vi dữ liệu và quy tắc đã được kiểm chứng;
 không thay thế kiểm tra nghiệp vụ hoặc hỗ trợ mọi loại truy vấn SQL.
 
-**Đã chuyển sang giai đoạn sử dụng và bảo trì trong phạm vi khả năng đã nghiệm thu.**
+**Đã kết thúc phát triển (maintenance-ended) ngày29/10/2026.**
+Ứng dụng localhost hiện hành tiếp tục chạy trong phạm vi đã nghiệm thu; không triển khai
+lõi rebuild chưa đạt. Xem [bàn giao cuối](docs/PROJECT_CLOSEOUT.md) và tag archive candidate.
 
 - Ứng dụng chính: [http://127.0.0.1:8080](http://127.0.0.1:8080).
 - Langfuse: [http://127.0.0.1:3000](http://127.0.0.1:3000).
@@ -145,7 +147,7 @@ Integration test nặng chạy trên CI; không seed/reset main hoặc tạo th�
 
 Baseline đã kiểm:1391 backend unit,857 PostgreSQL integration,85 frontend và125mock E2E
 PASS tại source 3fe4cc2;10 Compose checks PASS. Đợt bàn giao thêm 10 maintenance tests.
-Kết quả exact-head cuối và kiểm runtime ghi trong [bàn giao vận hành](docs/operational_handoff.md).
+Kết quả exact-head cuối và kiểm runtime ghi trong [bàn giao vận hành](docs/PROJECT_CLOSEOUT.md).
 Tests mocks/schema/HTTP200 không tự chứng minh câu trả lời live đúng.
 
 Sáu câu UI gần nhất: Gemini SQL, Knowledge JOIN, RAG, Hybrid, follow-up và SQL Khách sạn
@@ -171,7 +173,7 @@ UNKNOWN thành 0 hoặc synthetic trace thành full acceptance. [Runbook Langfus
 - [Development](docs/development.md), [testing](docs/testing.md), [bộ synthetic bảo trì](docs/maintenance_tools.md).
 - [Nghiệm thu](docs/v2_final_acceptance.md), [bằng chứng kỹ thuật](docs/architecture_audit.md),
   [Langfuse acceptance](docs/observability_acceptance.md), [nguồn kỹ thuật](docs/technical_references.md).
-- [Bàn giao và cleanup](docs/operational_handoff.md). Đọc [AGENTS.md](AGENTS.md) trước thay đổi source.
+- [Bàn giao và cleanup](docs/PROJECT_CLOSEOUT.md). Đọc [AGENTS.md](AGENTS.md) trước thay đổi source.
 
 Giữ chế độ bảo trì có kiểm soát; chưa tag/full Stage2, chưa enterprise/public-ready,
 không bảo đảm mọi schema, mọi câu hỏi hoặc mọi mức tải.

@@ -3,7 +3,7 @@
 **Đã chuyển sang giai đoạn sử dụng và bảo trì trong phạm vi khả năng đã nghiệm thu.**
 Không release tag/full Stage2, không enterprise/public-ready hoặc bảo đảm mọi schema.
 Một source main, một ShopQuery8080, một Langfuse3000. Runtime/image/config chính xác
-ở [deployment](deployment.md); quyết định cleanup/Git/tests cuối ở [handoff](operational_handoff.md).
+ở [deployment](deployment.md); quyết định cleanup/Git/tests cuối ở [handoff](PROJECT_CLOSEOUT.md).
 
 **Cập nhật28/10/2026:** API `4ab2c5a`/image2d27fba1 và Webde0572e/b2188879 đang chạy8080.
 **APPLICATION_ACCEPTED_WITH_UPSTREAM_LIMITATIONS**: AutoRAG policy-only/citation23,
@@ -78,7 +78,7 @@ không re-embed/upload fixture hoặc chạy main migrations.
 CI source 3fe4cc2 đã PASS1391 backend unit/857 PostgreSQL integration/85 frontend/
 125 mockE2E,132 targeted telemetry và10 Compose checks. Consolidation thêm 10 maintenance
 tests, gộp duplicate observability workflow vào CI chính; số exact-head cuối ghi tại
-[handoff](operational_handoff.md), không cộng các suite có overlap.
+[handoff](PROJECT_CLOSEOUT.md), không cộng các suite có overlap.
 
 Strict verifier kiểm 88app modules và effective Compose/image/env. Docs/scripts không
 đổi app inputs nên không rebuild/redeploy để ép OCI label bằng docs HEAD. Web và main DB
