@@ -116,7 +116,11 @@ def bind_policy_task(
         metric_alias = "metric_value"
         bound_ordering = []
         for order in ordering:
-            if order.field.startswith("e") and order.field[1:].isdigit():
+            if order.field == "policy_metric":
+                # An explicit unresolved policy-metric address is bound only after
+                # the complete document/catalog above uniquely proves the metric.
+                order = order.model_copy(update={"field": metric_alias})
+            elif order.field.startswith("e") and order.field[1:].isdigit():
                 index = int(order.field[1:])
                 node = expressions[index] if index < len(expressions) else None
                 if (

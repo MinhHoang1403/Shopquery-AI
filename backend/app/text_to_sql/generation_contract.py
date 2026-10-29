@@ -73,12 +73,21 @@ def apply_catalog_schema(schema: dict[str, Any]) -> None:
             schema["properties"]["relationships"]["items"]["enum"] = list(catalog["relationships"])
 
 
-def _field_schema(schema: dict[str, Any]) -> None:
+def enrich_reference_schema(
+    schema: dict[str, Any], *, field: str = "reference", allow_empty: bool = False
+) -> None:
+    """Share the request-scoped wire address enum without granting execution authority."""
     if not _wire_constraints.get():
         return
     catalog = _catalog.get()
     if catalog is not None:
-        schema["properties"]["reference"]["enum"] = list(catalog["references"])
+        schema["properties"][field]["enum"] = ([""] if allow_empty else []) + list(
+            catalog["references"]
+        )
+
+
+def _field_schema(schema: dict[str, Any]) -> None:
+    enrich_reference_schema(schema)
 
 
 def _expression_schema(schema: dict[str, Any]) -> None:

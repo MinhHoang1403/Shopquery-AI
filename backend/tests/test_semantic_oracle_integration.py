@@ -306,3 +306,61 @@ def test_bound_policy_expression_order_matches_independent_postgres_selection(
     assert Decimal(visible[0]["metric_value"]) == independent["total"]
     assert {row["entity_id"]: row["metric_value"] for row in result.rows}["E2"] == "0.00"
     gateway.generate_structured.assert_not_called()
+
+
+def test_compact_generation_measures_and_condition_execute_against_independent_oracle(
+    oracle_database,
+):
+    from app.routing.router import QueryRouter
+    from app.semantic.wire import TaskProposal
+    from tests.semantic_fixtures import proposal
+
+    selected = context()
+    data = proposal()
+    data.update(
+        fields=[
+            {"reference": "", "alias": "row_count", "aggregation": "row_count"},
+            {
+                "reference": "column:t0.amount",
+                "alias": "non_null_values",
+                "aggregation": "non_null_count",
+            },
+            {"reference": "column:t0.amount", "alias": "total", "aggregation": "sum"},
+        ],
+        expressions=[],
+        conditions=[
+            {
+                "kind": "comparison",
+                "left": "column:t0.amount",
+                "operator": "gte",
+                "values": ["0.00"],
+                "value_type": "NUMERIC",
+                "children": [],
+            }
+        ],
+        where="p0",
+    )
+    gateway = Mock(generate_structured=Mock(return_value=TaskProposal.model_validate(data)))
+    pipeline = TextToSqlPipeline(
+        Mock(), QueryCompiler(selected), SqlExecutor(oracle_database, 3000, 100), gateway
+    )
+    question = "Count records and sum the selected source values."
+    with semantic_request(RequestIdentity(OWNER, None, 71, question, "2032-10-15")):
+        task = QueryRouter(gateway, context=selected).route(question).task
+        actual = pipeline.run(question, task=task).rows
+    with oracle_database.connect() as connection:
+        connection.execute(text("SET TRANSACTION READ ONLY"))
+        independent = dict(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) AS row_count, COUNT(amount) AS non_null_values, "
+                    "SUM(amount)::text AS total FROM events WHERE amount >= CAST(:zero AS NUMERIC)"
+                ),
+                {"zero": "0.00"},
+            )
+            .mappings()
+            .one()
+        )
+    assert actual == [independent] == [{"row_count": 5, "non_null_values": 5, "total": "150.00"}]
+    gateway.generate_structured.assert_called_once()
+    gateway.generate_text.assert_not_called()

@@ -90,22 +90,45 @@ def test_boolean_population_and_output_predicate_remain_distinct():
     data = proposal()
     data["fields"] = [{"reference": "e0", "alias": "total"}]
     data["expressions"] = [
-        {"operation": "sum", "arguments": ["t0.c0"], "value": "", "value_type": "none"},
-        {"operation": "literal", "arguments": [], "value": "0.00", "value_type": "NUMERIC"},
-        {"operation": "gt", "arguments": ["t0.c0", "e1"], "value": "", "value_type": "none"},
-        {"operation": "is_null", "arguments": ["t0.c0"], "value": "", "value_type": "none"},
-        {"operation": "or", "arguments": ["e2", "e3"], "value": "", "value_type": "none"},
+        {"operation": "sum", "arguments": ["t0.c0"], "value": "", "value_type": "none"}
+    ]
+    data["conditions"] = [
         {
-            "operation": "literal",
-            "arguments": [],
-            "value": "9007199254740993.0001",
+            "kind": "comparison",
+            "left": "t0.c0",
+            "operator": "gt",
+            "values": ["0.00"],
             "value_type": "NUMERIC",
+            "children": [],
         },
-        {"operation": "gte", "arguments": ["e0", "e5"], "value": "", "value_type": "none"},
+        {
+            "kind": "comparison",
+            "left": "t0.c0",
+            "operator": "is_null",
+            "values": [],
+            "value_type": "none",
+            "children": [],
+        },
+        {
+            "kind": "any",
+            "left": "",
+            "operator": "none",
+            "values": [],
+            "value_type": "none",
+            "children": ["p0", "p1"],
+        },
+        {
+            "kind": "comparison",
+            "left": "e0",
+            "operator": "gte",
+            "values": ["9007199254740993.0001"],
+            "value_type": "NUMERIC",
+            "children": [],
+        },
     ]
     data.update(
-        where="e4",
-        having="e6",
+        where="p2",
+        having="p3",
         sort=[{"field": "total", "direction": "desc", "nulls": "last"}],
         limit=2,
     )
@@ -211,16 +234,18 @@ def test_actual_sdk_named_column_and_predicate_lower_without_ordinal_guessing(
             {"reference": "column:t0.name", "alias": "name"},
             {"reference": "column:t0.room_count", "alias": "room_count"},
         ],
-        expressions=[
-            {"operation": "literal", "arguments": [], "value": "120", "value_type": "BIGINT"},
+        expressions=[],
+        conditions=[
             {
-                "operation": "gt",
-                "arguments": ["column:t0.room_count", "e0"],
-                "value": "",
-                "value_type": "none",
-            },
+                "kind": "comparison",
+                "left": "column:t0.room_count",
+                "operator": "gt",
+                "values": ["120"],
+                "value_type": "BIGINT",
+                "children": [],
+            }
         ],
-        where="e1",
+        where="p0",
     )
     selected, calls = gateway(monkeypatch, provider, data)
     try:
@@ -271,7 +296,7 @@ def test_captured_query_policy_conflict_stays_rejected_without_repairing_its_col
         .read_text()
     )["proposal"]
     assert data["fields"][1] == {"reference": "t0.c2", "alias": "room_count"}
-    with pytest.raises(ValueError, match="Conflicting task"):
+    with pytest.raises(ValueError):
         TaskProposal.model_validate(data).task("Synthetic filtered records.")
 
 

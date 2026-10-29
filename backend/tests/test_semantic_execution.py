@@ -583,9 +583,10 @@ def test_dimension_measure_cannot_rebase_an_explicit_fact_relationship_tree():
     )
 
 
+@pytest.mark.parametrize("expression_order", [True, False])
 @pytest.mark.parametrize("direction,expected", [("asc", (1,)), ("desc", (2,))])
 def test_unbound_policy_metric_order_is_bound_before_selecting_the_verified_subset(
-    direction, expected
+    direction, expected, expression_order
 ):
     from app.semantic.task import Ordering
     from app.text_to_sql.compiler import SchemaReferences
@@ -604,9 +605,18 @@ def test_unbound_policy_metric_order_is_bound_before_selecting_the_verified_subs
     )
     request = task("not_qualified").model_copy(
         update={
-            "expressions": (PlanExpression(operation="sum", arguments=[amount]),),
+            "expressions": (PlanExpression(operation="sum", arguments=[amount]),)
+            if expression_order
+            else (),
             "output": task("not_qualified").output.model_copy(
-                update={"ordering": (Ordering(field="e0", direction=direction),), "limit": 1}
+                update={
+                    "ordering": (
+                        Ordering(
+                            field="e0" if expression_order else "policy_metric", direction=direction
+                        ),
+                    ),
+                    "limit": 1,
+                }
             ),
         }
     )

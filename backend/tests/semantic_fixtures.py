@@ -26,10 +26,11 @@ def proposal(operation="query"):
         "subject": "records",
         "source": "t0",
         "grouping": "entity",
-        "fields": [{"reference": "e0", "alias": "rows"}],
+        "fields": [{"reference": "e0", "alias": "rows", "aggregation": "none"}],
         "expressions": [
             {"operation": "row_count", "arguments": [], "value": "", "value_type": "none"}
         ],
+        "conditions": [],
         "group_by": [],
         "relationships": [],
         "where": "",
@@ -134,7 +135,7 @@ def proposal_from_plan(decision, operation="query", context=None):
         sort=[order.model_dump() for order in plan.sort],
         limit=plan.limit or 0,
     )
-    return TaskProposal.model_validate(data)
+    return compact_proposal(data)
 
 
 class ScopedChatFixture:
@@ -186,3 +187,85 @@ def scoped_hybrid_run(pipeline, question, selection):
         RequestIdentity(context.owner_user_id, None, context.dataset_id, question, "2026-10-29")
     ):
         return pipeline.run(question, task=task)
+
+
+def compact_proposal(data):
+    """Translate test-authored legacy expression predicates into semantic clauses.
+
+    No natural-language interpretation and no production repair path. Values and
+    Boolean topology come only from the independently authored static test plan.
+    """
+    from copy import deepcopy
+
+    from app.semantic.wire import PREDICATE_OPERATIONS
+
+    data = deepcopy(data)
+    original = data["expressions"]
+    retained, conditions = [], []
+    value_map, condition_map = {}, {}
+
+    def value(reference):
+        if not reference.startswith("e"):
+            return reference
+        if reference in value_map:
+            return value_map[reference]
+        node = original[int(reference[1:])]
+        if node["operation"] in PREDICATE_OPERATIONS:
+            raise AssertionError("A predicate fixture cannot masquerade as a value")
+        arguments = [value(arg) for arg in node["arguments"]]
+        result = f"e{len(retained)}"
+        retained.append({**node, "arguments": arguments})
+        value_map[reference] = result
+        return result
+
+    def condition(reference):
+        if reference in condition_map:
+            return condition_map[reference]
+        node = original[int(reference[1:])]
+        operation = node["operation"]
+        if operation in {"and", "or"}:
+            children = [condition(arg) for arg in node["arguments"]]
+            result = {
+                "kind": "all" if operation == "and" else "any",
+                "left": "",
+                "operator": "none",
+                "values": [],
+                "value_type": "none",
+                "children": children,
+            }
+        else:
+            literals = [original[int(arg[1:])] for arg in node["arguments"][1:]]
+            assert all(item["operation"] == "literal" for item in literals)
+            kinds = {item["value_type"] for item in literals}
+            assert len(kinds) <= 1
+            result = {
+                "kind": "comparison",
+                "left": value(node["arguments"][0]),
+                "operator": operation,
+                "values": [item["value"] for item in literals],
+                "value_type": next(iter(kinds)) if kinds else "none",
+                "children": [],
+            }
+        reference_id = f"p{len(conditions)}"
+        conditions.append(result)
+        condition_map[reference] = reference_id
+        return reference_id
+
+    data["fields"] = [
+        {
+            **field,
+            "reference": value(field["reference"]),
+            "aggregation": field.get("aggregation", "none"),
+        }
+        for field in data["fields"]
+    ]
+    data["group_by"] = [value(ref) for ref in data["group_by"]]
+    aliases = {field["alias"] for field in data["fields"]}
+    data["sort"] = [
+        {**order, "field": order["field"] if order["field"] in aliases else value(order["field"])}
+        for order in data["sort"]
+    ]
+    data["where"] = condition(data["where"]) if data["where"] else ""
+    data["having"] = condition(data["having"]) if data["having"] else ""
+    data["expressions"], data["conditions"] = retained, conditions
+    return TaskProposal.model_validate(data)

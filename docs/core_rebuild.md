@@ -791,3 +791,64 @@ trong prompt trước khi gửi scripted proposal. Không phải execution/oracl
 Cập nhật hai fixture tests kiểm hai tên count operation trong request contract; giữ
 nguyên scripted plans, independent rows/count/NULL/owner/CSRF/history assertions.
 Không đổi production text để chiều theo assertion. Chờ exact-source CI sau sửa test.
+
+### Quyết định compact semantic generation sau captured unary predicate failure
+
+CI c6c7483 run40821478928 đạt4/4. Seen p05 sau count-wire update tạo row_count,
+compiled CountMetricROW_COUNT/STAR (conversion+count intent PASS, executionNOT_EVALUATED).
+Seen p14 vẫn failed: source columns đúng và selectionnone, nhưng model tạo eq(column)
+một đối số rồi GT(e0,120), gây Boolean-predicate-as-value rejection. Captured proof ở
+private evidence, correlation573a87c221a0483dbb57f8813878e943. Agent cumulative18/0/0.
+Không thêm prompt examples/đoán unary eq là column/repair/fallback.
+
+Thiết kế wire điều chỉnh trước code, vẫn kiến trúcB và một SemanticTask domain duy nhất:
+- Simple projection mang aggregation enum trực tiếp; arithmetic DAG giữ cho phép tính
+  thực sự, không dùng để đóng hộp column/literal/Boolean của điều kiện phổ biến.
+- conditions là flat DAG pN: comparison(left issued column/value expression, operator,
+  typed string values) hoặc all/any(children earlier pIDs). where/having chỉ trỏ pN.
+- Boolean operators không được làm value expression. Không tự relocate WHERE/HAVING.
+  Reject orphan clauses, forward/cyclic groups, unknown references, contradictory node
+  fields và complexity overflow; giữ scalar validation/ANDOR/NULL/date/time exactness.
+- Aggregate/row/non-null count hạ qua existing Projection/PlanExpression. Không infer
+  semantic từ alias. Existing compiler/executor/COUNT/JOIN/owner/resource guards giữ nguyên.
+- DTO flat/no recursive schema, defaults chỉ cho scripted empty compatibility; wire
+  schema required keys giữ explicit sentinels. HaiSDK transport phải kiểm offline.
+- Test adapter của static QueryPlan fixtures chuyển predicates losslessly sang clauses;
+  không giữ production fallback cho Boolean expression wire cũ. API/history domain
+  contracts giữ nguyên. Locked gold/oracles không sửa.
+
+Đây là thay biểu diễn generation quá gần SQL AST cho common filters, không thêm model
+calls/framework/pipeline/database. Bắt buộc regressions trước khi native acceptance mới;
+chưa coi cải thiện generation đã được chứng minh. Merge/deploy/cleanup vẫn BLOCKED.
+
+### Compact conditions/projections được triển khai
+
+TaskField hạ aggregation trực tiếp vào existing Projection; TaskCondition là comparison
+leaf hoặc all/any với pID DAG. where/having chỉ dùng pIDs; Boolean ops bị loại khỏi value
+expression schema và decoder. Không có production legacy Boolean-wire fallback.
+Reject orphan conditions/value expressions, cyclic/forward refs, contradictory nodes,
+typed-value/NULL arity violations. Expansion counter<=80 kiểm TRƯỚC khi dựng shared tree
+(depth<=8), không chỉ đếm sau khi tree đã nở. Bounded-constructor negative test bảo vệ
+không tạo heap lớn ngay cả khi regression guard bị bỏ. Scalar/date/offset/ANDOR bảo toàn.
+
+TaskField alias dùng đúng OutputName domain; request-scoped reference enum dùng shared
+enrich_reference_schema (Knowledge có enums, Gemini compatibility không đổi).
+policy_metric sort address được bind chỉ sau unique complete policy/catalog proof;
+e0 explicit metric matching vẫn hỗ trợ. Pointer tests asc/desc không thêm model calls.
+
+Static QueryPlan→DTO test adapter chuyển predicates sang clauses, không đổi independent
+SQL expected values. Thêm PostgreSQL composition oracle compactDTO→realcompiler/executor
+so manualCOUNT/SUM/WHERE cho locked7facts, giữzero/NULL; tổng7oracle tests mới collect,
+chưa chạy local/mainDB. Không sửa locked gold.
+
+Full offline run sau major codec:1729PASS/16paid-opt-inSKIP/884integrationdeselected.
+Sau đó thêm strict e-index spelling và shared schema enrichment/alias/pointer tests: nhóm
+108PASS, Ruff sạch. e-1/e+0/e00 trước bị Python int/index remap thành issued node; ba
+reproductions trướcFAIL/sauPASS khi decoder chỉ nhận canonical eN. Không gọi đây là
+permission escape, nhưng là contract fail-open đã được chặn.
+
+Native agent quota vẫn18generation/0query/0document; không gọi provider trong lúc sửa.
+MainDB preflight chỉ đọc, matched runtime database qua loopback15432 (dev.env ghi54321),
+protectedvolume đúng; datasets15/16/17 cùng owner hash, tables3/docs3 mỗi workspace,
+rowcounts[5,12,360]/[24,48,2400]/[4,8,192]. Không in secrets hoặc thay private config.
+CI/semantic acceptance của compact wire chưa đạt; merge/deploy/cleanup tiếp tục BLOCKED.
