@@ -97,7 +97,9 @@ def main() -> int:
     parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--ci-receipt", type=Path)
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--case-id", help="Evaluate one not-yet-dispatched locked case")
+    selection.add_argument(
         "--diagnostic-case", help="One bounded reproduction of a recorded failed case"
     )
     parser.add_argument("--live", action="store_true")
@@ -149,6 +151,10 @@ def main() -> int:
     output_path = CACHE / f"semantic_evaluation_{args.provider}.json"
     evidence = json.loads(output_path.read_text()) if output_path.exists() else {"runs": []}
     cases = suite["cases"][: args.max_cases]
+    if args.case_id:
+        cases = [case for case in suite["cases"] if case["id"] == args.case_id]
+        if len(cases) != 1:
+            parser.error("Named case must belong to the locked synthetic suite")
     if args.diagnostic_case:
         cases = [case for case in cases if case["id"] == args.diagnostic_case]
         if len(cases) != 1 or not any(
@@ -190,8 +196,6 @@ def main() -> int:
                 ):
                     decision = QueryRouter(capture, context=selected).route(case["question"])
                 result.update(
-                    synthetic_proposals=capture.proposals,
-                    diagnostic=bool(args.diagnostic_case),
                     task=decision.task.model_dump(mode="json"),
                     route=decision.route,
                     dimensions=grade_structural_dimensions(
@@ -205,6 +209,8 @@ def main() -> int:
                 result["error"] = exc.error_context.model_dump(exclude_none=True)
             finally:
                 result.update(
+                    synthetic_proposals=capture.proposals,
+                    diagnostic=bool(args.diagnostic_case),
                     latency_ms=round((perf_counter() - start) * 1000),
                     usage={
                         key: trace.facts.get(key)

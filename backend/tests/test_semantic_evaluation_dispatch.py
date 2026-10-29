@@ -83,3 +83,53 @@ def test_diagnostic_cannot_dispatch_without_a_recorded_failed_case(monkeypatch, 
             str(tmp_path / "absent.env"),
         )
     assert not (tmp_path / "core_provider_budget.json").exists()
+
+
+@pytest.mark.parametrize("case_id", [None, "p06"])
+def test_failed_conversion_is_persisted_with_its_captured_dto_and_consumed_budget(
+    monkeypatch, tmp_path, case_id
+):
+    from unittest.mock import Mock
+
+    from app.semantic.wire import TaskProposal
+    from tests.semantic_fixtures import proposal
+
+    monkeypatch.setattr(evaluation, "CACHE", tmp_path)
+    monkeypatch.setattr(evaluation.subprocess, "check_output", lambda *a, **kw: "a" * 40)
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text(json.dumps({"source": "a" * 40, "postgres": "PASS"}))
+    data = proposal()
+    data["reason"] = "Synthetic nonempty reason rejected by the executable contract"
+    gateway = Mock(generate_structured=Mock(return_value=TaskProposal.model_validate(data)))
+    monkeypatch.setattr(evaluation, "build_generation_gateway", lambda *a: gateway)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "evaluate",
+            "--provider",
+            "gemini",
+            "--live",
+            "--max-cases",
+            "1",
+            "--ci-receipt",
+            str(receipt),
+            "--env-file",
+            str(tmp_path / "absent.env"),
+        ],
+    )
+    if case_id:
+        sys.argv.extend(["--case-id", case_id])
+    assert evaluation.main() == 2
+    evidence = json.loads((tmp_path / "semantic_evaluation_gemini.json").read_text())["runs"]
+    assert len(evidence) == 1 and evidence[0]["error"]["phase"] == "domain_conversion"
+    assert evidence[0]["synthetic_proposals"] == [data]
+    assert evidence[0]["diagnostic"] is False
+    assert evidence[0]["case"] == (case_id or "p01")
+    assert json.loads((tmp_path / "core_provider_budget.json").read_text())["generation"] == 1
+    gateway.generate_structured.assert_called_once()
+    gateway.close.assert_called_once()
+    with pytest.raises(SystemExit):
+        evaluation.main()
+    gateway.generate_structured.assert_called_once()
+    assert json.loads((tmp_path / "core_provider_budget.json").read_text())["generation"] == 1

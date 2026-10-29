@@ -667,3 +667,23 @@ error category; nguyên nhân chi tiết p05 hiện UNKNOWN.
 Release **BLOCKED** ở semantic gate dù CIbc1e360 PASS. Chưa merge/deploy/cleanup hoặc
 xóa code/branches/PR/images. Main8080 vẫn baseline;14appimages/2referenced/12unreferenced
 đã kiểm kê đọc, chưa xóa. Không đổi volumes/data/models/gates/Langfuse.
+
+### Diagnostic harness persistence defect
+
+`36a8aee` CI40815585974 đạt4/4. One-request diagnostic p05 đã dispatch sau backend/PG
+PASS, không chờ frontend vì bước này chỉ cần offline/PG; frontend về sau PASS. Call6
+cũng lỗi conversion, correlation727bdefca1484712a3c87983fe3082eb. Agent cumulative6/0/0,
+6793input/9168output/15961total measured tokens. Không chạy thêm provider sau đó.
+
+Harness có defect: append capture chỉ nằm trong success result.update, không nằm trong
+finally. Vì vậy DTO của failed diagnostic vẫn mất sau khi process kết thúc; không thể
+khôi phục hay giả vờ đã biết invariant. Unit full-main reproduction trướcFAIL(KeyError
+synthetic_proposals), sauPASS khi metadata chuyển vào finally. Kiểm luôn ledger reserve,
+close, failure persistence và duplicate-dispatch prohibition. Targeted42PASS, Ruff sạch.
+Ignored evidence gắn capture_status=LOST_HARNESS_ERROR cho diagnostic, không đổi error/usage.
+Không gọi lại p05; ledger key original/diagnostic giữ nguyên và cấm thêm lần cùng key.
+
+Thêm chọn một case chưa dispatch từ immutable suite để có thể kiểm từng ca còn lại mà
+không replay các ca cũ. Đây là kiểm soát harness, không semantic repair hoặc tăng retry.
+Chưa dispatch ca mới trước CI mới; Knowledge p05 root invariant vẫn UNKNOWN, release
+và cleanup vẫn BLOCKED. Main/runtime/models/gates/volumes giữ nguyên.
