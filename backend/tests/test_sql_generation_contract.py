@@ -12,11 +12,12 @@ from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.datasets.context import DatasetSqlContext, build_dataset_sql_context
 from app.datasets.parser import ColumnSpec
 from app.datasets.repository import DatasetInfo, DatasetTableInfo
-from app.routing.router import QueryRouter, RouteDecision, RouteLabel
+from app.routing.router import QueryRouter
 from app.text_to_sql.join_policy import ApprovedJoin
 from app.text_to_sql.planner import QueryPlanner
 from app.text_to_sql.query_plan import PlanDecision, PlanField, QueryPlan
 from app.text_to_sql.validator import SqlValidator
+from tests.semantic_fixtures import proposal_for_evidence
 from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 from tests.test_join_order import authenticated_context
 from tests.test_three_table_join import CHAIN_ORDERS, PS, SC, validator
@@ -60,13 +61,7 @@ def test_router_keeps_relationship_facts_without_sql_generation_instructions(edg
     )[:edges]
     context = build_dataset_sql_context(dataset, approved_joins=relations, join_v1_enabled=True)
     gateway = Mock()
-    gateway.generate_structured.return_value = RouteDecision(
-        policy_intent="none",
-        policy_scope="unspecified",
-        evidence_requirement="both",
-        route=RouteLabel.HYBRID,
-        reason="stub",
-    )
+    gateway.generate_structured.return_value = proposal_for_evidence("both")
     QueryRouter(gateway, context.routing_context).route("Kho nào đạt KPI trong tài liệu?")
     prompt = gateway.generate_structured.call_args.args[0]
     assert "Approved INNER relation:" in prompt

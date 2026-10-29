@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 
 from app.rag.documents import MarkdownDocument
+from app.rag.storage_contract import validate_storage_metadata
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$")
 
@@ -30,6 +31,7 @@ def chunk_document(
         content = "\n\n".join(paragraphs).strip()
         if not content:
             continue
+        validate_storage_metadata(document.source_file, section_title)
         for part in _split_long_section(content, target_words, overlap_words):
             digest_source = f"{document.source_file}\n{section_title}\n{part}"
             chunks.append(

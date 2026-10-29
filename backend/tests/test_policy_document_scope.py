@@ -3,6 +3,7 @@
 import hashlib
 from dataclasses import replace
 from unittest.mock import Mock
+from uuid import UUID
 
 import pytest
 
@@ -11,6 +12,8 @@ from app.rag.repository import DocumentScope, RetrievedChunk
 from app.routing.hybrid import HybridPipeline
 from app.routing.hybrid_policy import complete_policy_evidence, policy_content
 from app.routing.natural_policy import parse_prose
+from app.semantic.request import RequestIdentity, semantic_request
+from tests.semantic_fixtures import proposal_for_evidence
 from tests.test_evidence_coverage import pipeline
 from tests.test_hybrid_policy_binding import relationship_fixture
 
@@ -53,6 +56,9 @@ def regulation(entity="cơ sở", metric="value_amount", identity="site_key", th
 
 def evidence(entity="cơ sở", metric="value_amount", identity="site_key", threshold="75,50"):
     _, _, context = relationship_fixture(False, True)
+    context = replace(
+        context, dataset_id=71, owner_user_id=UUID("f425b6ce-7ff0-4329-9948-4e9bf2e93642")
+    )
     edge = replace(context.approved_joins[0], source_column=identity, target_column=identity)
     context = replace(
         context,
@@ -115,14 +121,27 @@ def test_renamed_schema_threshold_boundaries_and_complete_citations(
     assert complete_policy_evidence(chunks[:1]) == chunks
     rows = [{"entity_id": f"E0{i}", "metric_value": value} for i, value in enumerate(totals)]
     sql, executor, gateway = pipeline(context, rows)
-    result = HybridPipeline(
-        sql, Mock(retrieve=Mock(return_value=chunks[:1])), gateway, context
-    ).run("Đánh giá toàn bộ đối tượng theo chính sách.", classification="all")
+    executor.execute.side_effect = [
+        [{"entity_count": len(rows)}],
+        [{"entity_id": r["entity_id"]} for r in rows],
+        rows,
+    ]
+    request = proposal_for_evidence("both", "all").task(
+        "Đánh giá toàn bộ đối tượng theo chính sách."
+    )
+    with semantic_request(
+        RequestIdentity(
+            context.owner_user_id, None, context.dataset_id, request.question, "2026-10-29"
+        )
+    ):
+        result = HybridPipeline(
+            sql, Mock(retrieve=Mock(return_value=chunks[:1])), gateway, context
+        ).run(request.question, task=request)
     assert result.verification_status == "verified_classification"
     assert result.answer_row_indices is None
     assert [s.chunk_id for s in result.sources] == [71, 72]
     assert "Chưa đạt: E00." in result.answer and "Đạt: E01, E02." in result.answer
-    executor.execute.assert_called_once()
+    assert executor.execute.call_count == 3
     gateway.generate_structured.assert_not_called()
 
 
@@ -198,7 +217,8 @@ def test_incomplete_or_conditional_evidence_never_gains_authority(mutation):
     sql, executor, gateway = pipeline(context, [])
     with pytest.raises(ModelResponseError):
         HybridPipeline(sql, Mock(retrieve=Mock(return_value=chunks)), gateway, context).run(
-            "Đánh giá toàn bộ đối tượng.", classification="all"
+            "Đánh giá toàn bộ đối tượng.",
+            task=proposal_for_evidence("both", "all").task("Đánh giá toàn bộ đối tượng."),
         )
     executor.execute.assert_not_called()
     gateway.generate_structured.assert_not_called()

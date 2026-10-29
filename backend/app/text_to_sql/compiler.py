@@ -69,6 +69,11 @@ class CompiledQuery:
 class QueryCompiler:
     """Compile the bounded plan subset, then reuse all existing SQL safety checks."""
 
+    @property
+    def context(self) -> DatasetSqlContext:
+        """Authorized request catalog; semantic binding must use this same snapshot."""
+        return self._context
+
     def __init__(
         self,
         context: DatasetSqlContext,

@@ -55,7 +55,7 @@ def _build_chat_service(settings: Settings, gateway: GenerationGateway) -> ChatS
         top_n=settings.rag_top_n,
     )
     return ChatService(
-        router=QueryRouter(gateway),
+        router=QueryRouter(gateway, context=context),
         sql_pipeline=sql_pipeline,
         rag_pipeline=rag_pipeline,
         hybrid_pipeline=HybridPipeline(sql_pipeline, rag_pipeline, gateway),
@@ -104,6 +104,7 @@ def _build_dataset_chat_service(
 
     sql_pipeline = None
     joins = context.approved_joins if settings.sql_join_v1_enabled else ()
+    context = replace(context, approved_joins=joins)
     if context.table_columns:
         sql_pipeline = TextToSqlPipeline(
             planner=QueryPlanner(
@@ -148,7 +149,11 @@ def _build_dataset_chat_service(
         else None
     )
     return DatasetChatService(
-        QueryRouter(gateway, source_context=context.routing_context or context.schema_context),
+        QueryRouter(
+            gateway,
+            source_context=context.routing_context or context.schema_context,
+            context=context,
+        ),
         sql_pipeline,
         rag_pipeline,
         hybrid_pipeline,

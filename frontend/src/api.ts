@@ -108,9 +108,37 @@ function isSource(value: unknown): value is SourceReference {
   );
 }
 
+function validResultMetadata(value: Record<string, unknown>): boolean {
+  const columns = value.result_columns;
+  if (columns !== undefined && (!Array.isArray(columns) || !columns.every((column) =>
+    isRecord(column) && typeof column.key === "string" && typeof column.label === "string"
+    && typeof column.numeric === "boolean"
+    && [undefined, null, "TEXT", "BIGINT", "NUMERIC", "BOOLEAN", "DATE", "TIMESTAMP", "TIMESTAMPTZ"].includes(column.data_type as string | null | undefined)
+    && [undefined, "column", "aggregate", "expression", "literal", "unknown"].includes(column.provenance as string | undefined)
+    && [undefined, null, "sum", "avg", "min", "max", "row_count", "value_count"].includes(column.aggregate as string | null | undefined)
+    && (column.source_label === undefined || isNullableString(column.source_label))))) return false;
+  if (Array.isArray(columns) && new Set(columns.map((column) => column.key)).size !== columns.length) return false;
+  if (![undefined, null, "verified_classification", "unverified", "explanation", "refused"].includes(value.verification_status as string | null | undefined)) return false;
+  if (![undefined, null, "answered", "partially_answered", "insufficient_evidence", "unsupported", "unverified"].includes(value.rag_answerability_claim as string | null | undefined)) return false;
+  if (![undefined, null, "citation_validated", "unverified"].includes(value.rag_grounding_status as string | null | undefined)) return false;
+  const envelope = value.result_envelope;
+  if (envelope != null && (!isRecord(envelope)
+    || !["answered", "partial", "insufficient_evidence", "unsupported", "failed"].includes(envelope.outcome as string)
+    || !["none", "sql_executed", "citation_validated", "classification_verified"].includes(envelope.evidence as string)
+    || !["unverified", "coverage_verified"].includes(envelope.semantic_status as string)
+    || !["ineligible", "reference_only", "verified_result"].includes(envelope.premise_trust as string)
+    || (envelope.premise_trust === "verified_result" && (envelope.outcome !== "answered" || envelope.evidence !== "classification_verified" || envelope.semantic_status !== "coverage_verified"))
+    || (envelope.premise_trust === "reference_only" && (envelope.outcome !== "answered" || envelope.evidence === "none")))) return false;
+  const indices = value.answer_row_indices;
+  return indices == null || (Array.isArray(indices) && Array.isArray(value.rows)
+    && indices.every((index) => Number.isInteger(index) && index >= 0 && index < (value.rows as unknown[]).length)
+    && new Set(indices).size === indices.length);
+}
+
 export function parseChatResponse(value: unknown): ChatResponse {
   if (
     !isRecord(value) ||
+    !validResultMetadata(value) ||
     typeof value.answer !== "string" ||
     !(value.route === null || (typeof value.route === "string" && ROUTES.has(value.route as RouteLabel))) ||
     !isNullableString(value.sql) ||

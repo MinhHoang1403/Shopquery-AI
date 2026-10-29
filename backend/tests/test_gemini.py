@@ -1,6 +1,5 @@
 """Gemini SDK retry behavior without external API calls."""
 
-import json
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -27,15 +26,9 @@ class GatewayHarness:
 
 
 def _success_response() -> httpx.Response:
-    decision = json.dumps(
-        {
-            "policy_intent": "none",
-            "policy_scope": "unspecified",
-            "evidence_requirement": "tables",
-            "route": "SQL",
-            "reason": "Requires commerce rows",
-        }
-    )
+    from tests.semantic_fixtures import proposal_for_evidence
+
+    decision = proposal_for_evidence("tables").model_dump_json()
     return httpx.Response(
         200,
         json={

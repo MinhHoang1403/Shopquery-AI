@@ -47,6 +47,15 @@ def test_chat_has_consistent_response(monkeypatch) -> None:
         "fallback_error_context": None,
         "error_context": None,
         "verification_status": None,
+        "rag_answerability_claim": None,
+        "rag_grounding_status": None,
+        "semantic_reference": None,
+        "result_envelope": {
+            "outcome": "answered",
+            "evidence": "sql_executed",
+            "semantic_status": "unverified",
+            "premise_trust": "reference_only",
+        },
     }
 
 

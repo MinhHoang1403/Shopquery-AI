@@ -8,8 +8,10 @@ import pytest
 
 from app.core.diagnostics import diagnostic_request, diagnostic_stage, record_facts, relay_events
 from app.core.errors import ResourceConflictError, SqlExecutionError, StructuredResponseError
-from app.routing.router import QueryRouter, RouteDecision, RouteLabel
+from app.routing.router import QueryRouter, RouteLabel
 from app.routing.service import DatasetChatService
+from app.semantic.wire import TaskProposal
+from tests.semantic_fixtures import proposal_for_evidence
 from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 from tests.test_three_table_join import validator
 
@@ -50,20 +52,11 @@ def test_failure_stage_is_precise_and_has_no_raw_evidence(stage, monkeypatch):
     }.get(stage, BASE)
 
     def structured(prompt, schema):
-        if schema is RouteDecision:
+        if schema is TaskProposal:
             if stage == "structured_output_invalid":
                 raise StructuredResponseError("SENSITIVE provider text")
-            return RouteDecision(
-                policy_intent="none",
-                policy_scope="unspecified",
-                evidence_requirement={
-                    "SQL": "tables",
-                    "RAG": "documents",
-                    "HYBRID": "both",
-                    "UNSUPPORTED": "unavailable",
-                }[RouteLabel.UNSUPPORTED if stage == "router_unsupported" else RouteLabel.SQL],
-                route=RouteLabel.UNSUPPORTED if stage == "router_unsupported" else RouteLabel.SQL,
-                reason="Synthetic",
+            return proposal_for_evidence(
+                "unavailable" if stage == "router_unsupported" else "tables"
             )
         return SqlFixture(
             sql=sql,

@@ -52,6 +52,11 @@ class FixtureExecutor:
 
 
 class ValidationPipeline(TextToSqlPipeline):
+    def run(self, question, *, task=None, **kwargs):
+        # Fixed adversarial SQL is this harness's input, not a generated task.
+        # Task-to-compiler integration has its own semantic execution tests.
+        return super().run(question, **kwargs)
+
     def __init__(self, generator, validator, executor, gateway, execution_guard=None):
         super().__init__(
             generator,

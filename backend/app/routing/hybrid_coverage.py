@@ -77,6 +77,11 @@ def resolve_coverage(
     *,
     classification: Selection | None = None,
 ) -> EvidenceCoverageRequirement | None:
+    # A legacy classification flag contains no population/predicate evidence.
+    # Production uses SemanticTask; this compatibility resolver must never turn
+    # that flag into an all-entity execution grant.
+    if classification is not None:
+        return None
     if context is None:
         return None
     candidates = numeric_policies(chunks)

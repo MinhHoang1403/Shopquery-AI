@@ -1,0 +1,40 @@
+{
+  "purpose": "Independent execution gold, authored before semantic pipeline integration; never provider prompt data or production rules.",
+  "columns": ["event_id", "entity_id", "amount", "event_date", "region"],
+  "events": [
+    ["F1", "E1", "30.00", "2032-09-01", "North"],
+    ["F2", "E1", "20.00", "2032-09-30", "North"],
+    ["F3", "E2", "0.00", "2032-09-10", "North"],
+    ["F4", "E2", null, "2032-09-11", "North"],
+    ["F5", "E3", "40.00", "2032-09-20", "South"],
+    ["F6", "E3", "60.00", "2032-10-01", "South"],
+    ["F7", "E5", null, "2032-09-20", "North"]
+  ],
+  "entity_universe": ["E1", "E2", "E3", "E4", "E5"],
+  "cases": [
+    {
+      "id": "all_fact_rows",
+      "oracle_sql": "SELECT COUNT(*) AS row_count, COUNT(amount) AS value_count, SUM(amount) AS total FROM events",
+      "expected": [{"row_count": 7, "value_count": 5, "total": "150.00"}]
+    },
+    {
+      "id": "september_north_groups",
+      "oracle_sql": "SELECT entity_id, COUNT(*) AS row_count, COUNT(amount) AS value_count, SUM(amount) AS total FROM events WHERE region = 'North' AND event_date >= DATE '2032-09-01' AND event_date < DATE '2032-10-01' GROUP BY entity_id ORDER BY entity_id",
+      "expected": [
+        {"entity_id": "E1", "row_count": 2, "value_count": 2, "total": "50.00"},
+        {"entity_id": "E2", "row_count": 2, "value_count": 1, "total": "0.00"},
+        {"entity_id": "E5", "row_count": 1, "value_count": 0, "total": null}
+      ]
+    }
+  ],
+  "policy": {"aggregate": "sum", "operator": "gte", "threshold": "40.00", "scope": "all_fact_rows"},
+  "expected_policy_status": {
+    "E1": "qualified",
+    "E2": "not_qualified",
+    "E3": "qualified",
+    "E4": "insufficient_evidence",
+    "E5": "insufficient_evidence"
+  },
+  "postgres_execution_status": "NOT_RUN",
+  "notes": "Missing entity E4 and all-NULL E5 are distinct provenance cases. Do not turn either into zero. An INNER-only result is not complete entity-universe coverage. Existing JOIN restrictions must not be relaxed to pass this oracle."
+}

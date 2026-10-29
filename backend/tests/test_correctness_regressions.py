@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from unittest.mock import Mock
+from uuid import UUID
 
 import pytest
 
@@ -10,9 +11,11 @@ from app.routing.hybrid import HybridPipeline
 from app.routing.hybrid_evidence import compose_answer
 from app.routing.router import RouteDecision, RouteLabel
 from app.routing.service import DatasetChatService
+from app.semantic.request import RequestIdentity, semantic_request
 from app.text_to_sql.generation_contract import GenerationDecision
 from app.text_to_sql.plan_binding import bind_approved_grain
 from app.text_to_sql.query_plan import PlanExpression, PlanField, QueryPlan
+from tests.semantic_fixtures import proposal_for_evidence
 from tests.test_evidence_coverage import fixture as coverage_fixture
 from tests.test_evidence_coverage import pipeline
 from tests.test_hybrid_answer_consistency import fixture
@@ -83,16 +86,29 @@ def test_unverified_classification_preserves_real_aggregate_evidence_without_ver
 @pytest.mark.parametrize("selection", ["all", "qualified", "not_qualified"])
 def test_typed_classification_intent_uses_bound_evidence_without_a_question_template(selection):
     chunk, context, _ = coverage_fixture()
+    owner = UUID("f425b6ce-7ff0-4329-9948-4e9bf2e93642")
+    context = replace(context, dataset_id=71, owner_user_id=owner, table_row_counts={"random_d": 2})
+    chunk = replace(
+        chunk, document_scope=replace(chunk.document_scope, dataset_id=71, owner_user_id=owner)
+    )
     rows = [
         {"entity_id": "U1", "metric_value": "40.00"},
         {"entity_id": "U2", "metric_value": "0.00"},
     ]
     sql, executor, gateway = pipeline(context, rows)
+    executor.execute.side_effect = [
+        [{"entity_count": 2}],
+        [{"entity_id": "U1"}, {"entity_id": "U2"}],
+        rows,
+    ]
     rag = Mock(retrieve=Mock(return_value=[chunk]))
     hybrid = HybridPipeline(sql, rag, gateway, context)
     router = Mock(
         route=Mock(
             return_value=RouteDecision(
+                task=proposal_for_evidence("both", selection).task(
+                    "Đánh giá chính sách cho toàn bộ đối tượng."
+                ),
                 evidence_requirement="both",
                 route=RouteLabel.HYBRID,
                 reason="typed fixture",
@@ -101,16 +117,19 @@ def test_typed_classification_intent_uses_bound_evidence_without_a_question_temp
             )
         )
     )
-    result = DatasetChatService(router, sql, rag, hybrid).chat(
-        "Đánh giá chính sách cho toàn bộ đối tượng."
-    )
+    with semantic_request(
+        RequestIdentity(owner, None, 71, "Đánh giá chính sách cho toàn bộ đối tượng.", "2026-10-29")
+    ):
+        result = DatasetChatService(router, sql, rag, hybrid).chat(
+            "Đánh giá chính sách cho toàn bộ đối tượng."
+        )
     assert result.verification_status == "verified_classification"
     assert len(result.rows) == 2
     assert (
         result.answer_row_indices
         == {"all": None, "qualified": (0,), "not_qualified": (1,)}[selection]
     )
-    executor.execute.assert_called_once()
+    assert executor.execute.call_count == 3
     gateway.generate_structured.assert_not_called()
 
 
@@ -140,11 +159,11 @@ def test_filtered_intent_never_substitutes_a_full_workspace_plan():
             )
         )
     )
-    result = DatasetChatService(router, Mock(), Mock(), hybrid).chat(
-        "Only entities in an explicit subset"
-    )
-    # Unsupported scoped classification cannot be converted to full-workspace or unverified SQL.
-    assert result.route == RouteLabel.UNSUPPORTED
+    # A legacy scope flag without its semantic task is a contract error, not authority.
+    with pytest.raises(ModelResponseError):
+        DatasetChatService(router, Mock(), Mock(), hybrid).chat(
+            "Only entities in an explicit subset"
+        )
     hybrid.run.assert_not_called()
 
 

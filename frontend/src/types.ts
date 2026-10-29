@@ -60,6 +60,14 @@ export interface ChatResponse {
   answer_row_indices?: number[] | null;
   verification_status?: "verified_classification" | "unverified" | "explanation" | "refused" | null;
   sources: SourceReference[];
+  rag_answerability_claim?: "answered" | "partially_answered" | "insufficient_evidence" | "unsupported" | "unverified" | null;
+  rag_grounding_status?: "citation_validated" | "unverified" | null;
+  result_envelope?: {
+    outcome: "answered" | "partial" | "insufficient_evidence" | "unsupported" | "failed";
+    evidence: "none" | "sql_executed" | "citation_validated" | "classification_verified";
+    semantic_status: "unverified" | "coverage_verified";
+    premise_trust: "ineligible" | "reference_only" | "verified_result";
+  } | null;
   error: string | null;
   requested_model?: ModelId | null;
   used_model?: ModelId | null;

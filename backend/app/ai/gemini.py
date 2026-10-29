@@ -25,6 +25,7 @@ from app.core.errors import (
     validation_context,
 )
 from app.core.observability import provider_observation, update
+from app.semantic.wire import TaskProposal
 from app.text_to_sql.generation_contract import (
     GENERATION_INSTRUCTIONS,
     GenerationDecision,
@@ -126,7 +127,7 @@ class GeminiGateway:
                 response_mime_type="application/json",
                 response_schema=(
                     _generation_schema(response_schema)
-                    if wire_model is GenerationDecision
+                    if wire_model in {GenerationDecision, TaskProposal}
                     else _without_additional_properties(response_schema)
                 ),
             )

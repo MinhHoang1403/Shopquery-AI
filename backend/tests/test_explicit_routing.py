@@ -5,13 +5,16 @@ import pytest
 from app.core.errors import ProviderError
 from app.routing.router import QueryRouter, RouteLabel
 from app.routing.service import DatasetChatService
+from tests.semantic_fixtures import proposal_for_evidence
 from tests.test_dataset_routing import FakePipeline
 
 
 @pytest.mark.parametrize("route", [RouteLabel.SQL, RouteLabel.RAG, RouteLabel.HYBRID])
-def test_explicit_route_uses_available_capability_without_online_router(route):
+def test_explicit_source_requires_one_task_proposal_only_for_table_tasks(route):
     gateway = Mock()
-    gateway.generate_structured.side_effect = AssertionError("No routing request allowed")
+    gateway.generate_structured.return_value = proposal_for_evidence(
+        {"SQL": "tables", "RAG": "documents", "HYBRID": "both"}[route]
+    )
     pipeline = FakePipeline()
     service = DatasetChatService(
         QueryRouter(gateway),
@@ -21,7 +24,7 @@ def test_explicit_route_uses_available_capability_without_online_router(route):
     )
     result = service.chat(f"/{route.lower()} Câu hỏi có nguồn được chọn rõ")
     assert result.route == route
-    gateway.generate_structured.assert_not_called()
+    assert gateway.generate_structured.call_count == int(route != RouteLabel.RAG)
 
 
 def test_hybrid_cannot_silently_downgrade_to_sql_when_documents_absent():

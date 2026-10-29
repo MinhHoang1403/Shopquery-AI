@@ -366,7 +366,12 @@ def test_aggregate_diagnosis_never_executes_or_composes_a_hybrid_answer(route, c
     from app.rag.repository import RetrievedChunk
 
     rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
+    from tests.semantic_fixtures import proposal_for_evidence
+
     router.route.return_value = RouteDecision(
+        task=proposal_for_evidence("tables" if route == RouteLabel.SQL else "both").task(
+            "Synthetic refusal"
+        ),
         policy_intent="none",
         policy_scope="unspecified",
         evidence_requirement={

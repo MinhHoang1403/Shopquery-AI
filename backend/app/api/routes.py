@@ -130,7 +130,18 @@ def chat(user: CurrentUser, request: ChatRequest) -> ChatResponse:
                     settings,
                     build_workspace_context(settings, dataset, repository),
                 )
-            return _chat_response(service.chat(_routed_question(request, request.message)))
+            from app.semantic.request import RequestIdentity, semantic_request
+
+            with semantic_request(
+                RequestIdentity(
+                    user.user_id,
+                    None,
+                    request.dataset_id,
+                    request.message,
+                    settings.demo_reference_date,
+                )
+            ):
+                return _chat_response(service.chat(_routed_question(request, request.message)))
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ShopQueryError as exc:
@@ -241,34 +252,54 @@ def _persist_chat_turn(
         repository.set_model(conversation_id, selected_model)
     user_message = repository.add_user_message(conversation_id, request.message)
     try:
+        from app.semantic.request import catalog_revision
+
         if conversation.dataset_id is None:
+            from app.text_to_sql.schema_context import default_sql_context
+
+            context = default_sql_context()
             service = build_chat_service(settings)
         else:
             dataset_repository = build_dataset_repository(user_id)
             with diagnostic_stage("workspace_binding"):
                 dataset = dataset_repository.get(conversation.dataset_id)
-            service = build_dataset_chat_service(
-                settings,
-                build_workspace_context(settings, dataset, dataset_repository),
-            )
+            context = build_workspace_context(settings, dataset, dataset_repository)
+            service = build_dataset_chat_service(settings, context)
         with diagnostic_stage("conversation_context"):
             question = contextual_question(
-                request.message, conversation, user_id, conversation.dataset_id
+                request.message,
+                conversation,
+                user_id,
+                conversation.dataset_id,
+                catalog_revision=catalog_revision(context),
             )
             record_facts(context_used=question != request.message)
-        response = _chat_response(
-            service.chat(
-                _routed_question(request, question),
-                current_question=request.message,
+        from app.semantic.request import RequestIdentity, semantic_request
+
+        with semantic_request(
+            RequestIdentity(
+                user_id,
+                conversation_id,
+                conversation.dataset_id,
+                request.message,
+                settings.demo_reference_date,
             )
-        )
+        ):
+            response = _chat_response(
+                service.chat(
+                    _routed_question(request, question),
+                    current_question=request.message,
+                )
+            )
     except ShopQueryError as exc:
         response = _chat_error(exc, selected_model)
     with diagnostic_stage("response_persistence"):
+        metadata = response.model_dump(mode="json")
+        metadata["turn_user_message_id"] = user_message.message_id
         assistant_message = repository.add_response_message(
             conversation_id,
             content=response.answer,
-            response_metadata=response.model_dump(mode="json"),
+            response_metadata=metadata,
             is_error=response.error is not None,
         )
     return ConversationSendResponse(
@@ -588,7 +619,11 @@ async def _parse_upload(file: UploadFile, sheet_name: str | None) -> ParsedTable
 
 
 def _chat_response(result: ChatResult) -> ChatResponse:
+    from app.semantic.reference import TaskReference
+
+    reference = getattr(result, "semantic_reference", None)
     return ChatResponse(
+        semantic_reference=reference if isinstance(reference, TaskReference) else None,
         answer=result.answer,
         route=result.route,
         sql=result.sql,
@@ -599,6 +634,8 @@ def _chat_response(result: ChatResult) -> ChatResponse:
         fallback_reason=result.fallback_reason,
         fallback_error_context=result.fallback_error_context,
         verification_status=result.verification_status,
+        rag_answerability_claim=result.rag_answerability_claim,
+        rag_grounding_status=result.rag_grounding_status,
         result_columns=list(result.result_columns),
         answer_row_indices=list(result.answer_row_indices)
         if result.answer_row_indices is not None

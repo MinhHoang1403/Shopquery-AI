@@ -26,6 +26,11 @@ _strings = {
     "evidence_requirement": frozenset({"tables", "documents", "both", "unavailable", "unclear"}),
     "policy_intent": frozenset({"none", "all", "qualified", "not_qualified"}),
     "policy_scope": frozenset({"unspecified", "all_entities", "filtered_entities"}),
+    "rag_answerability_claim": frozenset(
+        {"answered", "partially_answered", "insufficient_evidence", "unsupported", "unverified"}
+    ),
+    "rag_grounding_status": frozenset({"citation_validated", "unverified"}),
+    "conversation_premise": frozenset({"verified", "reference_only", "ineligible", "mixed"}),
     "model_id": frozenset({"gemini", "inetcloud-knowledge"}),
     "requested_model": frozenset({"gemini", "inetcloud-knowledge"}),
     "used_model": frozenset({"gemini", "inetcloud-knowledge"}),

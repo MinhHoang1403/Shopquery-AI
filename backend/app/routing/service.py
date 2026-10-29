@@ -5,11 +5,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.diagnostics import record_facts
-from app.core.errors import ErrorContext, SqlUnsupportedError
-from app.rag.pipeline import RagPipeline, Source
+from app.core.errors import ErrorContext, ModelResponseError, SqlUnsupportedError
+from app.rag.pipeline import RagAnswerability, RagGroundingStatus, RagPipeline, Source
 from app.routing.hybrid import HybridPipeline
 from app.routing.hybrid_evidence import VerificationStatus
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
+from app.semantic.reference import TaskReference, task_reference
+from app.semantic.task import SemanticTask
 from app.text_to_sql.answer import ResultColumn
 from app.text_to_sql.pipeline import TextToSqlPipeline
 
@@ -43,19 +45,9 @@ class ChatResult:
     verification_status: VerificationStatus | None = None
     result_columns: tuple[ResultColumn, ...] = ()
     answer_row_indices: tuple[int, ...] | None = None
-
-
-def _classification_scope_refusal(decision: RouteDecision) -> ChatResult | None:
-    if decision.policy_intent == "none" or decision.policy_scope == "all_entities":
-        return None
-    # The verified classification path currently proves coverage for the complete entity set.
-    # Dropping a requested classification would silently route it through unverified Hybrid.
-    record_facts(route="UNSUPPORTED")
-    return ChatResult(
-        "Mình chưa thể xác minh chính xác kết quả phân loại trong phạm vi này. "
-        "Bạn có thể làm rõ phạm vi hoặc hỏi về toàn bộ đối tượng.",
-        RouteLabel.UNSUPPORTED,
-    )
+    rag_answerability_claim: RagAnswerability | None = None
+    rag_grounding_status: RagGroundingStatus | None = None
+    semantic_reference: TaskReference | None = None
 
 
 def _sql_refusal(exc: SqlUnsupportedError) -> ChatResult:
@@ -99,26 +91,34 @@ class ChatService:
             question,
             **({"current_question": current_question} if current_question is not None else {}),
         )
+        if decision.task is None:
+            raise ModelResponseError("Dispatch requires a validated semantic task")
         route = decision.route
         if route == RouteLabel.SQL:
-            result = self._sql_pipeline.run(question)
+            result = self._sql_pipeline.run(question, task=decision.task)
             return ChatResult(
-                result.answer, route, result.sql, result.rows, result_columns=result.result_columns
+                result.answer,
+                route,
+                result.sql,
+                result.rows,
+                result_columns=result.result_columns,
+                semantic_reference=task_reference(
+                    decision.task, getattr(self._router, "context", None), "sql_executed"
+                ),
             )
         if route == RouteLabel.RAG:
             result = self._rag_pipeline.run(question)
-            return ChatResult(result.answer, route, sources=result.sources)
+            return ChatResult(
+                result.answer,
+                route,
+                sources=result.sources,
+                rag_answerability_claim=result.answerability_claim,
+                rag_grounding_status=result.grounding_status,
+            )
         if route == RouteLabel.HYBRID:
-            refusal = _classification_scope_refusal(decision)
-            if refusal is not None:
-                return refusal
             result = self._hybrid_pipeline.run(
                 question,
-                **(
-                    {"classification": decision.policy_intent}
-                    if decision.policy_scope == "all_entities" and decision.policy_intent != "none"
-                    else {}
-                ),
+                task=decision.task,
                 **({"current_question": current_question} if current_question is not None else {}),
             )
             return ChatResult(
@@ -130,6 +130,13 @@ class ChatService:
                 verification_status=result.verification_status,
                 result_columns=result.result_columns,
                 answer_row_indices=result.answer_row_indices,
+                semantic_reference=task_reference(
+                    result.task if isinstance(result.task, SemanticTask) else decision.task,
+                    getattr(self._router, "context", None),
+                    "classification_verified",
+                )
+                if result.verification_status == "verified_classification"
+                else None,
             )
         return ChatResult(
             answer=_unsupported_answer(decision),
@@ -174,31 +181,38 @@ class DatasetChatService:
             frozenset(allowed),
             **({"current_question": current_question} if current_question is not None else {}),
         )
+        if decision.task is None:
+            raise ModelResponseError("Dispatch requires a validated semantic task")
         route = decision.route
         if route == RouteLabel.SQL and self._sql_pipeline is not None:
             try:
-                result = self._sql_pipeline.run(question)
+                result = self._sql_pipeline.run(question, task=decision.task)
             except SqlUnsupportedError as exc:
                 return _sql_refusal(exc)
             return ChatResult(
-                result.answer, route, result.sql, result.rows, result_columns=result.result_columns
+                result.answer,
+                route,
+                result.sql,
+                result.rows,
+                result_columns=result.result_columns,
+                semantic_reference=task_reference(
+                    decision.task, getattr(self._router, "context", None), "sql_executed"
+                ),
             )
         if route == RouteLabel.RAG and self._rag_pipeline is not None:
             result = self._rag_pipeline.run(question)
-            return ChatResult(result.answer, route, sources=result.sources)
+            return ChatResult(
+                result.answer,
+                route,
+                sources=result.sources,
+                rag_answerability_claim=result.answerability_claim,
+                rag_grounding_status=result.grounding_status,
+            )
         if route == RouteLabel.HYBRID and self._hybrid_pipeline is not None:
-            refusal = _classification_scope_refusal(decision)
-            if refusal is not None:
-                return refusal
             try:
                 result = self._hybrid_pipeline.run(
                     question,
-                    **(
-                        {"classification": decision.policy_intent}
-                        if decision.policy_scope == "all_entities"
-                        and decision.policy_intent != "none"
-                        else {}
-                    ),
+                    task=decision.task,
                     **(
                         {"current_question": current_question}
                         if current_question is not None
@@ -216,6 +230,13 @@ class DatasetChatService:
                 verification_status=result.verification_status,
                 result_columns=result.result_columns,
                 answer_row_indices=result.answer_row_indices,
+                semantic_reference=task_reference(
+                    result.task if isinstance(result.task, SemanticTask) else decision.task,
+                    getattr(self._router, "context", None),
+                    "classification_verified",
+                )
+                if result.verification_status == "verified_classification"
+                else None,
             )
         return ChatResult(
             _unsupported_answer(decision),

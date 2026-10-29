@@ -7,6 +7,7 @@ import pytest
 
 from app.routing.router import RouteDecision, RouteLabel
 from app.routing.service import DatasetChatService
+from tests.semantic_fixtures import proposal_for_evidence
 
 
 class FakeRouter:
@@ -18,6 +19,14 @@ class FakeRouter:
         assert question
         self.allowed = allowed_routes
         return RouteDecision(
+            task=proposal_for_evidence(
+                {
+                    "SQL": "tables",
+                    "RAG": "documents",
+                    "HYBRID": "both",
+                    "UNSUPPORTED": "unavailable",
+                }[self.route_label]
+            ).task(question),
             policy_intent="none",
             policy_scope="unspecified",
             evidence_requirement={
@@ -33,6 +42,8 @@ class FakeRouter:
 
 @dataclass
 class PipelineResult:
+    answerability_claim: str | None = None
+    grounding_status: str | None = None
     result_columns: tuple = ()
     answer_row_indices: tuple | None = None
     answer: str = "grounded"
@@ -43,7 +54,7 @@ class PipelineResult:
 
 
 class FakePipeline:
-    def run(self, question: str) -> PipelineResult:
+    def run(self, question: str, **kwargs) -> PipelineResult:
         assert question
         return PipelineResult(rows=[{"value": 1}], sources=[])
 

@@ -156,6 +156,41 @@ def test_request_is_consumed_in_full_and_requires_policy_and_metadata(question, 
     assert resolve_coverage(question, [], context) is None
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Which units qualify? Only last month",
+        "Which units qualify? Only in region A",
+        "Which units qualify? Return only 2 units",
+    ],
+)
+def test_typed_classification_does_not_silently_drop_input_or_output_qualifiers(question):
+    chunk, context, _ = fixture()
+    # A model-provided selection cannot turn an unverified population into the full dataset.
+    assert resolve_coverage(question, [chunk], context, classification="qualified") is None
+
+
+def test_typed_classification_must_not_override_a_contradictory_request():
+    chunk, context, _ = fixture()
+    assert (
+        resolve_coverage(
+            "Which units do not qualify?", [chunk], context, classification="qualified"
+        )
+        is None
+    )
+
+
+def test_model_classification_with_unverified_population_stops_before_sql():
+    chunk, context, _ = fixture()
+    sql, gateway = Mock(), Mock()
+    hybrid = HybridPipeline(sql, Mock(retrieve=Mock(return_value=[chunk])), gateway, context)
+    sql.run.side_effect = AssertionError("SQL must not execute for an unverified population")
+    with pytest.raises(ModelResponseError):
+        hybrid.run("Which units qualify? Only last month", classification="qualified")
+    sql.run.assert_not_called()
+    gateway.generate_structured.assert_not_called()
+
+
 @pytest.mark.parametrize("mutation", ["ambiguous", "missing_relation", "wrong_hash", "qualifier"])
 def test_uncertain_policy_or_path_cannot_create_deterministic_plan(mutation):
     chunk, context, _ = fixture()

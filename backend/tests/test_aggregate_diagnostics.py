@@ -8,8 +8,9 @@ import pytest
 from app.core.diagnostics import diagnostic_request, record_facts
 from app.core.errors import SqlUnsupportedError, SqlValidationError
 from app.routing.hybrid import HybridPipeline
-from app.routing.router import QueryRouter, RouteDecision, RouteLabel
+from app.routing.router import QueryRouter, RouteLabel
 from app.routing.service import DatasetChatService
+from tests.semantic_fixtures import proposal_for_evidence
 from tests.sql_validation_fixtures import FixtureGenerator, SqlFixture, ValidationPipeline
 from tests.test_three_table_join import CHAIN_ORDERS, PC, PS, validator
 
@@ -229,13 +230,7 @@ def test_hybrid_unsafe_drafts_stop_after_evidence_before_execution_or_answer(pro
     rag.retrieve.return_value = [RetrievedChunk(1, "policy.md", "Policy", "Threshold 40", 0.1)]
     sql = f"SELECT s.student_id,{projection} {CHAIN_ORDERS[0]} GROUP BY s.student_id" + suffix
     gateway.generate_structured.side_effect = [
-        RouteDecision(
-            policy_intent="none",
-            policy_scope="unspecified",
-            evidence_requirement="both",
-            route=RouteLabel.HYBRID,
-            reason="Scripted offline",
-        ),
+        proposal_for_evidence("both"),
         SqlFixture(sql=sql),
     ]
     pipeline = ValidationPipeline(

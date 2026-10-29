@@ -1,5 +1,41 @@
 # Sửa correctness và trình bày kết quả sau bàn giao
 
+## Quyết định hợp đồng về scope và ngữ cảnh — 28/10/2026
+
+| Vấn đề | Bất biến hiện có và nguyên nhân | Hợp đồng thử nghiệm và kiểm chứng | Rủi ro/giới hạn |
+| --- | --- | --- | --- |
+| Tập đánh giá và nhóm hiển thị | Scope và intent do model sinh; qualifier không được bỏ. Hai kiểm tra SQL chứng minh plan/SQL khớp coverage, không chứng minh model đã giữ đủ điều kiện người dùng. | Giữ selection độc lập với population; giữ fail-closed nếu chưa chứng minh phạm vi/filter; regression đối chứng input filter, output selection và guard trước execution. | Không tự gán all khi model nói filtered; nếu thiếu bằng chứng scope vẫn phải từ chối, không báo semantic PASS. |
+| RAG và history | Citation chỉ kiểm chunk ID, error=null không chứng minh answerability hoặc entailment; legacy thiếu trạng thái. | Phân biệt model declaration với backend validation; không coi declaration/citation là verified. Chỉ dùng tham chiếu hội thoại không có thẩm quyền khi contract cho phép, lấy evidence mới và giữ owner/dataset; không backfill legacy. | Bộ kiểm tra tất định hiện không xác minh ngữ nghĩa câu trả lời; không tuyên bố factual verification hoặc làm mất history. |
+
+Structured schema chỉ kiểm hình dạng hợp đồng, không chứng minh mục đích hoặc tính đúng:
+[PICARD](https://aclanthology.org/2021.emnlp-main.779/). Citation tồn tại không bảo đảm
+citation hỗ trợ đầy đủ từng phát biểu: [ALCE](https://aclanthology.org/2023.emnlp-main.398/),
+[Evidence-Based QA](https://aclanthology.org/2024.acl-long.105/). Đây là căn cứ nêu giới hạn,
+không phải bằng chứng sửa đổi của dự án đã PASS.
+
+Bộ held-out mới `backend/tests/fixtures/semantic_population_holdout.json` được khóa tại
+commit `f04922a`, SHA-256 chuẩn LF `7f255cc0478808a1847835193d4576185a9db929ae68002ddbc5ade0d62277fc`;
+28 câu và 6 lĩnh vực, bao gồm schema bảo tàng mới. Chưa chạy model trên tập này.
+
+Điều tra bổ sung: `resolve_coverage` ưu tiên selection do model sinh và bỏ qua bộ kiểm
+toàn câu hiện có. Năm regression mới FAIL trên source trước sửa: ba qualifier thời gian,
+khu vực/giới hạn output, một selection mâu thuẫn và một trường hợp đi tới SQL pipeline
+mock. Một guard dùng parser sẵn có làm năm ca PASS nhưng làm chín ca hợp lệ FAIL và
+không nhận được h07; đã loại guard thử nghiệm. Registry/AST chứng minh quyền, cấu trúc
+và plan, không chứng minh model đã nhận hết ý định trong ngôn ngữ tự nhiên. Hiện chưa
+có metadata do người dùng xác nhận population hoặc bằng chứng khác để suy all an toàn.
+Do đó không bỏ qualifier hoặc promote một phương án có false refusal đã biết.
+
+RAG/context đang thử trên working tree: model khai answerability, backend chỉ đánh dấu
+ID citation thuộc tập truy xuất, không gắn nhãn verified cho nội dung. Lượt RAG khai
+answered chỉ góp câu hỏi trước làm tham chiếu không có thẩm quyền; không đưa câu trả lời
+RAG vào premise. Legacy, refusal, error và partial không làm premise; SQL/Hybrid verified
+vẫn theo giới hạn owner/dataset, hai lượt giữ thứ tự. Regression xfail cũ đã PASS thật;
+162 tests RAG/routing/workspace/observability PASS, gồm SDK wire mocked. Đây chưa phải
+kiểm chứng entailment, response provider thật, UI, PostgreSQL hay nghiệm thu live.
+Năm regression scope ở trên vẫn FAIL trên code hiện tại; không chạy live trả phí trước khi
+đạt offline/cross-schema/oracle như yêu cầu, không deploy/cleanup.
+
 ## Quyết định thiết kế thử nghiệm — 28/10/2026
 
 Benchmark độc lập khóa trước thiết kế tại commit `95a6b0d`, SHA-256 chuẩn LF
@@ -798,3 +834,11 @@ Không hỗ trợ mọi văn bản chính sách, mọi kỳ có dữ liệu ngo�
 ngoại lệ. Không giả tạo filtered-policy support bằng cách bỏ WHERE/HAVING/LIMIT.
 Timeout Knowledge vẫn phụ thuộc upstream; không đổi retry/fallback. BGE/public hosting,
 retention/backup Langfuse ngoài phạm vi. Không báo CORRECTNESS_FIX_ACCEPTED trước live.
+
+### Semantic integration checkpoint — 29/10/2026
+
+Xem `core_rebuild.md` mục checkpoint tích hợp. Đường API hiện trong source candidate dùng
+Semantic Task và request-bound coverage thay classification authority; legacy flags bị chặn.
+Backend offline broad1666 PASS; PostgreSQL/live chưa chạy nên chưa kết luận semantic/live
+correctness. Typed task references có scope/revision; RAG citation không thành verified premise.
+Source chưa deploy, runtime8080 vẫn baseline. Paid agent usage0/0/0; không retry/fallback.

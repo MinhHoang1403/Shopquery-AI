@@ -4,6 +4,7 @@ import hashlib
 import math
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, MetaData, Table, create_engine, text
@@ -29,6 +30,7 @@ from app.rag.repository import DocumentScope, RetrievedChunk
 from app.routing.hybrid import HybridPipeline
 from app.routing.router import QueryRouter
 from app.routing.service import ChatResult, DatasetChatService
+from app.semantic.request import RequestIdentity, semantic_request
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.executor import SqlExecutor
 from app.text_to_sql.join_policy import ApprovedJoin
@@ -278,15 +280,26 @@ def run_guest_chat(
                 else None
             )
             return DatasetChatService(
-                QueryRouter(selected, context.routing_context),
+                QueryRouter(selected, context.routing_context, context=context),
                 sql_pipeline,
                 rag,
                 hybrid,
             )
 
-        if gateway is not None:
-            return build(gateway).chat(question)
-        return ModelChatService(settings, build).chat(question)
+        with semantic_request(
+            RequestIdentity(
+                None,
+                None,
+                0,
+                question,
+                settings.demo_reference_date,
+                principal="guest",
+                guest_request_id=uuid4(),
+            )
+        ):
+            if gateway is not None:
+                return build(gateway).chat(question)
+            return ModelChatService(settings, build).chat(question)
     finally:
         if sql:
             sql.close()

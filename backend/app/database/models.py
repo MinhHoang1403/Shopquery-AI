@@ -23,6 +23,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.rag.storage_contract import SECTION_TITLE_MAX_LENGTH, SOURCE_FILE_MAX_LENGTH
+
 
 class Base(DeclarativeBase):
     pass
@@ -173,8 +175,10 @@ class DocumentChunk(Base):
     )
 
     chunk_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    source_file: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    section_title: Mapped[str] = mapped_column(String(300), nullable=False)
+    source_file: Mapped[str] = mapped_column(
+        String(SOURCE_FILE_MAX_LENGTH), nullable=False, index=True
+    )
+    section_title: Mapped[str] = mapped_column(String(SECTION_TITLE_MAX_LENGTH), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(VECTOR(768), nullable=False)

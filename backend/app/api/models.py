@@ -8,8 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, m
 
 from app.ai.providers import ModelId
 from app.core.errors import ErrorContext
+from app.rag.pipeline import RagAnswerability, RagGroundingStatus
 from app.routing.hybrid_evidence import VerificationStatus
 from app.routing.router import RouteLabel
+from app.semantic.reference import TaskReference
+from app.semantic.result import ResultEnvelope
 from app.text_to_sql.answer import ResultColumn
 
 
@@ -58,10 +61,34 @@ class ChatResponse(BaseModel):
     fallback_error_context: ErrorContext | None = None
     error_context: ErrorContext | None = None
     verification_status: VerificationStatus | None = None
+    # Claim is model-declared; citation validation does not prove semantic grounding.
+    rag_answerability_claim: RagAnswerability | None = None
+    rag_grounding_status: RagGroundingStatus | None = None
+    result_envelope: ResultEnvelope | None = None
+    semantic_reference: TaskReference | None = None
     result_columns: list[ResultColumn] = Field(default_factory=list)
     answer_row_indices: list[Annotated[int, Field(strict=True, ge=0, lt=200)]] | None = Field(
         default=None, max_length=200
     )
+
+    @model_validator(mode="after")
+    def derive_result_state(self) -> "ChatResponse":
+        from app.semantic.result import summarize_result
+
+        expected = summarize_result(
+            route=self.route,
+            error=self.error,
+            sql=self.sql,
+            verification_status=self.verification_status,
+            rag_answerability_claim=self.rag_answerability_claim,
+            rag_grounding_status=self.rag_grounding_status,
+            source_count=len(self.sources),
+            semantic_reference=self.semantic_reference,
+        )
+        if self.result_envelope is not None and self.result_envelope != expected:
+            raise ValueError("Result envelope does not match server evidence metadata")
+        self.result_envelope = expected
+        return self
 
 
 class ModelOption(BaseModel):

@@ -1,12 +1,15 @@
 """Orchestration for SQL generation, validation, execution, and grounding."""
 
 from collections.abc import Callable
-from contextlib import AbstractContextManager, ExitStack, nullcontext
+from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from typing import Any
 
 from app.ai.gemini import GenerationGateway
 from app.core.diagnostics import diagnostic_stage, record_facts
+from app.semantic.coverage import prepare_task_plan, verify_compiled_task
+from app.semantic.request import request_active
+from app.semantic.task import SemanticTask
 from app.text_to_sql.answer import ResultColumn, compose_sql_answer
 from app.text_to_sql.compiler import QueryCompiler
 from app.text_to_sql.count_contract import CountMetric
@@ -46,6 +49,17 @@ class TextToSqlPipeline:
         self._gateway = gateway
         self._execution_guard = execution_guard
 
+    @contextmanager
+    def semantic_execution_scope(self, task: SemanticTask):
+        """Hold the existing relationship/catalog guard across all policy evidence reads."""
+        compiled = self._compiler.compile(prepare_task_plan(task, self._compiler))
+        verify_compiled_task(task, compiled, self._compiler)
+        guard = (
+            self._execution_guard(compiled.validated) if self._execution_guard else nullcontext()
+        )
+        with guard:
+            yield
+
     @diagnostic_stage("sql_pipeline")
     def run(
         self,
@@ -54,10 +68,17 @@ class TextToSqlPipeline:
         evidence_context: str | None = None,
         ground_answer: bool = True,
         coverage: EvidenceCoverageRequirement | None = None,
+        task: SemanticTask | None = None,
     ) -> SqlResult:
-        with diagnostic_stage("plan_construction" if coverage else "sql_plan_generation"):
+        if task is None and request_active():
+            raise coverage_error()
+        if task is not None and coverage is not None:
+            raise coverage_error()
+        with diagnostic_stage("plan_construction" if coverage or task else "sql_plan_generation"):
             plan = (
-                self._planner.generate(
+                prepare_task_plan(task, self._compiler)
+                if task is not None
+                else self._planner.generate(
                     question, evidence_context=evidence_context, coverage=coverage
                 )
                 if coverage is not None
@@ -69,6 +90,8 @@ class TextToSqlPipeline:
             validate_plan_coverage(plan, coverage)
         with diagnostic_stage("plan_compilation"):
             compiled = self._compiler.compile(plan)
+        if task is not None:
+            verify_compiled_task(task, compiled, self._compiler)
         if coverage is not None:
             validate_compiled_coverage(compiled, coverage, self._compiler.references)
         validated = compiled.validated

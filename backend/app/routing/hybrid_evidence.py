@@ -233,7 +233,7 @@ def compose_answer(
         if len(policies) != 1 or draft.rule_id not in policies:
             _fail("classification_policy_reference_invalid")
         policy, rule_chunk = policies[draft.rule_id]
-        validate_policy_binding(result, draft.identity_fields, draft.metric_field, policy)
+        validate_policy_binding(result, draft.identity_fields, draft.metric_field, policy, context)
     elif policies:
         _fail("classification_policy_reference_invalid")
     statuses = []
@@ -332,7 +332,7 @@ def verified_classification(
             continue
         for metric in bindings:
             try:
-                validate_policy_binding(result, [identity], metric, policy)
+                validate_policy_binding(result, [identity], metric, policy, context)
             except (ModelResponseError, KeyError, TypeError):
                 continue
             pairs.append((identity, metric))

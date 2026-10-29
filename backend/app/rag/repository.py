@@ -20,6 +20,7 @@ from app.core.errors import (
 from app.database.models import Dataset, DatasetDocument, DocumentChunk
 from app.database.quotas import enforce_storage_budget, lock_owner_budget
 from app.rag.chunking import DocumentChunkData, chunk_document
+from app.rag.storage_contract import validate_storage_metadata
 from app.rag.upload_parser import ParsedDocument
 
 
@@ -70,6 +71,8 @@ class DocumentRepository:
     def sync(self, chunks: list[DocumentChunkData], embedder: EmbeddingGateway) -> dict[str, int]:
         """Synchronize only the legacy/default corpus."""
 
+        for chunk in chunks:
+            validate_storage_metadata(chunk.source_file, chunk.section_title)
         incoming_hashes = {chunk.content_hash for chunk in chunks}
         source_files = {chunk.source_file for chunk in chunks}
         with Session(self._setup_engine) as session:

@@ -7,12 +7,14 @@ import pytest
 from app.rag.pipeline import RagAnswerDraft, RagPipeline
 from app.rag.repository import RetrievedChunk
 from app.routing.hybrid import HybridAnswerDraft, HybridPipeline
-from app.routing.router import QueryRouter, RouteDecision, RouteLabel
+from app.routing.router import QueryRouter, RouteLabel
+from app.semantic.wire import TaskProposal
 from app.text_to_sql.pipeline import SqlResult
 from app.text_to_sql.planner import QueryPlanner
 from app.text_to_sql.query_plan import PlanDecision, PlanField, QueryPlan
 from app.text_to_sql.schema_context import default_sql_context
 from tests.hybrid_fixtures import explanation_draft
+from tests.semantic_fixtures import proposal_for_evidence
 
 
 class FakeGateway:
@@ -20,18 +22,14 @@ class FakeGateway:
         self.route = route
 
     def generate_structured(self, prompt: str, response_model: type[Any]) -> Any:
-        if response_model is RouteDecision:
-            return RouteDecision(
-                policy_intent="none",
-                policy_scope="unspecified",
-                evidence_requirement={
+        if response_model is TaskProposal:
+            return proposal_for_evidence(
+                {
                     "SQL": "tables",
                     "RAG": "documents",
                     "HYBRID": "both",
                     "UNSUPPORTED": "unavailable",
-                }[self.route],
-                route=self.route,
-                reason="test classification",
+                }[self.route]
             )
         if response_model is RagAnswerDraft:
             return RagAnswerDraft(answer="Câu trả lời có nguồn.", used_chunk_ids=[11])

@@ -507,23 +507,27 @@ def test_models_discovery_is_fixed_and_does_not_call_upstream(monkeypatch, contr
 
 
 def test_sql_only_build_does_not_instantiate_gemini(monkeypatch):
+    from uuid import UUID
+
     from app.dependencies import build_chat_service
-    from tests.plan_fixtures import decision_from_sql
+    from app.semantic.request import RequestIdentity, semantic_request
+    from app.semantic.wire import TaskProposal
+    from app.text_to_sql.compiler import SchemaReferences
+    from app.text_to_sql.schema_context import default_sql_context
+    from tests.semantic_fixtures import proposal_for_evidence
 
     class Gateway:
         def generate_structured(self, prompt, response_model):
-            if response_model is RouteDecision:
-                return response_model(
-                    policy_intent="none",
-                    policy_scope="unspecified",
-                    evidence_requirement="tables",
-                    route="SQL",
-                    reason="Rows",
-                )
-            return decision_from_sql("SELECT COUNT(*) AS total FROM products", prompt)
+            assert response_model is TaskProposal
+            refs = SchemaReferences.from_context(default_sql_context())
+            selected = next(key for key, table in refs.tables.items() if table == "products")
+            data = proposal_for_evidence("tables").model_dump()
+            data["source"] = selected
+            data["fields"][0]["alias"] = "total"
+            return TaskProposal.model_validate(data)
 
         def generate_text(self, prompt):
-            return "150 products"
+            raise AssertionError("No additional generation")
 
     def forbidden_gemini(*args, **kwargs):
         pytest.fail("SQL using Knowledge must not instantiate Gemini")
@@ -534,7 +538,12 @@ def test_sql_only_build_does_not_instantiate_gemini(monkeypatch):
         "app.dependencies.SqlExecutor",
         lambda *args: SimpleNamespace(execute=lambda query, parameters: [{"total": 150}]),
     )
-    result = build_chat_service(settings(gemini_api_key=None)).chat("Count products")
+    with semantic_request(
+        RequestIdentity(
+            UUID("f425b6ce-7ff0-4329-9948-4e9bf2e93642"), None, None, "Count products", "2026-10-29"
+        )
+    ):
+        result = build_chat_service(settings(gemini_api_key=None)).chat("Count products")
     assert result.used_model == "inetcloud-knowledge"
     assert result.rows == [{"total": 150}]
 

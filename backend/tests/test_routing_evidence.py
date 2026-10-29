@@ -10,16 +10,14 @@ from app.core.errors import ModelResponseError
 from app.core.observability import safe_metadata
 from app.routing.router import QueryRouter, RouteDecision, RouteLabel
 from app.routing.service import ChatService, DatasetChatService
+from app.semantic.wire import TaskProposal
+from tests.semantic_fixtures import proposal_for_evidence
 from tests.test_plan_providers import gateway_harness, response
 
 
 def routing_fixture(payload):
-    return RouteDecision.model_validate(
-        {
-            "policy_intent": "none",
-            "policy_scope": "unspecified",
-            **payload,
-        }
+    return proposal_for_evidence(
+        payload["evidence_requirement"], payload.get("policy_intent", "none")
     )
 
 
@@ -28,26 +26,26 @@ def routing_fixture(payload):
 def test_classification_without_proven_full_scope_refuses_before_hybrid(service_type, scope):
     """Do not turn a classification into an unverified generic Hybrid answer."""
     router, sql, rag, hybrid = Mock(), Mock(), Mock(), Mock()
-    router.route.return_value = routing_fixture(
-        {
-            "route": "HYBRID",
-            "reason": "Classification scope not proven",
-            "evidence_requirement": "both",
-            "policy_intent": "not_qualified",
-            "policy_scope": scope,
-        }
+    router.route.return_value = RouteDecision(
+        route="HYBRID",
+        reason="No semantic task",
+        evidence_requirement="both",
+        policy_intent="not_qualified",
+        policy_scope=scope,
     )
-    result = service_type(router, sql, rag, hybrid).chat("Câu hỏi tổng hợp")
-    assert result.route == RouteLabel.UNSUPPORTED
+    with pytest.raises(ModelResponseError):
+        service_type(router, sql, rag, hybrid).chat("Câu hỏi tổng hợp")
     sql.run.assert_not_called()
     rag.run.assert_not_called()
     hybrid.run.assert_not_called()
 
 
-def test_automatic_wire_contract_requires_evidence_intent_and_scope():
-    assert {"evidence_requirement", "policy_intent", "policy_scope"}.issubset(
-        RouteDecision.model_json_schema()["required"]
+def test_automatic_wire_contract_requires_task_without_authority_flags():
+    schema = TaskProposal.model_json_schema()
+    assert {"operation", "source", "where", "having", "selection", "unresolved"}.issubset(
+        schema["required"]
     )
+    assert not {"verified", "policy_scope", "owner_user_id"} & schema["properties"].keys()
 
 
 @pytest.mark.parametrize("provider", ["knowledge", "gemini"])
@@ -207,7 +205,7 @@ def test_current_rule_question_is_distinguished_from_a_verified_comparison_premi
     assert decision.route == RouteLabel.RAG
     prompt = gateway.generate_structured.call_args.args[0]
     assert "Current request:\n" + current in prompt
-    assert "Context is not a requirement to repeat the previous route" in prompt
+    assert "do not inherit" in prompt
 
 
 @pytest.mark.parametrize("provider", ["knowledge", "gemini"])
@@ -225,11 +223,10 @@ def test_contradictory_classification_never_dispatches_a_pipeline(monkeypatch, p
     gateway, calls = gateway_harness(monkeypatch, provider, [response(provider, payload)])
     sql, rag, hybrid = Mock(), Mock(), Mock()
     try:
-        result = DatasetChatService(QueryRouter(gateway), sql, rag, hybrid).chat(
-            "Giải thích điều kiện trong tài liệu."
-        )
-        assert result.route == RouteLabel.UNSUPPORTED
-        assert "chưa xác định" in result.answer
+        with pytest.raises(ModelResponseError):
+            DatasetChatService(QueryRouter(gateway), sql, rag, hybrid).chat(
+                "Giải thích điều kiện trong tài liệu."
+            )
         for pipeline in (sql, rag, hybrid):
             pipeline.run.assert_not_called()
         assert len(calls) == 1
@@ -272,15 +269,7 @@ def test_current_request_is_last_and_not_duplicated_after_context(current, previ
 def test_evidence_contract_survives_pinned_sdk_wire_and_local_validation(
     monkeypatch, provider, evidence
 ):
-    payload = json.dumps(
-        {
-            "route": "HYBRID",
-            "reason": "Synthetic fixture",
-            "policy_intent": "none",
-            "policy_scope": "unspecified",
-            "evidence_requirement": evidence,
-        }
-    )
+    payload = routing_fixture({"evidence_requirement": evidence}).model_dump_json()
     gateway, calls = gateway_harness(monkeypatch, provider, [response(provider, payload)])
     try:
         with diagnostic_request() as trace:
@@ -293,7 +282,8 @@ def test_evidence_contract_survives_pinned_sdk_wire_and_local_validation(
             if provider == "knowledge"
             else wire["generationConfig"]["responseSchema"]
         )
-        assert "evidence_requirement" in schema["properties"]
+        assert "operation" in schema["properties"]
+        assert "policy_scope" not in schema["properties"]
         assert (
             decision.route
             == {
@@ -328,30 +318,49 @@ def test_evidence_telemetry_cannot_export_free_text():
 def test_complete_sdk_classification_reaches_coverage_without_a_question_template(
     monkeypatch, provider, selection
 ):
+    from dataclasses import replace
+    from uuid import UUID
+
     from app.routing.hybrid import HybridPipeline
+    from app.semantic.request import RequestIdentity, semantic_request
     from tests.test_evidence_coverage import fixture, pipeline
 
     chunk, context, _ = fixture()
+    owner = UUID("f425b6ce-7ff0-4329-9948-4e9bf2e93642")
+    context = replace(context, dataset_id=71, owner_user_id=owner, table_row_counts={"random_d": 2})
+    chunk = replace(
+        chunk, document_scope=replace(chunk.document_scope, dataset_id=71, owner_user_id=owner)
+    )
     rows = [
         {"entity_id": "U1", "metric_value": "40.00"},
         {"entity_id": "U2", "metric_value": "0.00"},
     ]
     sql, executor, drafting = pipeline(context, rows)
-    payload = json.dumps(
-        {
-            "route": "HYBRID",
-            "reason": "Synthetic evidence requirements",
-            "evidence_requirement": "both",
-            "policy_intent": selection,
-            "policy_scope": "all_entities",
-        }
-    )
+    executor.execute.side_effect = [
+        [{"entity_count": len(rows)}],
+        [{"entity_id": row["entity_id"]} for row in rows],
+        rows,
+    ]
+    payload = routing_fixture(
+        {"evidence_requirement": "both", "policy_intent": selection}
+    ).model_dump_json()
     gateway, calls = gateway_harness(monkeypatch, provider, [response(provider, payload)])
     rag = Mock(retrieve=Mock(return_value=[chunk]))
     try:
-        with diagnostic_request() as trace:
+        with (
+            diagnostic_request() as trace,
+            semantic_request(
+                RequestIdentity(
+                    owner,
+                    None,
+                    71,
+                    "Đối chiếu toàn bộ đối tượng với các điều kiện được lưu.",
+                    "2026-10-29",
+                )
+            ),
+        ):
             result = DatasetChatService(
-                QueryRouter(gateway),
+                QueryRouter(gateway, context=context),
                 sql,
                 rag,
                 HybridPipeline(sql, rag, drafting, context),
@@ -368,24 +377,14 @@ def test_complete_sdk_classification_reaches_coverage_without_a_question_templat
         assert trace.facts["policy_intent"] == selection
         assert trace.facts["policy_scope"] == "all_entities"
         assert len(calls) == 1
-        executor.execute.assert_called_once()
+        assert executor.execute.call_count == 3
         drafting.generate_structured.assert_not_called()
     finally:
         gateway.close()
 
 
 def test_unclear_request_asks_for_scope_without_mislabeling_a_provider_failure():
-    gateway = Mock(
-        generate_structured=Mock(
-            return_value=RouteDecision(
-                route="UNSUPPORTED",
-                reason="No resolved referent",
-                evidence_requirement="unclear",
-                policy_intent="none",
-                policy_scope="unspecified",
-            )
-        )
-    )
+    gateway = Mock(generate_structured=Mock(return_value=proposal_for_evidence("unclear")))
     sql = Mock()
     result = DatasetChatService(QueryRouter(gateway), sql, None, None).chat("Còn cái kia?")
     assert "Bạn muốn tra quy định hay tính số liệu" in result.answer

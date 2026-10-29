@@ -261,5 +261,8 @@ def chat(request: Request, guest: CurrentGuest, body: GuestChatRequest) -> dict:
             used_model=result.used_model,
             fallback_used=result.fallback_used,
             fallback_reason=result.fallback_reason,
+            verification_status=result.verification_status,
+            rag_answerability_claim=result.rag_answerability_claim,
+            rag_grounding_status=result.rag_grounding_status,
         )
         return {"response": response.model_dump(), "status": status(guest)}

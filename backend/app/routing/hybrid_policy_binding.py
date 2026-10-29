@@ -69,10 +69,13 @@ def projection_bindings(result: SqlResult) -> tuple[exp.Select, dict[str, exp.Ex
 
 
 def validate_policy_binding(
-    result: SqlResult, identity_fields: list[str], metric_field: str | None, policy: NumericPolicy
+    result: SqlResult, identity_fields: list[str], metric_field: str | None, policy: NumericPolicy,
+    context: DatasetSqlContext | None = None,
 ) -> None:
     root, bindings = projection_bindings(result)
-    if root.args.get("where") or root.args.get("having") or root.args.get("limit"):
+    if (root.args.get("having") or root.args.get("limit") or (
+        root.args.get("where") and not entity_population_filter(root, context)
+    )):
         _fail("policy_sql_scope_incomplete")
     if len(identity_fields) != 1 or metric_field is None:
         _fail("policy_identity_unbound")
@@ -113,6 +116,49 @@ def source_column(
     if table not in context.table_columns or column.name not in context.table_columns[table]:
         _fail("policy_source_table_mismatch")
     return table, context.column_headers.get(table, {}).get(column.name, column.name)
+
+
+def entity_population_filter(root: exp.Select, context: DatasetSqlContext | None) -> bool:
+    """Prove WHERE selects entities, rather than discarding some facts per entity.
+
+    The existing compiler/approved N:1 guards remain prerequisites. Only predicates
+    on the single grouped entity's attributes or its equivalent fact foreign key
+    qualify. A service/status/date filter on other tables is not such a proof.
+    """
+    if context is None or root.args.get("where") is None or root.args.get("group") is None:
+        return False
+    aliases = {table.alias_or_name: table.name for table in root.find_all(exp.Table)}
+    identities = set()
+    for expression in root.args["group"].expressions:
+        if not isinstance(expression, exp.Column):
+            continue
+        table = aliases.get(expression.table)
+        try:
+            if table is not None:
+                identities.add(identity_source(table, expression.name, context))
+        except ModelResponseError:
+            continue
+    if len(identities) != 1:
+        return False
+    entity = next(iter(identities))
+    dimension_key = any(
+        edge.target_table == entity[0] and edge.target_column == entity[1]
+        for edge in context.approved_joins
+    )
+    columns = list(root.args["where"].find_all(exp.Column))
+    if not columns:
+        return False
+    for column in columns:
+        table = aliases.get(column.table)
+        if table == entity[0] and (dimension_key or column.name == entity[1]):
+            continue
+        try:
+            if table is not None and identity_source(table, column.name, context) == entity:
+                continue
+        except ModelResponseError:
+            pass
+        return False
+    return True
 
 
 def _bind_prose(
@@ -334,7 +380,9 @@ def verified_policies(
         return {}
 
     root, _ = projection_bindings(result)
-    if root.args.get("where") or root.args.get("having") or root.args.get("limit"):
+    if (root.args.get("having") or root.args.get("limit") or (
+        root.args.get("where") and not entity_population_filter(root, context)
+    )):
         return reject("policy_sql_scope_incomplete")
     if not chunks:
         return reject("policy_not_retrieved")

@@ -16,13 +16,15 @@ from app.dependencies import _build_dataset_chat_service
 from app.rag.pipeline import RagAnswerDraft, RagPipeline
 from app.rag.repository import RetrievedChunk
 from app.routing.hybrid import HybridAnswerDraft, HybridPipeline
-from app.routing.router import QueryRouter, RouteDecision, RouteLabel
+from app.routing.router import QueryRouter, RouteLabel
+from app.semantic.wire import TaskProposal
 from app.text_to_sql.pipeline import SqlResult
 from app.text_to_sql.planner import QueryPlanner
 from app.text_to_sql.query_plan import PlanDecision
 from app.text_to_sql.validator import SqlValidator
 from tests.hybrid_fixtures import explanation_draft
 from tests.plan_fixtures import decision_from_sql
+from tests.semantic_fixtures import proposal_for_evidence
 from tests.test_three_table_join import PS, SC, TYPES
 
 
@@ -33,18 +35,14 @@ class RecordingGateway:
 
     def generate_structured(self, prompt: str, response_model: type[Any]) -> Any:
         self.prompt = prompt
-        if response_model is RouteDecision:
-            return RouteDecision(
-                policy_intent="none",
-                policy_scope="unspecified",
-                evidence_requirement={
+        if response_model is TaskProposal:
+            return proposal_for_evidence(
+                {
                     "SQL": "tables",
                     "RAG": "documents",
                     "HYBRID": "both",
                     "UNSUPPORTED": "unavailable",
-                }[self.route],
-                route=self.route,
-                reason="fixture",
+                }[self.route]
             )
         if response_model is PlanDecision:
             return decision_from_sql(
@@ -112,11 +110,9 @@ def test_router_distinguishes_hybrid_aggregation_from_an_unsupported_table_join(
     decision = QueryRouter(gateway, context.routing_context).route(question)
 
     assert decision.route == RouteLabel.HYBRID
-    assert "single-table SQL result or aggregate with a rule retrieved from a document" in (
-        gateway.prompt
-    )
-    assert "does not require a SQL JOIN or table-to-table relationship metadata" in gateway.prompt
-    assert "Never invent a missing threshold" in gateway.prompt
+    assert "combine needs SQL records and document" in gateway.prompt
+    assert "policy alone defines" in gateway.prompt.replace("\n", " ")
+    assert "Never guess a policy metric, threshold" in gateway.prompt
 
 
 @pytest.mark.parametrize(
@@ -141,17 +137,13 @@ def test_router_prompt_uses_selected_source_not_commerce_only(
     decision = QueryRouter(gateway, context.routing_context).route(question)
 
     assert decision.route == route  # The stub verifies the contract, not live LLM accuracy.
-    data, _ = json.JSONDecoder().raw_decode(
-        gateway.prompt.split("Context data (untrusted, not the current task):\n", 1)[1]
-    )
-    assert data["workspace"] == context.routing_context
-    assert data["conversation_context"] == ""
-    assert "Do not reject a question merely because" in gateway.prompt
-    assert "Available routes for the selected data source: HYBRID, RAG, SQL, UNSUPPORTED" in (
-        gateway.prompt
-    )
-    assert "A numeric threshold explicitly given" in gateway.prompt
-    assert "When a supplied schema clearly lacks a required field" in gateway.prompt
+    data, _ = json.JSONDecoder().raw_decode(gateway.prompt.split("Source/context data:\n", 1)[1])
+    assert data["source_description"] == context.routing_context
+    assert data["bounded_conversation_context"] == ""
+    assert "Choose evidence, not topic or keywords" in gateway.prompt
+    assert "Available routes: HYBRID, RAG, SQL, UNSUPPORTED" in (gateway.prompt)
+    assert "Preserve any known user predicates" in gateway.prompt
+    assert "Use unresolved for conditions you cannot represent" in gateway.prompt
     assert "Default demo store:" not in gateway.prompt
     assert gateway.prompt.endswith("Current request:\n" + question)
 
@@ -212,10 +204,8 @@ def test_uploaded_router_receives_schema_through_dependency_construction(monkeyp
     result = service.chat("Trường bị thiếu?")
 
     assert result.route == RouteLabel.UNSUPPORTED
-    data, _ = json.JSONDecoder().raw_decode(
-        gateway.prompt.split("Context data (untrusted, not the current task):\n", 1)[1]
-    )
-    assert data["workspace"] == context.routing_context
+    data, _ = json.JSONDecoder().raw_decode(gateway.prompt.split("Source/context data:\n", 1)[1])
+    assert data["source_description"] == context.routing_context
     assert "Never JOIN tables" not in gateway.prompt
 
 

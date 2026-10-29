@@ -202,5 +202,6 @@ def test_successful_verified_answer_is_a_bounded_follow_up_premise():
     expanded = contextual_question(question, conversation, conversation.owner_user_id, 13)
     assert expanded.startswith(question) and first.content in expanded
     premise = json.loads(expanded.split("again):\n", 1)[1])
-    assert premise[0]["answer"] == answer
+    assert premise[0]["question"] == first.content
+    assert "answer" not in premise[0] and answer not in expanded
     assert "verify current evidence again" in expanded

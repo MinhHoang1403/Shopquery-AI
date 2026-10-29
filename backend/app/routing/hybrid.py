@@ -1,6 +1,7 @@
 """Hybrid composition using evidence from the existing SQL and RAG pipelines."""
 
 import json
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,6 +22,10 @@ from app.routing.hybrid_evidence import (
 )
 from app.routing.hybrid_policy import complete_policy_evidence, numeric_policies
 from app.routing.hybrid_policy_binding import policy_evidence, verification_error
+from app.semantic.policy import bind_policy_task
+from app.semantic.presentation import select_verified_rows
+from app.semantic.request import request_active
+from app.semantic.task import OutputSelection, Projection, SemanticTask
 from app.text_to_sql.answer import ResultColumn
 from app.text_to_sql.count_contract import count_evidence
 from app.text_to_sql.pipeline import SqlResult, TextToSqlPipeline
@@ -51,6 +56,7 @@ class HybridResult:
     verification_status: VerificationStatus = "unverified"
     result_columns: tuple[ResultColumn, ...] = ()
     answer_row_indices: tuple[int, ...] | None = None
+    task: SemanticTask | None = None
 
 
 class HybridPipeline:
@@ -73,7 +79,10 @@ class HybridPipeline:
         *,
         current_question: str | None = None,
         classification: Selection | None = None,
+        task: SemanticTask | None = None,
     ) -> HybridResult:
+        if task is None and request_active():
+            raise verification_error("planning_scope_violation")
         chunks = self._rag_pipeline.retrieve(question)
         chunks = complete_policy_evidence(chunks)
         record_facts(retrieved_chunks=len(chunks), selected_chunks=len(chunks))
@@ -98,21 +107,79 @@ class HybridPipeline:
         )
         if len(planning_evidence) > 60000:
             raise _evidence_error()
-        coverage = resolve_coverage(
-            current_question or question,
-            chunks,
-            self._context,
-            classification=classification,
-        )
+        bound = None
+        if task is not None:
+            if classification is not None:
+                raise verification_error("planning_scope_violation")
+            if task.operation == "apply_policy":
+                if self._context is None:
+                    raise verification_error("planning_scope_violation")
+                bound = bind_policy_task(task, chunks, self._context)
+                task = bound.task
+            elif task.operation != "combine":
+                raise verification_error("planning_scope_violation")
+            coverage = None
+        else:
+            coverage = resolve_coverage(
+                current_question or question,
+                chunks,
+                self._context,
+                classification=classification,
+            )
         if classification is not None and coverage is None:
             raise verification_error("policy_not_verified")
-        sql_options = {"coverage": coverage} if coverage is not None else {}
-        sql_result = self._sql_pipeline.run(
-            question,
-            evidence_context=planning_evidence,
-            ground_answer=False,
-            **sql_options,
+        sql_options = (
+            {"task": task}
+            if task is not None
+            else {"coverage": coverage}
+            if coverage is not None
+            else {}
         )
+        scope = self._sql_pipeline.semantic_execution_scope(task) if bound else nullcontext()
+        with scope:
+            if bound:
+                count_task = bound.universe.model_copy(
+                    update={
+                        "output": OutputSelection(
+                            fields=(Projection(alias="entity_count", aggregate="row_count"),)
+                        ),
+                    }
+                )
+                count_result = self._sql_pipeline.run(
+                    question, task=count_task, ground_answer=False
+                )
+                if len(count_result.rows) != 1:
+                    raise verification_error("planning_scope_violation")
+                count = count_result.rows[0].get("entity_count")
+                if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                    raise verification_error("planning_scope_violation")
+                if bound.entity_count is not None and count != bound.entity_count:
+                    raise verification_error("planning_scope_violation")
+                universe = self._sql_pipeline.run(
+                    question, task=bound.universe, ground_answer=False
+                )
+                identities = [row.get("entity_id") for row in universe.rows]
+                if (
+                    len(identities) != count
+                    or None in identities
+                    or len(set(map(str, identities))) != count
+                ):
+                    raise verification_error("planning_scope_violation")
+            sql_result = self._sql_pipeline.run(
+                question,
+                evidence_context=planning_evidence,
+                ground_answer=False,
+                **sql_options,
+            )
+            if bound:
+                # Missing facts are not zero and cannot be silently omitted by INNER JOIN.
+                actual = [row.get(bound.identity_field) for row in sql_result.rows]
+                if (
+                    len(actual) != count
+                    or None in actual
+                    or set(map(str, actual)) != set(map(str, identities))
+                ):
+                    raise verification_error("planning_scope_violation")
         with diagnostic_stage("policy_verification"):
             try:
                 policies = policy_evidence(sql_result, chunks, self._context)
@@ -173,7 +240,7 @@ Document evidence:
                 )
                 draft = verified_classification(sql_result, chunks, self._context, language)
                 if draft is None:
-                    if coverage is not None:
+                    if coverage is not None or bound is not None:
                         raise verification_error("policy_not_verified")
                     with diagnostic_stage("answer_grounding"):
                         draft = self._gateway.generate_structured(prompt, HybridAnswerDraft)
@@ -203,19 +270,37 @@ Document evidence:
             if draft.mode == "explanation":
                 status = "explanation"
             elif (
-                coverage is not None
+                (coverage is not None or bound is not None)
                 and draft.rule_id is not None
                 and bool(draft.decisions)
                 and all(d.status in {"qualified", "not_qualified"} for d in draft.decisions)
             ):
                 status = "verified_classification"
-            if coverage is not None and coverage.selection != "all":
-                selected = [
-                    i
-                    for i, decision in enumerate(draft.decisions)
-                    if decision.status == coverage.selection
-                ]
-                answer_row_indices = tuple(selected)
+            selection = (
+                task.output.classification
+                if bound is not None
+                else (coverage.selection if coverage is not None else "all")
+            )
+            if bound is not None or selection != "all":
+                selected = (
+                    list(
+                        select_verified_rows(
+                            task.output,
+                            sql_result.rows,
+                            [d.status for d in draft.decisions],
+                            sql_result.result_columns,
+                        )
+                    )
+                    if bound is not None
+                    else [
+                        i
+                        for i, decision in enumerate(draft.decisions)
+                        if decision.status == selection
+                    ]
+                )
+                answer_row_indices = (
+                    None if selected == list(range(len(sql_result.rows))) else tuple(selected)
+                )
                 # Select presentation only after verifying the complete SQL evidence above.
                 subset = SqlResult(
                     sql_result.answer,
@@ -239,4 +324,5 @@ Document evidence:
             status,
             sql_result.result_columns,
             answer_row_indices,
+            task,
         )
