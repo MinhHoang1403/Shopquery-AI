@@ -87,7 +87,10 @@
 - Được tạo containers/images phục vụ chức năng vận hành operator yêu cầu. Langfuse
   đủ sáu service chính thức là hệ thống vận hành hợp lệ, không phải test stack dư.
 - Langfuse quản lý cùng repository, ưu tiên `ops/langfuse/`, Compose project riêng
-  `shopquery-observability`, volumes và PostgreSQL riêng; không dùng main DB lưu trace.
+  `langfuse` theo chỉ thị đổi tên nhóm ngày04/11/2026 để dùng chung nhiều dự án.
+  Giữ nguyên năm volumes và hai networks có prefix lịch sử `shopquery-observability_`
+  dưới dạng external resources khi chuyển tên; không tạo datastore rỗng hoặc đổi
+  endpoint/credentials của các clients. PostgreSQL riêng, không dùng main DB lưu trace.
   Không nhân bản ShopQuery AI hoặc kết nối main DB vào mạng Langfuse không cần thiết.
 - Chỉ build service có source/build inputs thay đổi; không build cho docs/config-only.
   Dùng image ổn định pin version/digest có nguồn kiểm chứng, giữ rollback phù hợp.
