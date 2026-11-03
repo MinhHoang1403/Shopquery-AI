@@ -1,5 +1,5 @@
 # Based on langfuse/langfuse v4.70.1/docker-compose.yml; safe operation is in README.md.
-name: shopquery-observability
+name: langfuse
 
 x-logging: &logging
   driver: json-file
@@ -153,11 +153,29 @@ services:
       start_period: 10s
 
 volumes:
+  # Reuse the shared instance's existing data. Missing resources fail closed;
+  # changing the project name must never initialize an empty datastore.
   postgres-data:
+    external: true
+    name: shopquery-observability_postgres-data
   clickhouse-data:
+    external: true
+    name: shopquery-observability_clickhouse-data
   clickhouse-logs:
+    external: true
+    name: shopquery-observability_clickhouse-logs
   redis-data:
+    external: true
+    name: shopquery-observability_redis-data
   minio-data:
+    external: true
+    name: shopquery-observability_minio-data
 
 networks:
+  # Keep service DNS and existing client network attachments intact.
+  default:
+    external: true
+    name: shopquery-observability_default
   ingestion:
+    external: true
+    name: shopquery-observability_ingestion

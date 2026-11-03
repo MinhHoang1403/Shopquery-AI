@@ -2,7 +2,9 @@
 
 Runbook hiện hành cho một source `C:/Work/ShopQuery AI`, branch `main`, một ứng dụng
 [8080](http://127.0.0.1:8080), Compose project `shopquery-ai`.
-[Langfuse](http://127.0.0.1:3000) chạy riêng project `shopquery-observability`.
+[Langfuse](http://127.0.0.1:3000) dùng chung nhiều dự án, tên Compose project `langfuse`
+theo chỉ thị04/11/2026. Datastores/mạng external giữ tên lịch sử `shopquery-observability_`
+để dùng đúng dữ liệu và endpoints hiện có; xem [chuyển tên và nghiệm thu](../ops/langfuse/README.md).
 Không dùng các image refs lịch sử làm cấu hình hiện hành.
 
 ## Runtime đã xác minh
@@ -59,7 +61,7 @@ vẫn 127.0.0.1:3000. Sáu pins/five volumes/backup limits ở [runbook Langfuse
 ./scripts/release.ps1 -Observability
 Invoke-RestMethod http://127.0.0.1:8080/api/health
 docker ps --format '{{.Names}} {{.Status}}'
-docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml ps
+docker compose -p langfuse --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml ps
 ```
 
 `release.ps1` không có `-Deploy` chỉ kiểm; fail khi source/image/config drift.

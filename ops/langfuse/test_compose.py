@@ -56,7 +56,7 @@ class ComposeSafetyTests(unittest.TestCase):
         cls.config = json.loads(result.stdout)
 
     def test_project_has_exactly_six_upstream_services(self):
-        self.assertEqual(self.config["name"], "shopquery-observability")
+        self.assertEqual(self.config["name"], "langfuse")
         self.assertEqual(
             set(self.config["services"]),
             {
@@ -100,15 +100,25 @@ class ComposeSafetyTests(unittest.TestCase):
             ],
         )
 
-    def test_storage_and_network_do_not_reference_shopquery(self):
-        for volume in self.config["volumes"].values():
-            self.assertTrue(volume["name"].startswith("shopquery-observability_"))
-            self.assertFalse(volume.get("external", False))
+    def test_existing_langfuse_storage_and_networks_are_preserved(self):
+        self.assertEqual(
+            set(self.config["volumes"]),
+            {
+                "postgres-data", "clickhouse-data", "clickhouse-logs",
+                "redis-data", "minio-data",
+            },
+        )
+        for key, volume in self.config["volumes"].items():
+            self.assertEqual(volume["name"], f"shopquery-observability_{key}")
+            self.assertTrue(volume["external"])
+            self.assertNotEqual(volume["name"], "shopquery-ai_postgres_auth_20261019")
         for service in self.config["services"].values():
             for mount in service.get("volumes", []):
                 self.assertEqual(mount["type"], "volume")
         self.assertEqual(set(self.config["networks"]), {"default", "ingestion"})
-        self.assertFalse(self.config["networks"]["default"].get("external", False))
+        for key, network in self.config["networks"].items():
+            self.assertEqual(network["name"], f"shopquery-observability_{key}")
+            self.assertTrue(network["external"])
         for name, service in self.config["services"].items():
             self.assertEqual(
                 "ingestion" in service["networks"], name == "langfuse-web"
@@ -175,6 +185,10 @@ class ComposeSafetyTests(unittest.TestCase):
         for name, service in config["services"].items():
             self.assertEqual("observability" in service["networks"], name == "api")
         self.assertTrue(config["networks"]["observability"]["external"])
+        self.assertEqual(
+            config["networks"]["observability"]["name"],
+            "shopquery-observability_ingestion",
+        )
         self.assertEqual(config["services"]["api"]["environment"]["LANGFUSE_ENABLED"], "false")
         self.assertEqual(config["services"]["api"]["environment"]["OTEL_BSP_MAX_QUEUE_SIZE"], "512")
 

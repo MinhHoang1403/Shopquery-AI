@@ -1,6 +1,11 @@
 # Langfuse trên Docker Desktop
 
-**LANGFUSE_READY_WITH_LIMITATIONS — 27/10/2026.** Dashboard tại
+**Đổi tên nhóm dùng chung — 04/11/2026, đang nghiệm thu.** Tên Compose project
+chuyển từ `shopquery-observability` sang `langfuse` theo yêu cầu operator; giữ nguyên
+images, credentials, endpoint3000/media9090 và dữ liệu. Năm volumes cùng hai mạng
+được khai báo external với tên cũ để không tạo datastore rỗng hoặc đổi clients.
+
+**Nghiệm thu ingestion lịch sử — 27/10/2026: LANGFUSE_READY_WITH_LIMITATIONS.** Dashboard tại
 [localhost:3000](http://127.0.0.1:3000). Sáu service healthy, Web/Worker ready,
 project/keys thật đã tạo; API8080 đã gửi trace. Đợt nghiệm thu tiếp theo chạy6câu UI
 trong ngân sách mới:10generation/3query/0document embeddings; tất cả đúng oracle.
@@ -10,7 +15,7 @@ không thử lại luồng Google sign-in mới.
 
 ## Runtime và bằng chứng
 
-Một project `shopquery-observability`, sáu images pin trong `compose.yaml`, năm
+Một project `langfuse`, sáu images pin trong `compose.yaml`, năm
 volumes riêng. ShopQuery vẫn một project `shopquery-ai`, một deployment8080 và main
 PostgreSQL riêng. Không tạo sandbox, test containers hoặc clone source.
 
@@ -90,8 +95,8 @@ riêng default. Docker logs rotation10m×3; không có nghĩa database storage b
 Kiểm không thay runtime:
 
 ```powershell
-docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml config --quiet
-docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml ps
+docker compose -p langfuse --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml config --quiet
+docker compose -p langfuse --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml ps
 ./scripts/release.ps1 -Observability
 Invoke-RestMethod http://127.0.0.1:8080/api/health
 ```
@@ -99,7 +104,7 @@ Invoke-RestMethod http://127.0.0.1:8080/api/health
 Khởi động lại containers có sẵn khi cần, không tự pull/rebuild/recreate:
 
 ```powershell
-docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml up -d --no-build --no-recreate --pull never
+docker compose -p langfuse --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml up -d --no-build --no-recreate --pull never
 ```
 
 Theo chỉ thị operator hiện hành, không dừng chỉ theo ngưỡng availableRAM256MiB.
@@ -119,6 +124,33 @@ Rollback hiện hành API52701da8/source8a2c6aa và `.env.release.before` tại 
 rollback069e7f67/sourcea67242d trước instrumentation cũng được giữ. Khôi phục config
 và API-only deploy trong maintenance window được duyệt; không main Web/DB recreate.
 Không ghi đè secrets LF nếu volumes đã tồn tại. Không xóa năm volumes datastore.
+
+## Chuyển tên nhóm Docker ngày04/11/2026
+
+Đổi tên project cần recreate sáu containers vì Docker Desktop nhóm theo Compose
+labels; `docker rename` riêng một container không đổi nhóm. Không chạy hai nhóm
+đồng thời. Trước chuyển, kiểm inventory/mounts/immutable images/private config và
+clients; dừng Web/Worker graceful, chụp hash metadata PostgreSQL/ClickHouse và object
+bytes MinIO khi ingestion dừng. Dừng các datastore graceful, sao lưu cả năm volumes
+qua containers đã dừng và giữ secrets riêng ngoài Git trước khi xóa containers cũ.
+Không xóa volumes hoặc networks. Chỉ bỏ sáu container IDs đã xác minh thuộc nhóm cũ,
+không `-v`/force; khởi động bốn datastore dưới project mới rồi so lại dữ liệu trước
+khi bật Web/Worker. Sau chuyển kiểm sáu services, health/ready, ports, mounts,
+credentials hash và các dự án khác. Không pull/build hoặc nâng version cho đổi tên.
+
+Các resources `shopquery-observability_postgres-data`, `clickhouse-data`,
+`clickhouse-logs`, `redis-data`, `minio-data` đều dùng đầy đủ prefix lịch sử ở Compose;
+mạng `shopquery-observability_default`/`shopquery-observability_ingestion` giữ nguyên.
+Nếu resource thiếu thì Compose phải từ chối thay vì tạo mới. Khi cần rollback tên,
+dừng/xóa đúng containers mới sau khi giữ backup rồi dùng `-p shopquery-observability`
+với cùng cấu hình external/images/secrets để khởi động lại; không restore đè hoặc
+chạy hai nhóm trên cùng datastores. Main ShopQuery API/Web/DB không recreate.
+
+Preflight phát hiện worker đã có timeout Redis trước đổi tên:540lượt khớp cụm
+`Socket timeout`/360dòng cóerror trong10phút, Web0error; Redis PING từ workerPONG
+(211ms). Healthcheck6/6xanh không chứng minh mọi queue hoạt động. Đổi tên không được
+gọi là đã sửa lỗi queue hoặc nghiệm thu ingestion mới; kết quả sau chuyển ghi tiếp
+khi có receipts. Không gọi model để thử đổi tên.
 
 ## Kiểm thử và giới hạn
 

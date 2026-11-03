@@ -14,7 +14,8 @@ lõi rebuild chưa đạt. Xem [bàn giao cuối](docs/PROJECT_CLOSEOUT.md) và 
 - Ứng dụng chính: [http://127.0.0.1:8080](http://127.0.0.1:8080).
 - Langfuse: [http://127.0.0.1:3000](http://127.0.0.1:3000).
 - Một source trên `main`, một deployment `shopquery-ai`, một project giám sát
-  `shopquery-observability`. Phạm vi hiện tại là localhost, chưa nghiệm thu public/VPS.
+  `langfuse` dùng chung nhiều dự án theo chỉ thị04/11/2026; năm volumes/mạng giữ tên
+  lịch sử để bảo toàn dữ liệu và clients. Phạm vi hiện tại là localhost, chưa nghiệm thu public/VPS.
 
 ## Khả năng chính
 
@@ -100,7 +101,7 @@ Kiểm tra không thay runtime, tại repository root:
 ```powershell
 ./scripts/release.ps1 -Observability
 Invoke-RestMethod http://127.0.0.1:8080/api/health
-docker compose -p shopquery-observability --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml ps
+docker compose -p langfuse --env-file ops/langfuse/.env -f ops/langfuse/compose.yaml ps
 ```
 
 Thứ tự Compose đang dùng: `compose.yaml` → `.env.compose-ui.yaml` → `.env.join-v1.yaml`
