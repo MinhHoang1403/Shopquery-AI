@@ -1,6 +1,6 @@
 # Langfuse trên Docker Desktop
 
-**Đổi tên nhóm dùng chung — 04/11/2026, đang nghiệm thu.** Tên Compose project
+**Đổi tên nhóm dùng chung — 04/11/2026: hoàn tất và kiểm chứng.** Tên Compose project
 chuyển từ `shopquery-observability` sang `langfuse` theo yêu cầu operator; giữ nguyên
 images, credentials, endpoint3000/media9090 và dữ liệu. Năm volumes cùng hai mạng
 được khai báo external với tên cũ để không tạo datastore rỗng hoặc đổi clients.
@@ -149,8 +149,47 @@ chạy hai nhóm trên cùng datastores. Main ShopQuery API/Web/DB không recrea
 Preflight phát hiện worker đã có timeout Redis trước đổi tên:540lượt khớp cụm
 `Socket timeout`/360dòng cóerror trong10phút, Web0error; Redis PING từ workerPONG
 (211ms). Healthcheck6/6xanh không chứng minh mọi queue hoạt động. Đổi tên không được
-gọi là đã sửa lỗi queue hoặc nghiệm thu ingestion mới; kết quả sau chuyển ghi tiếp
-khi có receipts. Không gọi model để thử đổi tên.
+gọi là đã sửa nguyên nhân queue hoặc nghiệm thu ingestion mới. Không gọi model để
+thử đổi tên.
+
+Kết quả chuyển tên thực tế:
+
+- Source/config `820f3d8beab317622c84db2a67554c82f16dbad7` đã vào main/origin;
+  [PR7](https://github.com/MinhHoang1403/Shopquery-AI/pull/7) được tích hợp bằng
+  fast-forward. [CI đúng commit](https://github.com/MinhHoang1403/Shopquery-AI/actions/runs/41700215289)
+  đạt 4/4 jobs (Observability/Backend/Frontend/PostgreSQL); 10/10 Compose tests local PASS.
+- Đã dừng graceful sáu container cũ, sao lưu năm volumes khi tất cả datastore dừng.
+  Archive tổng 2.888.998.307 bytes, kiểm gzip/tar đọc hết, SHA256 và số files; private
+  `.env`/config được giữ cùng backup ngoài Git tại
+  `C:/Users/admin/.codex/backups/langfuse/rename-20261104/`. Không coi đây là restore
+  drill hoặc bản off-host. Bản trước và volumes gốc không bị ghi đè/xóa.
+- Đã xóa đúng sáu containerIDs cũ bằng `docker container rm`, không force/`-v`;
+  tạo lại đúng sáu trong project `langfuse`, không pull/build/upgrade images. Không
+  còn container của project `shopquery-observability`. Tên mới gồm
+  `langfuse-langfuse-web-1`, `langfuse-langfuse-worker-1` và bốn datastore.
+- Trước bật lại Web/Worker, so mọi row có hash canonical của 84 bảng PostgreSQL và
+  14 bảng ClickHouse (dùng FINAL khi engine cần), cùng tên/size/SHA256 của 949 tệp MinIO:
+  khớp hoàn toàn. Redis dùng đúng volume AOF đã sao lưu, không reset queue; không
+  nhận là đã so logical Redis keys bất biến sau khi worker hoạt động.
+- Runtime sáu services healthy, 0 restart/OOM; images/environment digests, mounts,
+  networks và ports không đổi. UI/title Langfuse/health/ready HTTP 200, 0 browser pageerrors;
+  đã xem ảnh trang đăng nhập sạch, không giả đăng nhập hoặc tạo tài khoản mới.
+  Dùng credentials project đã cấu hình để đọc 1 observation cũ qua API v2 HTTP 200.
+  Probe đầu dùng endpoint traces cũ trả 404 đúng hành vi v4; chuyển sang v2, không đổi
+  server/data để làm probe PASS. Không có inference hoặc write trace mới.
+- Inventory trước/sau cutover: 50 images/36 volumes/31 containers, không thêm image/volume;
+  sáu IDs cũ được thay bằng sáu IDs mới. 25 container ngoài Langfuse giữ nguyên IDs/image
+  refs/mounts/restart counts/trạng thái. Main ShopQuery đang dừng từ trước cutover,
+  không tự khởi động/recreate API/Web/DB chỉ để đổi tên dịch vụ dùng chung.
+- Sau restart Web/Worker, cửa sổ kiểm khoảng 3 phút chưa tái hiện socket timeout/error
+  (0 matches), khác với baseline có lỗi. Đây là quan sát ngắn, không chứng minh đã
+  sửa nguyên nhân upstream hoặc ổn định lâu dài. Retention, restore drill, tải dài
+  hạn và các giới hạn nghiệm thu trước vẫn còn; không dùng tên mới để che lỗi cũ.
+
+Đã dọn sạch containers dư trong phạm vi chuyển tên. Không có image Langfuse cũ không
+được tham chiếu: sáu image pins đều dùng thật, giữ nguyên. Studio đã có báo cáo riêng
+về tám images cũ bị xóa và rollback DAC giữ lại; không global prune hoặc xóa stopped
+containers của các ứng dụng khác vì trạng thái Stopped không đồng nghĩa tài nguyên bỏ.
 
 ## Kiểm thử và giới hạn
 
@@ -189,6 +228,13 @@ Backup mã hóa ngoài source/host, kiểm checksum; restore drill cần operato
 - [Health/readiness](https://langfuse.com/self-hosting/configuration/health-readiness-endpoints).
 - [SDK](https://langfuse.com/docs/observability/sdk/overview).
 - [Backup](https://langfuse.com/self-hosting/configuration/backups).
+- [Docker Compose project name](https://docs.docker.com/reference/compose-file/version-and-name/),
+  [external volumes](https://docs.docker.com/reference/compose-file/volumes/) và
+  [external networks](https://docs.docker.com/reference/compose-file/networks/): giữ
+  resource names độc lập project, thiếu thì fail closed; đã kiểm 04/11/2026.
+- [Langfuse Public API](https://langfuse.com/docs/api-and-data-platform/features/public-api)
+  và [migration API cũ](https://langfuse.com/faq/all/deprecated-api-migration): v4 dùng
+  Observations API v2, endpoint traces cũ 404; đã kiểm 04/11/2026 cùng runtime thật.
 
 Lịch sử preflight/lần stop đầu được giữ trong docs/deployment.md và Git; chỉ thị
 khởi động mới đã thay các hạn chế cũ. Không mở lại RAM audit hoặc nghiên cứu VM.

@@ -7,6 +7,12 @@ theo chỉ thị04/11/2026. Datastores/mạng external giữ tên lịch sử `s
 để dùng đúng dữ liệu và endpoints hiện có; xem [chuyển tên và nghiệm thu](../ops/langfuse/README.md).
 Không dùng các image refs lịch sử làm cấu hình hiện hành.
 
+Chuyển tên ngày 04/11 đã hoàn tất: 6/6 dịch vụ Langfuse healthy; dữ liệu 84 bảng
+PostgreSQL, 14 bảng ClickHouse và 949 tệp MinIO khớp trước/sau. Sáu container nhóm
+cũ đã được bỏ; 50 images và 36 volumes không đổi trong cutover. Source/config
+`820f3d8`, backup khi volumes đã dừng và giới hạn timeout Redis trước chuyển tên
+được ghi trong runbook Langfuse. Không build/deploy lại ứng dụng chính.
+
 ## Runtime đã xác minh
 
 | Service | Immutable image | Application revision |
